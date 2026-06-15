@@ -12,7 +12,7 @@ real data shape teaches what a speculative second agent would guess wrong.
 
 Phase 0 is the substrate + thin spine + canonical sync. It establishes:
 
-- Repo scaffold + config + all migrations (`supabase/migrations/0001`–`0009`).
+- Repo scaffold + config + all migrations (`supabase/migrations/0001`–`0010`).
 - Append-only `event_log` spine + projection dispatch (CQRS).
 - Thin agent contract + registry + base worker.
 - Control plane: approvals, risk tiers, audit log.
@@ -22,13 +22,32 @@ Phase 0 is the substrate + thin spine + canonical sync. It establishes:
 - Shopify fulfillment webhook (HMAC verified) → event → `shopify_fulfillments` →
   location routing → `fulfillment_events`.
 
-No live database is used in this phase — migration files are the source of truth.
+### Verification
+
+Verified against a live Supabase project. Results — see `VERIFICATION.md` for the full
+transcript of SQL assertions:
+
+| # | Task | Status |
+|---|---|---|
+| 1 | `tsc --noEmit` typecheck | PASS |
+| 2 | `node --test` unit tests (HMAC, env-driven routing) | PASS — 6/6 |
+| 3 | Migrations apply clean (`0001`→`0010`) | PASS |
+| 4 | `vector` extension installed; balance + immutability triggers wired; FKs resolve | PASS |
+| 5 | `supabase gen types` + `tsc` compile against generated types | PASS |
+| 6 | Spine test (events project into canonical read-model; idempotency_key dedups replay) | PASS |
+| 7 | Seam-1 proof (DTC customer + order land canonically; fulfillment routed `ignored`) | PASS |
+| 8 | Routing test (venue → consignment / main+linked-account → wholesale / else → ignored) | PASS |
+| 9 | Contract + outbox test (`issue_invoice` blocked by approval gate; exactly-once side-effect) | Deferred to Phase 1 |
+| 10 | Memory write (observation with source event ref; activity links to event) | PASS |
+| 11 | Boundary test (no Claude in Phase 0 code paths; full pricing/ledger boundary verified in Phase 1) | PASS for Phase 0 |
+
+Plus: Supabase security advisor returns 0 findings after `0010_security_hardening`.
 
 ## Layout
 
 ```
 atlas/
-  supabase/migrations/        # 0001..0009 — applied in order; never edited after merge
+  supabase/migrations/        # 0001..0010 — applied in order; never edited after merge
   src/
     data/                     # canonical read-models access + generated types
     platform/
