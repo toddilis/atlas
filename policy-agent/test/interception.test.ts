@@ -11,8 +11,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+// fileURLToPath gives the correct OS-native path on both POSIX and Windows;
+// .pathname produces `/C:/...` on Windows which then double-prefixes when joined.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SRC = join(ROOT, 'src');
 const WRAPPED = join(SRC, 'agent/tools/payCreator.ts');
 
