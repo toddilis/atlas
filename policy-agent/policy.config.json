@@ -2,7 +2,7 @@
   "currency": "HBAR",
   "rules": {
     "perTransactionCap": "100",
-    "rollingWindow": { "amount": "500", "windowHours": 168 },
+    "rollingWindow": { "amount": "30", "windowHours": 168 },
     "velocityLimit": { "maxPayments": 20, "windowHours": 168 },
     "allowlist": ["creator-code:ABC", "creator-code:DEF", "creator-code:GHI"],
     "approvalThreshold": "50",

@@ -49,11 +49,11 @@ function buildScenarios(): Scenario[] {
       },
     },
     {
-      label: '2) Rolling cap hit: ABC order-1043 would breach 500/168h',
+      label: '2) Rolling cap hit: ABC order-1046 (18 already spent, 25 more would breach 30/168h)',
       expected: 'blocked',
       payment: {
-        recipient, creatorCode: 'ABC', orderId: 'order-1043',
-        amount: hbarToTinybar('90'), currency: 'HBAR',
+        recipient, creatorCode: 'ABC', orderId: 'order-1046',
+        amount: hbarToTinybar('25'), currency: 'HBAR',
       },
     },
     {

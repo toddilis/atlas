@@ -38,13 +38,16 @@ const DEMO_CONVERSIONS = [
     verifiedAt: new Date().toISOString(),
     status: 'verified',
   },
-  // Rolling-cap test target (large commission to drive the cap)
+  // Rolling-cap test target. With rollingWindow = 30 HBAR / 168h and the
+  // happy-path scenario already spending 18 HBAR, a 25 HBAR payment here
+  // pushes the window sum to 43 → blocked by rollingWindow. Stays under
+  // the 50 HBAR approvalThreshold so it doesn't escalate first.
   {
     type: 'conversion',
     creatorCode: 'ABC',
-    orderId: 'order-1043',
-    orderValue: '600',
-    commission: '90',
+    orderId: 'order-1046',
+    orderValue: '200',
+    commission: '25',
     verifiedAt: new Date().toISOString(),
     status: 'verified',
   },
