@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test --import tsx test/**/*.test.ts",
+    "test": "node --test --import tsx test/*.test.ts",
     "hedera:hello": "tsx src/cli/hello.ts",
     "hedera:topics": "tsx src/cli/topics.ts",
     "demo:seed": "tsx src/seed/conversions.ts",
