@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // fileURLToPath gives the correct OS-native path on both POSIX and Windows;
@@ -41,7 +41,7 @@ test('only payCreator.ts imports transferHbar', () => {
   const offenders: string[] = [];
   for (const file of walk(SRC)) {
     if (file === WRAPPED) continue;
-    if (file.endsWith('/transfer.ts')) continue;   // the source file itself
+    if (basename(file) === 'transfer.ts') continue;   // the source file itself
     const body = stripLineComments(readFileSync(file, 'utf8'));
     // Match `from '...transfer.js'` or `transferHbar` referenced anywhere in code.
     if (/from\s+['"][^'"]*\/transfer\.js['"]/.test(body) || /\btransferHbar\b/.test(body)) {
