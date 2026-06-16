@@ -10,8 +10,10 @@
 //   - PR-D: auto-draft an invoice for wholesale routes via the draft_invoice tool. Draft
 //     failures are logged but don't roll back routing — drafting is idempotent on
 //     fulfillment_event_id, so the operator can retry after fixing pricing data.
-//
-// Remaining Phase 1 work: statement generation, wholesale GST handling.
+//   - PR-E: GST baked into draft_invoice_atomic via the org rate + account exemption.
+//   - PR-F: generate_statement tool — operator-triggered (or scheduled) snapshot of an
+//     account's billing position. No money moves; sending the statement to the customer
+//     is a separate later tool with its own gate.
 
 import { supabase, orgId } from '../../data/supabase.js';
 import type { AgentDefinition } from '../../platform/agent/types.js';
@@ -149,6 +151,7 @@ export const controllerAgent: AgentDefinition = {
     'shopify.list_fulfillments',
     'controller.draft_invoice',
     'controller.issue_invoice',
+    'controller.generate_statement',
   ],
   readScope: [
     'shopify_customers',
@@ -161,6 +164,8 @@ export const controllerAgent: AgentDefinition = {
     'price_book_entries',
     'fulfillment_events',
     'invoices',
+    'payments',
+    'statements',
     'observations',
   ],
   onEvent: onShopifyFulfillmentCreated,
