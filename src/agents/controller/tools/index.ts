@@ -2,7 +2,8 @@
 // src/api/server.ts can call a single bootstrap per domain.
 
 import { registerTool } from '../../../platform/tools/registry.js';
-import { buildPolicyInput, execute } from './issue_invoice.js';
+import { buildPolicyInput, execute as executeIssueInvoice } from './issue_invoice.js';
+import { execute as executeDraftInvoice } from './draft_invoice.js';
 
 let registered = false;
 
@@ -14,7 +15,18 @@ export function registerControllerTools(): void {
     defaultRisk: 'approve_required',
     mutating: true,
     policyInput: buildPolicyInput,
-    execute,
+    execute: executeIssueInvoice,
+  });
+
+  // draft_invoice is the deterministic projection of a wholesale fulfillment into an
+  // invoice row + lines. No money moves; no policy gate. The controller's onEvent calls
+  // execute() directly (same precedent as the outbox drainer); the registry registration
+  // is for a future LLM-loop entry point.
+  registerTool({
+    name: 'controller.draft_invoice',
+    defaultRisk: 'auto',
+    mutating: true,
+    execute: executeDraftInvoice,
   });
 
   registered = true;
