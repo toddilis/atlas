@@ -1,15 +1,17 @@
 // Controller — Agent #1: Finance.
 //
-// Phase 0 responsibilities (this file):
+// Responsibilities:
 //   - subscribe to shopify.fulfillment.created
-//   - resolve location routing
+//   - resolve location routing (Phase 0)
 //   - upsert a fulfillment_events row (wholesale / consignment / ignored, with reason)
-//   - emit a controller.fulfillment.routed event for downstream Phase 1 wiring
+//   - emit a controller.fulfillment.routed event for downstream wiring
 //   - record an observation tying the routing to its source event
 //   - append agent_activity describing the decision
+//   - PR-D: auto-draft an invoice for wholesale routes via the draft_invoice tool. Draft
+//     failures are logged but don't roll back routing — drafting is idempotent on
+//     fulfillment_event_id, so the operator can retry after fixing pricing data.
 //
-// Phase 1 will add: pricing resolver, invoice draft builder, invoice state machine + approval
-// gate, ledger posting engine, Stripe issue via outbox, payment ingestion, statement gen.
+// Remaining Phase 1 work: statement generation, wholesale GST handling.
 
 import { supabase, orgId } from '../../data/supabase.js';
 import type { AgentDefinition } from '../../platform/agent/types.js';
@@ -18,6 +20,7 @@ import { recordObservation } from '../../platform/memory/observations.js';
 import { appendEvent } from '../../platform/events/eventLog.js';
 import { log } from '../../platform/log.js';
 import { decideRoute } from './routing.js';
+import { execute as draftInvoice } from './tools/draft_invoice.js';
 
 async function onShopifyFulfillmentCreated(event: {
   id: string;
@@ -51,7 +54,7 @@ async function onShopifyFulfillmentCreated(event: {
     locationId: (canonical.location_id as string | null) ?? null,
   });
 
-  const { error: upsertErr } = await sb
+  const { data: feRow, error: upsertErr } = await sb
     .from('fulfillment_events')
     .upsert(
       {
@@ -64,8 +67,11 @@ async function onShopifyFulfillmentCreated(event: {
         occurred_at: canonical.occurred_at as string,
       },
       { onConflict: 'org_id,shopify_fulfillment_id' },
-    );
+    )
+    .select('id')
+    .single();
   if (upsertErr) throw upsertErr;
+  const fulfillmentEventId = feRow.id as string;
 
   await recordActivity({
     agentName: 'controller',
@@ -98,9 +104,36 @@ async function onShopifyFulfillmentCreated(event: {
       account_id: decision.accountId,
       shopify_fulfillment_id: shopifyFulfillmentId,
       shopify_order_id: canonical.shopify_order_id,
+      fulfillment_event_id: fulfillmentEventId,
     },
     idempotencyKey: `controller.fulfillment.routed:${canonical.id}`,
   });
+
+  // PR-D: wholesale routes auto-draft an invoice. The draft is idempotent on
+  // fulfillment_event_id, so a replay is a no-op. Other routes (consignment, ignored)
+  // don't produce invoices in this PR.
+  if (decision.route === 'wholesale') {
+    try {
+      const draft = await draftInvoice(
+        { fulfillmentEventId },
+        { agentName: 'controller', subjectType: 'fulfillment_event', subjectId: fulfillmentEventId },
+      );
+      log.info('controller.invoice.drafted', {
+        invoice_id: draft.invoiceId,
+        invoice_number: draft.invoiceNumber,
+        total_cents: draft.totalCents,
+        reused: draft.reused,
+      });
+    } catch (e) {
+      // A draft failure shouldn't roll back routing — the fulfillment_event is the system
+      // of record for the routing decision. Log and continue so the operator can retry
+      // drafting (idempotent) after fixing pricing data.
+      log.error('controller.draft_invoice.failed', {
+        fulfillment_event_id: fulfillmentEventId,
+        error: (e as Error).message,
+      });
+    }
+  }
 }
 
 export const controllerAgent: AgentDefinition = {
@@ -114,6 +147,7 @@ export const controllerAgent: AgentDefinition = {
     'shopify.list_customers',
     'shopify.list_products',
     'shopify.list_fulfillments',
+    'controller.draft_invoice',
     'controller.issue_invoice',
   ],
   readScope: [
