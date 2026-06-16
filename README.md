@@ -47,7 +47,7 @@ Plus: Supabase security advisor returns 0 findings after `0010_security_hardenin
 
 ```
 atlas/
-  supabase/migrations/        # 0001..0010 — applied in order; never edited after merge
+  supabase/migrations/        # 0001..0015 — applied in order; never edited after merge
   src/
     data/                     # canonical read-models access + generated types
     platform/
@@ -59,12 +59,30 @@ atlas/
       orchestration/          # event/schedule dispatch + task state
       reporting/              # digest builder (rolls up agent_activity)
       assistant/              # NL over memory + read-models (Claude, read-only v1)
+      pricing/                # price-book resolver + GST + aging
+      ledger/                 # double-entry posting helpers
     integrations/             # shopify/, stripe/, anthropic/
     agents/controller/        # Agent #1 Finance
     api/                      # service API consumed by human surfaces
-  web/                        # console (Next.js) — Phase 2
+  web/                        # operator console (Next.js 14 App Router) — Phase 2
   test/
 ```
+
+## Phase 2 — operator console
+
+Read-only Next.js app under `web/`. First slice is the approvals queue (PR-G):
+pending agent actions that the policy engine escalated. Authentication, write
+actions (approve/deny), and the conversational assistant arrive in later PRs.
+
+```
+cd web
+cp .env.example .env.local      # fill SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ATLAS_ORG_ID
+npm install
+npm run dev                     # http://localhost:3002
+```
+
+Service-role key bypasses RLS — fine for the single-operator v1; auth-scoped
+access lands when authentication does.
 
 ## Deterministic boundary (platform-wide invariant)
 
