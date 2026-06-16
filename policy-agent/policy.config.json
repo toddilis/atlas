@@ -1,0 +1,16 @@
+{
+  "currency": "HBAR",
+  "rules": {
+    "perTransactionCap": "100",
+    "rollingWindow": { "amount": "100", "windowHours": 168 },
+    "velocityLimit": { "maxPayments": 20, "windowHours": 168 },
+    "allowlist": ["creator-code:ABC", "creator-code:DEF", "creator-code:GHI"],
+    "approvalThreshold": "50",
+    "conditionalGate": {
+      "requireVerifiedConversion": true,
+      "maxCommissionRate": 0.20,
+      "amountTolerance": "0.00000001"
+    },
+    "idempotency": { "enabled": true }
+  }
+}

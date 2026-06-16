@@ -1,0 +1,33 @@
+name: policy-agent CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'policy-agent/**'
+      - '.github/workflows/policy-agent-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'policy-agent/**'
+      - '.github/workflows/policy-agent-ci.yml'
+
+jobs:
+  test:
+    name: typecheck + unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: policy-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install
+
+      - run: npm run typecheck
+
+      - run: npm test

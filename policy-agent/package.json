@@ -1,0 +1,37 @@
+{
+  "name": "atlas-policy-agent",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Atlas Policy Agent — a policy-constrained AI payment agent on Hedera. The deterministic policy engine sits between an LLM agent and the Hedera Agent Kit; a Hedera Consensus Service topic carries both the verified-conversion trigger and the immutable audit trail. Submission to the Hedera AI Agent Bounty Week 5.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --import tsx test/*.test.ts",
+    "hedera:hello": "tsx src/cli/hello.ts",
+    "hedera:topics": "tsx src/cli/topics.ts",
+    "demo:seed": "tsx src/seed/conversions.ts",
+    "demo": "tsx src/cli/demo.ts",
+    "pay": "tsx src/cli/pay.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@hashgraph/sdk": "^2.55.0",
+    "@langchain/anthropic": "^1.0.0",
+    "@langchain/core": "^1.1.0",
+    "@langchain/langgraph": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "hedera-agent-kit": "^3.8.2",
+    "langchain": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
