@@ -114,6 +114,7 @@ export const controllerAgent: AgentDefinition = {
     'shopify.list_customers',
     'shopify.list_products',
     'shopify.list_fulfillments',
+    'controller.issue_invoice',
   ],
   readScope: [
     'shopify_customers',

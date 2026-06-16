@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { log } from '../platform/log.js';
 import { handleFulfillmentWebhook, registerShopifyProjectors } from '../integrations/shopify/webhook.js';
 import { registerShopifyTools } from '../integrations/shopify/tools.js';
+import { registerControllerTools } from '../agents/controller/tools/index.js';
 import { bootAgents } from '../platform/orchestration/dispatch.js';
 import { syncAll } from '../integrations/shopify/sync.js';
 
@@ -10,6 +11,7 @@ async function boot() {
   // Wire platform components in dependency order: tools registered, projectors registered,
   // agents booted (which depends on the projector dispatcher being available).
   registerShopifyTools();
+  registerControllerTools();
   registerShopifyProjectors();
   await bootAgents();
 }
