@@ -116,11 +116,17 @@ async function main() {
           auditTopicId: topics.auditTopicId,
           now: Date.now(),
         });
-        // Merge in-process payments AFTER the HCS-fetched ones; the engine doesn't care
-        // about order, but consistent ordering keeps reasons-array output stable.
-        const mergedRecent = [...fromHcs.recentPayments, ...inProcessPayments];
+        // Dedupe by tx id: once HCS has indexed a payment, drop it from the in-process
+        // delta so it isn't counted twice. The first run after a payment usually sees
+        // HCS not-yet-indexed and the in-process record is what matters; subsequent runs
+        // see HCS catch up and the dedup kicks in.
+        const indexedTxIds = new Set(
+          fromHcs.recentPayments.map((p) => p.txId).filter((t): t is string => t !== null),
+        );
+        const novelInProcess = inProcessPayments.filter((p) => !indexedTxIds.has(p.txId ?? ''));
+        const mergedRecent = [...fromHcs.recentPayments, ...novelInProcess];
         const mergedPaid = new Set(fromHcs.paidOrderIds);
-        for (const p of inProcessPayments) mergedPaid.add(p.payment.orderId);
+        for (const p of novelInProcess) mergedPaid.add(p.payment.orderId);
         return {
           ...fromHcs,
           recentPayments: mergedRecent,
