@@ -39,6 +39,13 @@ function buildScenarios(): Scenario[] {
   const recipient = process.env.DEMO_RECIPIENT_ID;
   if (!recipient) throw new Error('DEMO_RECIPIENT_ID must be set');
 
+  // Scenarios sequenced so each one demonstrates exactly one policy decision cleanly.
+  // Cumulative in-process spend after each `allow`:
+  //   after 1: 18 HBAR (ABC)
+  //   after 2: 93 HBAR (after operator approves the escalate)
+  //   3: blocks by rollingWindow alone (93 + 25 = 118 > 100; 25 < 50 threshold)
+  //   4: blocks by allowlist (creator not permitted)
+  //   5: blocks by idempotency (order already paid in scenario 1)
   return [
     {
       label: '1) Happy path: verified ABC, within caps → allow',
@@ -49,7 +56,15 @@ function buildScenarios(): Scenario[] {
       },
     },
     {
-      label: '2) Rolling cap hit: ABC order-1046 (18 already spent, 25 more would breach 30/168h)',
+      label: '2) Over threshold: DEF 75 HBAR > 50 → escalate → HITL',
+      expected: 'paid-after-hitl',
+      payment: {
+        recipient, creatorCode: 'DEF', orderId: 'order-1044',
+        amount: hbarToTinybar('75'), currency: 'HBAR',
+      },
+    },
+    {
+      label: '3) Rolling cap hit: ABC order-1046 (93 already spent + 25 > 100 cap) → block',
       expected: 'blocked',
       payment: {
         recipient, creatorCode: 'ABC', orderId: 'order-1046',
@@ -57,19 +72,11 @@ function buildScenarios(): Scenario[] {
       },
     },
     {
-      label: '3) Not allowlisted: ZZZ has no allowlist entry → block',
+      label: '4) Not allowlisted: ZZZ creator code missing → block',
       expected: 'blocked',
       payment: {
         recipient, creatorCode: 'ZZZ', orderId: 'order-2001',
         amount: hbarToTinybar('5'), currency: 'HBAR',
-      },
-    },
-    {
-      label: '4) Over threshold: DEF 75 HBAR → escalate, then HITL',
-      expected: 'paid-after-hitl',
-      payment: {
-        recipient, creatorCode: 'DEF', orderId: 'order-1044',
-        amount: hbarToTinybar('75'), currency: 'HBAR',
       },
     },
     {
