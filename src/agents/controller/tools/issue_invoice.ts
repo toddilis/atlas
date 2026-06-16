@@ -5,13 +5,15 @@
 //   policy → PolicyInput { action='controller.issue_invoice', subjectType='invoice',
 //                          subjectId=invoiceId, amount, currency,
 //                          attributes={ account_id, fulfillment_event_id } }
-//   handler → transitions invoices(state='draft') → 'issued', sets issued_at.
+//   handler → calls issue_invoice_atomic RPC (migration 0012) which, in one Postgres
+//             transaction, (a) transitions draft→issued, (b) enqueues the
+//             stripe.create_invoice outbox row, (c) posts the wholesale ledger entries.
 //
 // The caller (the Controller agent) loads the draft + lines and computes the total before
-// dispatch, so the extractor stays pure (no I/O — see registry.ts:32-41). Stripe sync /
-// outbox is deferred to PR-C; this PR sets `issued_at` only.
+// dispatch, so the extractor stays pure (no I/O — see registry.ts:32-41).
 
 import { supabase, orgId } from '../../../data/supabase.js';
+import { appendEvent } from '../../../platform/events/eventLog.js';
 import type { ToolContext } from '../../../platform/tools/registry.js';
 import type { PolicyInput } from '../../../platform/policy/types.js';
 
@@ -27,6 +29,8 @@ export interface IssueInvoiceOutput {
   invoiceId: string;
   state: 'issued';
   issuedAt: string;
+  outboxId: string;
+  ledgerTransactionId: string | null;
 }
 
 export function buildPolicyInput(
@@ -50,28 +54,47 @@ export async function execute(
   _ctx: ToolContext,
 ): Promise<IssueInvoiceOutput> {
   const sb = supabase();
-  const issuedAt = new Date().toISOString();
 
-  // Conditional update guards against double-issuance: the WHERE clause requires
-  // state='draft', so a concurrent issuer or a previously-issued row returns no rows.
-  const { data, error } = await sb
-    .from('invoices')
-    .update({ state: 'issued', issued_at: issuedAt, updated_at: issuedAt })
-    .eq('org_id', orgId())
-    .eq('id', input.invoiceId)
-    .eq('state', 'draft')
-    .select('id, state, issued_at')
-    .maybeSingle();
+  // Idempotency key for the Stripe-outbox enqueue. Re-running issue_invoice for the same
+  // invoice in a recovery scenario gets dedup'd at the outbox layer.
+  const outboxIdempotencyKey = `stripe.create_invoice:${input.invoiceId}`;
+
+  const { data, error } = await sb.rpc('issue_invoice_atomic', {
+    p_org_id: orgId(),
+    p_invoice_id: input.invoiceId,
+    p_outbox_idempotency: outboxIdempotencyKey,
+  });
   if (error) throw error;
-  if (!data) {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
     throw new Error(
-      `issue_invoice: no draft row to issue (invoice ${input.invoiceId} missing or not in draft)`,
+      `issue_invoice: rpc returned no rows for invoice ${input.invoiceId}`,
     );
   }
 
+  await appendEvent({
+    type: 'controller.invoice.issued',
+    source: 'controller',
+    agentName: 'controller',
+    subjectType: 'invoice',
+    subjectId: row.invoice_id as string,
+    payload: {
+      invoice_id: row.invoice_id,
+      issued_at: row.issued_at,
+      outbox_id: row.outbox_id,
+      ledger_transaction_id: row.ledger_transaction_id,
+      account_id: input.accountId,
+      amount_cents: Number(input.amount),
+      currency: input.currency,
+    },
+    idempotencyKey: `controller.invoice.issued:${row.invoice_id}`,
+  });
+
   return {
-    invoiceId: data.id as string,
+    invoiceId: row.invoice_id as string,
     state: 'issued',
-    issuedAt: data.issued_at as string,
+    issuedAt: row.issued_at as string,
+    outboxId: row.outbox_id as string,
+    ledgerTransactionId: (row.ledger_transaction_id as string | null) ?? null,
   };
 }

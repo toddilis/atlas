@@ -5,6 +5,7 @@ export type EventType =
   | 'shopify.customer.upserted'
   | 'shopify.order.upserted'
   | 'shopify.fulfillment.created'
+  | 'stripe.invoice.paid'
   | 'controller.fulfillment.routed'
   | 'controller.invoice.drafted'
   | 'controller.invoice.issued'
