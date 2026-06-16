@@ -12,7 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api": "tsx src/api/server.ts",
     "sync:shopify": "tsx src/integrations/shopify/sync.ts",
-    "test": "node --test --import tsx test/**/*.test.ts",
+    "test": "node --test --import tsx test/*.test.ts",
     "gen:types": "supabase gen types typescript --local > src/data/database.types.ts"
   },
   "dependencies": {
