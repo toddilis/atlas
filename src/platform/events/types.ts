@@ -10,6 +10,7 @@ export type EventType =
   | 'controller.invoice.drafted'
   | 'controller.invoice.issued'
   | 'controller.payment.recorded'
+  | 'controller.statement.generated'
   | 'system.org.bootstrapped';
 
 export interface EventInput {

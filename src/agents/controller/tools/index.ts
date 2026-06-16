@@ -4,6 +4,7 @@
 import { registerTool } from '../../../platform/tools/registry.js';
 import { buildPolicyInput, execute as executeIssueInvoice } from './issue_invoice.js';
 import { execute as executeDraftInvoice } from './draft_invoice.js';
+import { execute as executeGenerateStatement } from './generate_statement.js';
 
 let registered = false;
 
@@ -27,6 +28,16 @@ export function registerControllerTools(): void {
     defaultRisk: 'auto',
     mutating: true,
     execute: executeDraftInvoice,
+  });
+
+  // generate_statement is a snapshot-and-insert. No money moves; the policy gate is
+  // unnecessary. Sending the statement to the customer is a separate later tool with
+  // its own gate.
+  registerTool({
+    name: 'controller.generate_statement',
+    defaultRisk: 'auto',
+    mutating: true,
+    execute: executeGenerateStatement,
   });
 
   registered = true;
