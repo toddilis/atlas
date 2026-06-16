@@ -96,22 +96,34 @@ Tinybar arithmetic throughout — no JavaScript float drift on money.
 
 ## Demo scenarios (run via `npm run demo`)
 
-The five scenarios from the build brief §9. Each is a separate intent
-into the wrapped tool. The CLI prints the decision, reasons, and (where
-applicable) a HashScan URL for the on-chain transfer.
+The five scenarios from the build brief §9, sequenced so each one
+demonstrates exactly one policy decision cleanly:
 
-1. **Happy path** — verified ABC conversion within all caps → `allow` →
-   real testnet HBAR transfer + audit message.
-2. **Rolling cap hit** — verified ABC conversion that would breach the
-   500 HBAR / 168h cap → `block` (rolling window) → no transfer + audit
-   message.
-3. **Not allowlisted** — payout requested for creator ZZZ not on the
-   allowlist → `block` → no transfer + audit message.
-4. **Over threshold** — verified DEF conversion above the 50 HBAR
-   approval threshold → `escalate` → CLI HITL prompt → "y" → transfer +
-   audit message.
-5. **Duplicate** — re-run scenario 1's already-paid `orderId` → `block`
-   (idempotency) → no transfer + audit message.
+1. **Happy path** — verified ABC conversion (18 HBAR commission), within
+   all caps → `allow` → real testnet HBAR transfer + HCS audit message.
+2. **Over threshold** — verified DEF conversion (75 HBAR) above the 50
+   HBAR approval threshold → `escalate` → CLI HITL prompt → on `y`,
+   transfer + audit.
+3. **Rolling cap hit** — 93 HBAR already spent in the in-process window,
+   25 more would push it to 118 > 100 HBAR cap → `block` (rollingWindow)
+   → no transfer; audit message records the reason.
+4. **Not allowlisted** — payout requested for creator code ZZZ →
+   `block` (allowlist + conditionalGate) → no transfer; audit message.
+5. **Duplicate** — re-run scenario 1's already-paid `order-1042` →
+   `block` (idempotency) → no transfer; audit message.
+
+### Recorded on-chain proofs (testnet)
+
+The 16 June 2026 demo run produced real on-chain transactions for the
+two `allow` paths:
+
+- Scenario 1: [HashScan transaction](https://hashscan.io/testnet/transaction/0.0.9245822%401781603273.833733315) — 18 HBAR to creator
+- Scenario 2: [HashScan transaction](https://hashscan.io/testnet/transaction/0.0.9245822%401781603454.835052121) — 75 HBAR to creator after operator approval
+
+HCS topics for that run:
+
+- Conversions topic: `0.0.9251226` ([HashScan](https://hashscan.io/testnet/topic/0.0.9251226))
+- Audit topic: `0.0.9251227` ([HashScan](https://hashscan.io/testnet/topic/0.0.9251227))
 
 ## Atlas portfolio framing
 
