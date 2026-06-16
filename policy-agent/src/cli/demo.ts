@@ -6,7 +6,7 @@ import 'dotenv/config';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig } from '../policy/config.js';
-import { hbarToTinybar, type Payment } from '../policy/types.js';
+import { hbarToTinybar, type Payment, type PaymentRecord } from '../policy/types.js';
 import { cliConfirm } from '../hitl/prompt.js';
 import { payCreator } from '../agent/tools/payCreator.js';
 import { readState } from '../agent/tools/readState.js';
@@ -88,6 +88,12 @@ async function main() {
   const config = loadConfig();
   const scenarios = buildScenarios();
 
+  // Mirror-node indexing has ~5-10s lag, so back-to-back scenarios may not see the audit
+  // message of the previous payment yet. We compensate by tracking what we've paid in this
+  // process and merging it into the state passed to the engine — exactly how a production
+  // agent would track its own in-flight commitments before mirror-node confirmation.
+  const inProcessPayments: PaymentRecord[] = [];
+
   for (const s of scenarios) {
     console.log('\n' + '─'.repeat(72));
     console.log(s.label);
@@ -97,17 +103,35 @@ async function main() {
       config,
       auditTopicId: topics.auditTopicId,
       confirm: cliConfirm,
-      loadState: () => readState({
-        conversionsTopicId: topics.conversionsTopicId,
-        auditTopicId: topics.auditTopicId,
-        now: Date.now(),
-      }),
+      loadState: async () => {
+        const fromHcs = await readState({
+          conversionsTopicId: topics.conversionsTopicId,
+          auditTopicId: topics.auditTopicId,
+          now: Date.now(),
+        });
+        // Merge in-process payments AFTER the HCS-fetched ones; the engine doesn't care
+        // about order, but consistent ordering keeps reasons-array output stable.
+        const mergedRecent = [...fromHcs.recentPayments, ...inProcessPayments];
+        const mergedPaid = new Set(fromHcs.paidOrderIds);
+        for (const p of inProcessPayments) mergedPaid.add(p.payment.orderId);
+        return {
+          ...fromHcs,
+          recentPayments: mergedRecent,
+          paidOrderIds: mergedPaid,
+        };
+      },
     });
 
     console.log(`decision: ${outcome.decision.decision}`);
     for (const r of outcome.decision.reasons) console.log(`  ${r}`);
     if (outcome.kind === 'paid') {
       console.log(`paid: ${outcome.hashscanUrl}`);
+      inProcessPayments.push({
+        payment: s.payment,
+        occurredAt: Date.now(),
+        txId: outcome.txId,
+        decision: 'allow',
+      });
     } else if (outcome.kind === 'aborted') {
       console.log(`aborted by operator: ${outcome.reason}`);
     }
