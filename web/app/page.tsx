@@ -11,16 +11,34 @@ export default function HomePage() {
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link
+        <Tile
           href="/approvals"
-          className="block rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 hover:border-zinc-400 dark:hover:border-zinc-600 transition"
-        >
-          <div className="font-semibold">Approvals</div>
-          <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Pending agent actions waiting on operator sign-off.
-          </div>
-        </Link>
+          title="Approvals"
+          description="Pending agent actions waiting on operator sign-off."
+        />
+        <Tile
+          href="/invoices"
+          title="Invoices"
+          description="Browse drafts, issued, partial, paid, and voided invoices. Drill into lines, payments, and the ledger entries."
+        />
+        <Tile
+          href="/statements"
+          title="Statements"
+          description="Customer-facing previews of monthly account statements with aging breakdown."
+        />
       </div>
     </div>
+  );
+}
+
+function Tile({ href, title, description }: { href: string; title: string; description: string }) {
+  return (
+    <Link
+      href={href}
+      className="block rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 hover:border-zinc-400 dark:hover:border-zinc-600 transition"
+    >
+      <div className="font-semibold">{title}</div>
+      <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{description}</div>
+    </Link>
   );
 }
