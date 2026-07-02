@@ -5,9 +5,9 @@
 //
 // Flow for `invoice.paid`:
 //   raw POST → verify sig → appendEvent('stripe.invoice.paid', idempotencyKey=stripe.<evt_id>)
-//   → projector: find invoice by stripe_invoice_id → insert payment (idempotent on
-//     stripe_payment_id via 0012 unique index) → rpc post_payment_received → emit
-//     controller.payment.recorded
+//   → projector: rpc record_stripe_payment (0018 — resolves the invoice, inserts-or-adopts
+//     the payment, posts the ledger + invoice transition, all in ONE transaction; stranded
+//     pre-0018 payments are completed on the way through) → emit controller.payment.recorded
 //
 // Other Stripe event types are accepted but skipped (a future PR adds handlers without
 // changing the signature-verification path).
@@ -89,20 +89,6 @@ async function projectStripeInvoicePaid(event: {
     throw new Error('stripe.invoice.paid event has no invoice id');
   }
 
-  // Resolve our canonical invoice by the stripe_invoice_id written during outbox drain.
-  const { data: canonicalInvoice, error: invErr } = await sb
-    .from('invoices')
-    .select('id, total_cents, currency, channel, state')
-    .eq('org_id', orgId())
-    .eq('stripe_invoice_id', stripeInvoice.id)
-    .maybeSingle();
-  if (invErr) throw invErr;
-  if (!canonicalInvoice) {
-    throw new Error(
-      `stripe.invoice.paid: no canonical invoice for stripe_invoice_id ${stripeInvoice.id}`,
-    );
-  }
-
   // The Stripe Invoice carries `amount_paid` (minor units) for the cumulative paid amount.
   // For a typical send_invoice flow with one charge this equals total. We record one
   // payments row per webhook event, keyed for idempotency by the Stripe webhook event id
@@ -131,73 +117,55 @@ async function projectStripeInvoicePaid(event: {
     ? new Date(stripeInvoice.status_transitions.paid_at * 1000).toISOString()
     : new Date().toISOString();
 
-  // Insert idempotently — the 0012 unique index on (org_id, stripe_payment_id) makes
-  // re-deliveries a no-op so post_payment_received is only called once.
-  const { data: paymentRow, error: payErr } = await sb
-    .from('payments')
-    .insert({
-      org_id: orgId(),
-      invoice_id: canonicalInvoice.id as string,
-      amount_cents: stripeInvoice.amount_paid,
-      currency: (stripeInvoice.currency ?? canonicalInvoice.currency).toUpperCase(),
-      method: 'stripe',
-      stripe_payment_id: stripePaymentId,
-      received_at: receivedAt,
-      raw: {
+  // Single transaction (0018): resolve invoice → insert-or-adopt payment → ledger posting
+  // + invoice transition. No crash window between "payment recorded" and "books updated";
+  // a redelivery that finds a stranded payment completes its posting instead of skipping.
+  const { data: recorded, error: rpcErr } = await sb
+    .rpc('record_stripe_payment', {
+      p_org_id: orgId(),
+      p_stripe_invoice_id: stripeInvoice.id,
+      p_stripe_payment_id: stripePaymentId,
+      p_amount_cents: stripeInvoice.amount_paid,
+      p_currency: stripeInvoice.currency ? stripeInvoice.currency.toUpperCase() : null,
+      p_received_at: receivedAt,
+      p_raw: {
         stripe_event_id: stripeEvent.id,
         stripe_invoice_id: stripeInvoice.id,
         payment_ref: paymentRef,
         invoice: stripeInvoice,
       } as unknown as Record<string, unknown>,
     })
-    .select('id')
-    .maybeSingle();
-
-  if (payErr) {
-    if (payErr.code === '23505') {
-      // The payment row landed on a previous delivery — but that alone doesn't prove the
-      // ledger posting + invoice transition happened: they are a separate RPC round-trip
-      // until PR-K folds payment insert + posting into one transaction. Only skip when the
-      // transition is actually there; otherwise fail the projection so the event stays
-      // recorded as failed (visible, replayable) instead of being silently marked done.
-      const invoiceState = canonicalInvoice.state as string;
-      if (invoiceState === 'paid' || invoiceState === 'partial') {
-        log.info('stripe.webhook.duplicate_payment_skipped', {
-          stripe_payment_id: stripePaymentId,
-        });
-        return;
-      }
-      throw new Error(
-        `payment ${stripePaymentId} recorded but invoice ${canonicalInvoice.id} never ` +
-          'transitioned (post_payment_received incomplete); kept failed for replay — ' +
-          'PR-K makes this path self-healing',
-      );
-    }
-    throw payErr;
-  }
-  if (!paymentRow) throw new Error('payments insert returned no row');
-
-  // Atomic ledger posting + invoice state transition.
-  const { data: rpc, error: rpcErr } = await sb.rpc('post_payment_received', {
-    p_org_id: orgId(),
-    p_payment_id: paymentRow.id as string,
-  });
+    .single();
   if (rpcErr) throw rpcErr;
+  const result = recorded as {
+    rsp_payment_id: string;
+    rsp_invoice_id: string;
+    rsp_invoice_state: string;
+    rsp_was_existing: boolean;
+  };
+
+  if (result.rsp_was_existing) {
+    log.info('stripe.webhook.duplicate_payment_adopted', {
+      stripe_payment_id: stripePaymentId,
+      invoice_state: result.rsp_invoice_state,
+    });
+  }
 
   await appendEvent({
     type: 'controller.payment.recorded',
     source: 'stripe_webhook',
     agentName: 'controller',
     subjectType: 'invoice',
-    subjectId: canonicalInvoice.id as string,
+    subjectId: result.rsp_invoice_id,
     payload: {
-      payment_id: paymentRow.id,
+      payment_id: result.rsp_payment_id,
       stripe_payment_id: stripePaymentId,
       amount_cents: stripeInvoice.amount_paid,
-      currency: (stripeInvoice.currency ?? canonicalInvoice.currency).toUpperCase(),
-      rpc_result: rpc,
+      currency: (stripeInvoice.currency ?? '').toUpperCase() || null,
+      invoice_state: result.rsp_invoice_state,
+      was_existing: result.rsp_was_existing,
     },
-    idempotencyKey: `controller.payment.recorded:${paymentRow.id}`,
+    idempotencyKey: `controller.payment.recorded:${result.rsp_payment_id}`,
   });
 }
 
