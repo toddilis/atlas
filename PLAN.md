@@ -152,10 +152,17 @@ counterparties until PR-J, PR-K, and PR-M are merged.**
       redelivery adoption, direct re-run no-op, stranded-payment heal)*
 
 ### PR-L — Control-plane integrity
-- [ ] Bearer auth on all API routes (admin drain/sync included)
-- [ ] Outbox reaper: stale `in_flight` rows recovered with lease expiry
-- [ ] Approvals single-use (consumed on execute) + `expires_at` enforced
-- [ ] `audit_log` immutability triggers (same mechanism as `event_log`)
+- [x] Bearer auth on `/admin/*` (drain, sync, replay) — `ATLAS_API_TOKEN`, timing-safe
+      compare, fails closed (503) when unconfigured; webhooks keep their own
+      cryptographic auth (HMAC / Stripe signature), `/healthz` stays open for probes
+- [x] Outbox reaper: `in_flight` rows older than the 5-minute lease TTL return to
+      `pending` at the top of every drain (safe: tool side-effects are externally
+      idempotent, so a lease whose call succeeded re-executes to the same result)
+- [x] Approvals single-use (`executed_at` compare-and-swap, consumed BEFORE execution so
+      a failed run costs a fresh decision) + `expires_at` enforced on decide and execute;
+      deciding a non-pending approval now throws instead of silently no-opping
+- [x] `audit_log` immutability triggers (same mechanism as `event_log`) — verified
+      behaviourally in `scripts/verify-migrations.sh` §9 along with the single-use CAS
 
 ### PR-M — Verification backbone
 - [ ] CI job: apply migrations 0001→current to ephemeral Postgres, exercise all RPCs

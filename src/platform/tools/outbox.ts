@@ -62,14 +62,48 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
   return data.id as string;
 }
 
+/** How long an in_flight lease may sit before it's presumed crashed and reaped. */
+export const LEASE_TTL_MS = 5 * 60_000;
+
+/**
+ * Recover rows stranded in `in_flight` by a crash between lease and terminal update (PR-L:
+ * previously nothing ever re-scanned them, so they were stuck forever). Reaped rows return
+ * to `pending` and re-execute on the next drain — safe because tool side-effects are
+ * externally idempotent (e.g. Stripe idempotency keys derived from the invoice id), so a
+ * lease whose external call actually succeeded re-executes to the same result.
+ */
+export async function reapStaleLeases(): Promise<number> {
+  const sb = supabase();
+  const cutoff = new Date(Date.now() - LEASE_TTL_MS).toISOString();
+  const now = new Date().toISOString();
+  const { data, error } = await sb
+    .from('outbox')
+    .update({
+      state: 'pending',
+      next_attempt_at: now,
+      last_error: 'lease expired; reaped back to pending',
+      updated_at: now,
+    })
+    .eq('org_id', orgId())
+    .eq('state', 'in_flight')
+    .lt('updated_at', cutoff)
+    .select('id');
+  if (error) throw error;
+  const reaped = data?.length ?? 0;
+  if (reaped > 0) log.warn('outbox.leases_reaped', { count: reaped });
+  return reaped;
+}
+
 /**
  * Drain pending outbox rows up to `limit`. Returns the number of rows processed. Caller is
  * responsible for the schedule (cron / setInterval / etc.). Each row is leased by flipping
  * state to `in_flight` before calling the tool — exactly-once relies on the tool's external
- * idempotency (Stripe idempotency-key, etc.).
+ * idempotency (Stripe idempotency-key, etc.). Stale leases from crashed drains are reaped
+ * back to `pending` first.
  */
 export async function drain(limit = 25): Promise<number> {
   const sb = supabase();
+  await reapStaleLeases();
   const { data: rows, error } = await sb
     .from('outbox')
     .select('*')

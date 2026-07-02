@@ -9,7 +9,7 @@
 
 import { supabase, orgId } from '../../data/supabase.js';
 import { audit } from '../control-plane/audit.js';
-import { requestApproval, getApproval } from '../control-plane/approvals.js';
+import { requestApproval, consumeApproval } from '../control-plane/approvals.js';
 import type { RiskTier } from '../control-plane/types.js';
 import {
   buildState,
@@ -260,7 +260,9 @@ export async function invokeTool<I, O>(
 
 /**
  * After an approval is granted, callers use this to actually execute the previously-blocked
- * tool. The approval id must point to an approved row; otherwise this throws.
+ * tool. The approval is CONSUMED first (single-use compare-and-swap on executed_at, with
+ * expiry enforced) — a second call with the same approval id throws, and a failed execution
+ * spends the approval rather than leaving it silently replayable (PR-L).
  */
 export async function executeApproved<I, O>(
   approvalId: string,
@@ -268,13 +270,9 @@ export async function executeApproved<I, O>(
   input: I,
   ctx: ToolContext,
 ): Promise<O> {
-  const approval = await getApproval(approvalId);
-  if (!approval) throw new Error(`approval not found: ${approvalId}`);
-  if (approval.state !== 'approved') {
-    throw new Error(`approval not in approved state: ${approval.state}`);
-  }
   const def = tools.get(name);
   if (!def) throw new Error(`unknown tool: ${name}`);
+  await consumeApproval(approvalId);
 
   try {
     const result = (await def.execute(input, ctx)) as O;

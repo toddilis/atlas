@@ -309,6 +309,43 @@ begin
   select posted_at into v_posted from payments where id = v_stranded;
   if v_posted is null then raise exception 'ASSERT prk-8d: heal did not stamp posted_at'; end if;
 end $$;
+
+-- 9 · PR-L control-plane integrity: audit_log immutability triggers + approval single-use.
+do $$
+declare v_org uuid; v_audit uuid; v_approval uuid; v_n int;
+begin
+  select id into v_org from orgs where slug = 'verify';
+
+  -- 9a · audit_log rows can no longer be rewritten or deleted, even by the table owner.
+  insert into audit_log (org_id, agent_name, action, risk, outcome)
+    values (v_org, 'verify', 'probe', 'auto', 'success')
+    returning id into v_audit;
+  begin
+    update audit_log set action = 'tampered' where id = v_audit;
+    raise exception 'ASSERT prl-9a: audit_log update was not blocked';
+  exception when raise_exception then
+    if sqlerrm not like '%append-only%' then raise; end if;
+  end;
+  begin
+    delete from audit_log where id = v_audit;
+    raise exception 'ASSERT prl-9a: audit_log delete was not blocked';
+  exception when raise_exception then
+    if sqlerrm not like '%append-only%' then raise; end if;
+  end;
+
+  -- 9b · approval single-use: the executed_at compare-and-swap admits exactly one winner.
+  insert into approvals (org_id, agent_name, action, subject_type, payload, risk, state)
+    values (v_org, 'verify', 'probe', 'invoice', '{}'::jsonb, 'approve_required', 'approved')
+    returning id into v_approval;
+  update approvals set executed_at = now()
+   where id = v_approval and state = 'approved' and executed_at is null;
+  get diagnostics v_n = row_count;
+  if v_n <> 1 then raise exception 'ASSERT prl-9b: first consume affected % rows', v_n; end if;
+  update approvals set executed_at = now()
+   where id = v_approval and state = 'approved' and executed_at is null;
+  get diagnostics v_n = row_count;
+  if v_n <> 0 then raise exception 'ASSERT prl-9b: approval consumed twice'; end if;
+end $$;
 SQL
 
-echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, RPC execution probes, and PR-K payment-atomicity behaviour (exactly-once posting, redelivery adoption, stranded-payment heal) all pass"
+echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, RPC execution probes, PR-K payment-atomicity behaviour (exactly-once posting, redelivery adoption, stranded-payment heal), and PR-L control-plane integrity (audit_log immutability, approval single-use CAS) all pass"

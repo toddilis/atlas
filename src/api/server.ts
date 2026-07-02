@@ -10,6 +10,7 @@ import { bootAgents } from '../platform/orchestration/dispatch.js';
 import { syncAll } from '../integrations/shopify/sync.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
+import { bearerAuthState } from './auth.js';
 
 async function boot() {
   // Wire platform components in dependency order: tools registered, projectors registered,
@@ -37,6 +38,21 @@ async function main() {
     { parseAs: 'buffer' },
     (_req, body, done) => done(null, body),
   );
+
+  // /admin/* requires `Authorization: Bearer $ATLAS_API_TOKEN` (PR-L). Webhook routes stay
+  // open here because they carry their own cryptographic auth (Shopify HMAC, Stripe
+  // signature); /healthz stays open for load-balancer probes. Fails closed: with no token
+  // configured the admin surface answers 503 rather than running unauthenticated.
+  app.addHook('onRequest', async (req, reply) => {
+    if (!req.url.startsWith('/admin/')) return;
+    const state = bearerAuthState(req.headers.authorization, process.env.ATLAS_API_TOKEN);
+    if (state === 'unconfigured') {
+      return reply.code(503).send({ ok: false, error: 'ATLAS_API_TOKEN not configured' });
+    }
+    if (state === 'unauthorized') {
+      return reply.code(401).send({ ok: false, error: 'unauthorized' });
+    }
+  });
 
   app.get('/healthz', async () => ({ ok: true }));
 
