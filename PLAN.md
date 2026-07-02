@@ -5,8 +5,9 @@ references its section here. Decisions that change scope get a row in the decisi
 (§3) rather than silent edits.
 
 Atlas is **internal vertical AI software built as modules over one shared substrate**.
-Finance (the Controller) is module #1. Marketing is module #2. The platform exists so
-that each new module is a registration, not a rebuild.
+Finance (the Controller) is module #1; Quartermaster (operations & inventory) is next,
+with the full sequence in the module roadmap (§10). The platform exists so that each
+new module is a registration, not a rebuild.
 
 ---
 
@@ -51,8 +52,8 @@ A module owns a business domain end-to-end and plugs in by registering:
   policy gate. No admin backdoor.
 
 We deliberately do **not** build a plugin framework now. Folder convention + boot
-manifest carries us until the Marketing module forces the real interface (§9) — the
-second consumer defines the contract, not speculation.
+manifest carries us until module #2 (Quartermaster) forces the real interface (§9) —
+the second consumer defines the contract, not speculation.
 
 ---
 
@@ -99,7 +100,8 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D2 | 2026-07-02 | Digest ships as the console dashboard (tailored home page), not email, for v1. |
 | D3 | 2026-07-02 | Console auth v1 = auth-gated server-side service role (Supabase Auth, single operator). Real RLS (org GUC, per-role policies) deferred to v2 multi-tenant. |
 | D4 | 2026-07-02 | Scheduling via a dedicated worker process (not pg_cron) — it also hosts replay, outbox drain, digest build, and later consolidation. |
-| D5 | 2026-07-02 | Atlas is explicitly modular: platform substrate + vertical modules (Finance now, Marketing next). Boundary rules in §1. |
+| D5 | 2026-07-02 | Atlas is explicitly modular: platform substrate + vertical modules. Boundary rules in §1. |
+| D6 | 2026-07-02 | Module roadmap adopted (§10): Controller → Quartermaster → Rep → Marketer → Concierge → Registrar. Quartermaster takes the #2 slot (its data already flows through the substrate; better second consumer of the module contract than Marketing). Rep + Marketer may merge into one Growth module. Analytics is a platform capability, not a module. |
 
 ---
 
@@ -214,22 +216,58 @@ escalated items → ask the assistant a follow-up → done.
 - [ ] Each reuses the same loop: new event types → deterministic posting → exceptions
       to the same queue
 
-## 9 · Phase 5 — Marketing module + platform generalization
+## 9 · Phase 5 — Module #2 (Quartermaster) + platform generalization
 
-The platform claim gets tested: the Marketing (Growth) module should require **zero
+The platform claim gets tested: the Quartermaster module should require **zero
 substrate changes** — an agent registration, tools + grants, projectors, policy rows,
 console pages, digest contributor. Whatever it *does* require is the generalization
 backlog, fixed in the platform, not patched in the module.
 
 - [ ] Formal module manifest (registration interface extracted from the two consumers)
-- [ ] Marketing module v1 (scope defined nearer the time — likely Klaviyo/Shopify
-      marketing read-models + campaign proposals through the approvals queue)
+- [ ] Quartermaster v1 — read/alert half, zero new integrations: stock read-models and
+      low-stock / venue-discrepancy / demand-spike detection over spine data that
+      already flows (products, orders, fulfillments, consignment movements)
+- [ ] Quartermaster v1.1 — act half: reorder PO drafts within per-supplier caps, POs
+      above threshold to the approvals queue; outbound supplier channel (PO delivery)
+      is the one new integration
 - [ ] v2 multi-tenant: real RLS (org GUC set per-request), roles, per-module
       enable/disable per org
 
 ---
 
-## 10 · Standing invariants
+## 10 · Module roadmap (D6)
+
+Modules beyond #2 are sequenced by **build trigger, not calendar** — each becomes a
+numbered phase when its trigger fires. A domain qualifies as a module when it has:
+(1) an event stream already in — or one integration away from — the substrate,
+(2) repetitive decision-heavy work currently done by hand, (3) a deterministic core
+with judgment only at the edges, and (4) actions that fit the approvals model.
+
+| # | Module | Owns | Build trigger |
+|---|---|---|---|
+| 1 | **Controller** (finance) | AR, invoicing, ledger, statements; AP later | Shipped; deepens in Phase 4 |
+| 2 | **Quartermaster** (ops & inventory) | Stock across locations, demand forecast, reorders/POs, channel allocation, consignment reconciliation | Phase 2b operator loop live (§9) |
+| 3 | **Rep** (wholesale accounts) | Ordering cadence, dormancy detection, reorder nudges, account onboarding, price-book proposals | Quartermaster stable + enough wholesale accounts that cadence-watching is real work |
+| 4 | **Marketer** (growth) | Klaviyo/Shopify campaigns, promos, content proposals through the queue | After Rep — or merged with Rep into one Growth module if either is thin |
+| 5 | **Concierge** (DTC support) | Inbox triage, order-status replies, returns; refund proposals through the queue (highest Claude usage, every write gated) | DTC support volume warrants it; needs only Gmail + Shopify lookups |
+| 6 | **Registrar** (compliance & back-office) | GST return prep from the ledger, filings/renewals calendar, document filing | Phase 4 finance depth (a GST-complete ledger makes this nearly free) |
+
+Boundary worth preserving as Rep arrives: the **Controller owns money owed** (statements,
+dunning); the **Rep owns revenue growth** (the next order). Same account, different verbs.
+
+**Deliberately not modules:** analytics/insights (a platform capability — the assistant
+and dashboard answer across modules; an analytics module would be an anti-pattern here),
+people/HR (wrong company size; revisit at 10+ staff), procurement/production (folded
+into Quartermaster until manufacturing complexity — BOMs, production runs, landed
+cost — forces a split).
+
+Cross-module choreography stays spine-only: Quartermaster `stock.low` → Marketer holds
+the promo on that SKU; Concierge's approved refund → Controller posts the ledger entry;
+Rep's nudge converts → Controller invoices it. Event subscriptions, never imports.
+
+---
+
+## 11 · Standing invariants
 
 1. Deterministic code owns pricing, arithmetic, ledger postings, state transitions,
    due dates. Claude owns narration, triage, summaries, NL — and only that.
