@@ -66,6 +66,13 @@ export async function handleStripeWebhook(
     idempotencyKey: `stripe.${event.id}`,
   });
 
+  if (!appended.projected) {
+    // The append is durable; the projection failed and was recorded (0017). Non-2xx makes
+    // Stripe redeliver — the dedup path re-dispatches unprojected events — and the replay
+    // loop is the backstop once redeliveries run out.
+    return { ok: false, status: 500, message: 'event stored; projection pending retry', eventId: appended.id };
+  }
+
   return { ok: true, status: 200, message: 'accepted', eventId: appended.id };
 }
 
@@ -85,7 +92,7 @@ async function projectStripeInvoicePaid(event: {
   // Resolve our canonical invoice by the stripe_invoice_id written during outbox drain.
   const { data: canonicalInvoice, error: invErr } = await sb
     .from('invoices')
-    .select('id, total_cents, currency, channel')
+    .select('id, total_cents, currency, channel, state')
     .eq('org_id', orgId())
     .eq('stripe_invoice_id', stripeInvoice.id)
     .maybeSingle();
@@ -148,10 +155,23 @@ async function projectStripeInvoicePaid(event: {
 
   if (payErr) {
     if (payErr.code === '23505') {
-      log.info('stripe.webhook.duplicate_payment_skipped', {
-        stripe_payment_id: stripePaymentId,
-      });
-      return;
+      // The payment row landed on a previous delivery — but that alone doesn't prove the
+      // ledger posting + invoice transition happened: they are a separate RPC round-trip
+      // until PR-K folds payment insert + posting into one transaction. Only skip when the
+      // transition is actually there; otherwise fail the projection so the event stays
+      // recorded as failed (visible, replayable) instead of being silently marked done.
+      const invoiceState = canonicalInvoice.state as string;
+      if (invoiceState === 'paid' || invoiceState === 'partial') {
+        log.info('stripe.webhook.duplicate_payment_skipped', {
+          stripe_payment_id: stripePaymentId,
+        });
+        return;
+      }
+      throw new Error(
+        `payment ${stripePaymentId} recorded but invoice ${canonicalInvoice.id} never ` +
+          'transitioned (post_payment_received incomplete); kept failed for replay — ' +
+          'PR-K makes this path self-healing',
+      );
     }
     throw payErr;
   }

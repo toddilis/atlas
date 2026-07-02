@@ -11,6 +11,12 @@ export interface ObservationInput {
   sourceEventId?: string | null;
   confidence?: number;                          // 0..1, default 0.7
   metadata?: Record<string, unknown>;
+  /**
+   * Optional idempotency key (0017 partial-unique on org_id + dedup_key). Pass one whenever
+   * the write can be re-run — projector re-dispatch/replay retries — so memory doesn't
+   * accumulate duplicate observations. A conflict returns the existing row's id.
+   */
+  dedupKey?: string;
 }
 
 /**
@@ -31,10 +37,23 @@ export async function recordObservation(input: ObservationInput): Promise<string
       source_event_id: input.sourceEventId ?? null,
       confidence: input.confidence ?? 0.7,
       metadata: input.metadata ?? null,
+      dedup_key: input.dedupKey ?? null,
     })
     .select('id')
     .single();
-  if (error) throw error;
+  if (error) {
+    if (error.code === '23505' && input.dedupKey) {
+      const existing = await sb
+        .from('observations')
+        .select('id')
+        .eq('org_id', orgId())
+        .eq('dedup_key', input.dedupKey)
+        .single();
+      if (existing.error || !existing.data) throw error;
+      return existing.data.id as string;
+    }
+    throw error;
+  }
   return data.id as string;
 }
 

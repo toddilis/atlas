@@ -10,6 +10,12 @@ export interface ActivityInput {
   subjectId?: string | null;
   eventId?: string | null;
   detail?: Record<string, unknown>;
+  /**
+   * Optional idempotency key (0017 partial-unique on org_id + dedup_key). Pass one whenever
+   * the write can be re-run — projector re-dispatch/replay retries — so the narrative stream
+   * doesn't accumulate duplicates. A conflict is treated as already-recorded.
+   */
+  dedupKey?: string;
 }
 
 /**
@@ -27,6 +33,10 @@ export async function recordActivity(input: ActivityInput): Promise<void> {
     subject_id: input.subjectId ?? null,
     event_id: input.eventId ?? null,
     detail: input.detail ?? null,
+    dedup_key: input.dedupKey ?? null,
   });
-  if (error) throw error;
+  if (error) {
+    if (error.code === '23505' && input.dedupKey) return;   // already recorded — no-op
+    throw error;
+  }
 }

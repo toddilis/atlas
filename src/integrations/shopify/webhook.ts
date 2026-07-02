@@ -65,6 +65,13 @@ export async function handleFulfillmentWebhook(
     idempotencyKey,
   });
 
+  if (!event.projected) {
+    // The append is durable; the projection failed and was recorded (0017). Non-2xx makes
+    // Shopify redeliver — the dedup path re-dispatches unprojected events — and the replay
+    // loop is the backstop once redeliveries run out.
+    return { ok: false, status: 500, message: 'event stored; projection pending retry', eventId: event.id };
+  }
+
   return { ok: true, status: 200, message: 'accepted', eventId: event.id };
 }
 

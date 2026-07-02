@@ -75,6 +75,9 @@ async function onShopifyFulfillmentCreated(event: {
   if (upsertErr) throw upsertErr;
   const fulfillmentEventId = feRow.id as string;
 
+  // Dedup keys make the handler safe under projector re-dispatch/replay (PR-J): the
+  // canonical upserts above already dedup, and these keep the narrative + memory streams
+  // from duplicating on retry.
   await recordActivity({
     agentName: 'controller',
     kind: 'decision',
@@ -83,6 +86,7 @@ async function onShopifyFulfillmentCreated(event: {
     subjectId: canonical.id as string,
     eventId: event.id,
     detail: { route: decision.route, reason: decision.reason, account_id: decision.accountId },
+    dedupKey: `controller.fulfillment.routed:${canonical.id}`,
   });
 
   await recordObservation({
@@ -92,6 +96,7 @@ async function onShopifyFulfillmentCreated(event: {
     subjectType: 'shopify_fulfillment',
     subjectId: canonical.id as string,
     sourceEventId: event.id,
+    dedupKey: `controller.fulfillment.routed:${canonical.id}`,
   });
 
   await appendEvent({
