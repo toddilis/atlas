@@ -1,14 +1,25 @@
 import { supabase, orgId } from '../../data/supabase.js';
 import { log } from '../log.js';
 import type { AppendedEvent, EventInput } from './types.js';
-import { dispatch } from './projector.js';
+import { dispatchTracked, getProjectionState } from './projector.js';
+import { EVENT_COLUMNS, toAppendedEvent } from './row.js';
 
 /**
- * Append a single event to the spine, then dispatch projectors. The append is the source of
- * truth — projection failures are logged but never roll back the append (the projection can
- * be replayed). Duplicate idempotency_key returns the existing row instead of erroring.
+ * The append is the source of truth and never rolls back on projection failure — but since
+ * PR-J the failure is *recorded*, not swallowed: every event carries a projection-state row
+ * (0017 trigger), dispatch outcomes are written to it, and `projected` on the return value
+ * tells the caller whether canonical state is current. Webhook handlers return non-2xx when
+ * it is false so the provider redelivers; a redelivery of an unprojected event re-dispatches
+ * (below); and the replay loop is the backstop for anything that slips past both.
  */
-export async function appendEvent(input: EventInput): Promise<AppendedEvent> {
+export type AppendResult = AppendedEvent & { projected: boolean };
+
+/**
+ * Append a single event to the spine, then dispatch projectors. Duplicate idempotency_key
+ * returns the existing row — and, if that event never fully projected, re-dispatches its
+ * projectors instead of skipping them (redelivery is the retry).
+ */
+export async function appendEvent(input: EventInput): Promise<AppendResult> {
   const sb = supabase();
   const row = {
     org_id: orgId(),
@@ -25,53 +36,41 @@ export async function appendEvent(input: EventInput): Promise<AppendedEvent> {
   const { data, error } = await sb
     .from('event_log')
     .insert(row)
-    .select('id, seq, type, source, agent_name, subject_type, subject_id, payload, occurred_at, appended_at, idempotency_key')
+    .select(EVENT_COLUMNS)
     .single();
 
   if (error) {
-    // Unique-violation on idempotency_key → return the prior row, treat as a no-op append.
+    // Unique-violation on idempotency_key → the event already exists. Return the prior row,
+    // but only treat the *projection* as done if it actually completed.
     if (error.code === '23505' && input.idempotencyKey) {
       const prior = await sb
         .from('event_log')
-        .select('id, seq, type, source, agent_name, subject_type, subject_id, payload, occurred_at, appended_at, idempotency_key')
+        .select(EVENT_COLUMNS)
         .eq('idempotency_key', input.idempotencyKey)
         .single();
       if (prior.error || !prior.data) throw error;
+      const existing = toAppendedEvent(prior.data);
+
+      const state = await getProjectionState(existing.id);
+      if (state && state.state !== 'projected') {
+        log.info('event_log.append.dedup_redispatch', {
+          idempotency_key: input.idempotencyKey,
+          prior_state: state.state,
+          attempts: state.attempts,
+        });
+        const outcome = await dispatchTracked(existing, state.attempts);
+        return { ...existing, projected: outcome.projected };
+      }
+
       log.debug('event_log.append.dedup', { idempotency_key: input.idempotencyKey });
-      return toAppended(prior.data);
+      return { ...existing, projected: true };
     }
     throw error;
   }
 
-  const appended = toAppended(data);
+  const appended = toAppendedEvent(data);
   log.info('event_log.append', { seq: appended.seq, type: appended.type });
 
-  // Fire projections. Failures are caught + logged so the append itself is durable.
-  try {
-    await dispatch(appended);
-  } catch (e) {
-    log.error('event_log.projection_failed', {
-      seq: appended.seq,
-      type: appended.type,
-      error: (e as Error).message,
-    });
-  }
-
-  return appended;
-}
-
-function toAppended(row: Record<string, unknown>): AppendedEvent {
-  return {
-    id: row.id as string,
-    seq: Number(row.seq),
-    type: row.type as AppendedEvent['type'],
-    source: row.source as string,
-    agentName: (row.agent_name as string | null) ?? null,
-    subjectType: (row.subject_type as string | null) ?? null,
-    subjectId: (row.subject_id as string | null) ?? null,
-    payload: (row.payload as Record<string, unknown>) ?? {},
-    occurredAt: row.occurred_at as string,
-    appendedAt: row.appended_at as string,
-    idempotencyKey: (row.idempotency_key as string | null) ?? null,
-  };
+  const outcome = await dispatchTracked(appended, 0);
+  return { ...appended, projected: outcome.projected };
 }

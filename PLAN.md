@@ -124,12 +124,21 @@ Close the failure-path gaps found in review. **Nothing in Phase 2b ships to real
 counterparties until PR-J, PR-K, and PR-M are merged.**
 
 ### PR-J — Projection durability
-- [ ] `projection_failures` table; failed dispatch recorded, not just logged
-- [ ] `replay()` implemented with commit-safe checkpointing (no max-seq skipping)
-- [ ] Idempotent redelivery re-dispatches projectors for unprojected events
-- [ ] Webhooks return non-2xx where provider retry is wanted
+- [x] Projection-state tracking: an `event_projections` row per event, created by trigger
+      in the same transaction as the append (0017) — records failed dispatches AND exposes
+      crash-lost ones as stale `pending` rows (supersedes the failures-only table design)
+- [x] `replay()` implemented — drains outstanding rows in seq order from per-event state
+      (no high-water mark, so no max-seq skipping possible); `fromSeq` mode rebuilds
+      read-models; `POST /admin/replay` until the worker (PR-R) schedules it
+- [x] Idempotent redelivery re-dispatches projectors for unprojected events (incl. dedup
+      keys on `agent_activity`/`observations` so retries can't duplicate the narrative)
+- [x] Webhooks return non-2xx where provider retry is wanted
+- [x] `scripts/verify-migrations.sh` — applies 0001→0017 to a real Postgres and probes the
+      0017 trigger/backfill, immutability, dedup keys, and RPC execution (the 0016 bug
+      class); seed of PR-M's CI job
 - [ ] Acceptance: kill the process mid-webhook → redeliver → canonical state converges;
-      fulfillment-before-order race heals via replay
+      fulfillment-before-order race heals via replay *(SQL layer verified by the script;
+      the full app-loop drill needs PR-M's CI stack — tracked there)*
 
 ### PR-K — Payment atomicity
 - [ ] `payments` insert moved inside `post_payment_received` (single transaction)

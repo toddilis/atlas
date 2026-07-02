@@ -9,6 +9,7 @@ import { registerControllerTools } from '../agents/controller/tools/index.js';
 import { bootAgents } from '../platform/orchestration/dispatch.js';
 import { syncAll } from '../integrations/shopify/sync.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
+import { replay } from '../platform/events/projector.js';
 
 async function boot() {
   // Wire platform components in dependency order: tools registered, projectors registered,
@@ -72,6 +73,22 @@ async function main() {
     try {
       const processed = await drainOutbox();
       return reply.send({ ok: true, processed });
+    } catch (e) {
+      return reply.code(500).send({ ok: false, error: (e as Error).message });
+    }
+  });
+
+  // Manual projection replay — drains outstanding (failed / stale-pending) projections in
+  // seq order; pass fromSeq to rebuild read-models from a point in the spine. The worker
+  // (PR-R) runs the drain on a schedule; this keeps recovery operable until then.
+  app.post('/admin/replay', async (req, reply) => {
+    try {
+      const raw = req.body as Buffer | undefined;
+      const body = raw?.length
+        ? (JSON.parse(raw.toString('utf8')) as { limit?: number; fromSeq?: number })
+        : {};
+      const summary = await replay({ limit: body.limit, fromSeq: body.fromSeq });
+      return reply.send({ ok: true, ...summary });
     } catch (e) {
       return reply.code(500).send({ ok: false, error: (e as Error).message });
     }
