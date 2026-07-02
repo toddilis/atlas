@@ -222,6 +222,93 @@ begin
     if sqlerrm like 'ASSERT%' then raise; end if;
   end;
 end $$;
+
+-- 8 · PR-K payment atomicity — full behavioural test. The whole mechanism lives in one
+-- SQL transaction now, so this IS the acceptance test for "crash between payment insert
+-- and posting → redelivery posts exactly once".
+do $$
+declare
+  v_org        uuid;
+  v_account    uuid;
+  v_invoice    uuid;
+  v_invoice2   uuid;
+  v_stranded   uuid;
+  r            record;
+  v_count      int;
+  v_posted     timestamptz;
+  v_inv_state  invoice_state;
+begin
+  select id into v_org from orgs where slug = 'verify';
+  insert into accounts (org_id, name) values (v_org, 'Verify Venue')
+    returning id into v_account;
+  insert into invoices (org_id, channel, account_id, invoice_number, state, currency,
+                        subtotal_cents, tax_cents, total_cents, issued_at, stripe_invoice_id)
+  values (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+          10000, 1500, 11500, now(), 'in_verify_1')
+  returning id into v_invoice;
+
+  -- 8a · first delivery: posts once, transitions to paid, stamps posted_at, balances.
+  select * into r from record_stripe_payment(
+    v_org, 'in_verify_1', 'stripe_event:evt_verify_1', 11500, 'NZD', now(), '{}'::jsonb);
+  if r.rsp_was_existing then raise exception 'ASSERT prk-8a: first call reported was_existing'; end if;
+  if r.rsp_invoice_state <> 'paid' then
+    raise exception 'ASSERT prk-8a: expected paid, got %', r.rsp_invoice_state;
+  end if;
+  select count(*) into v_count from ledger_transactions
+   where org_id = v_org and source = 'payment_received' and source_ref = r.rsp_payment_id;
+  if v_count <> 1 then raise exception 'ASSERT prk-8a: expected 1 posting, got %', v_count; end if;
+  select posted_at into v_posted from payments where id = r.rsp_payment_id;
+  if v_posted is null then raise exception 'ASSERT prk-8a: posted_at not stamped'; end if;
+  perform 1
+     from ledger_lines l
+     join ledger_transactions t on t.id = l.transaction_id
+    where t.source_ref = r.rsp_payment_id
+   having sum(l.amount_cents) <> 0;
+  if found then raise exception 'ASSERT prk-8a: posting does not balance'; end if;
+
+  -- 8b · redelivery: adopted, and still exactly one posting (double-post regression).
+  select * into r from record_stripe_payment(
+    v_org, 'in_verify_1', 'stripe_event:evt_verify_1', 11500, 'NZD', now(), '{}'::jsonb);
+  if not r.rsp_was_existing then raise exception 'ASSERT prk-8b: redelivery not adopted'; end if;
+  select count(*) into v_count from ledger_transactions
+   where org_id = v_org and source = 'payment_received' and source_ref = r.rsp_payment_id;
+  if v_count <> 1 then raise exception 'ASSERT prk-8b: double post — % postings', v_count; end if;
+
+  -- 8c · direct double-invocation of post_payment_received is a no-op now.
+  perform 1 from post_payment_received(v_org, r.rsp_payment_id);
+  select count(*) into v_count from ledger_transactions
+   where org_id = v_org and source = 'payment_received' and source_ref = r.rsp_payment_id;
+  if v_count <> 1 then raise exception 'ASSERT prk-8c: direct re-run double-posted'; end if;
+
+  -- 8d · stranded pre-0018 payment (the crash window): row exists, posted_at null,
+  -- invoice never transitioned. The redelivery completes the posting.
+  insert into invoices (org_id, channel, account_id, invoice_number, state, currency,
+                        subtotal_cents, tax_cents, total_cents, issued_at, stripe_invoice_id)
+  values (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+          5000, 750, 5750, now(), 'in_verify_2')
+  returning id into v_invoice2;
+  insert into payments (org_id, invoice_id, amount_cents, currency, method,
+                        stripe_payment_id, received_at, raw)
+  values (v_org, v_invoice2, 5750, 'NZD', 'stripe',
+          'stripe_event:evt_verify_2', now(), '{}'::jsonb)
+  returning id into v_stranded;
+
+  select * into r from record_stripe_payment(
+    v_org, 'in_verify_2', 'stripe_event:evt_verify_2', 5750, 'NZD', now(), '{}'::jsonb);
+  if not r.rsp_was_existing then raise exception 'ASSERT prk-8d: stranded payment not adopted'; end if;
+  if r.rsp_payment_id <> v_stranded then
+    raise exception 'ASSERT prk-8d: adopted a different payment row';
+  end if;
+  select state into v_inv_state from invoices where id = v_invoice2;
+  if v_inv_state <> 'paid' then
+    raise exception 'ASSERT prk-8d: stranded payment not healed — invoice %', v_inv_state;
+  end if;
+  select count(*) into v_count from ledger_transactions
+   where org_id = v_org and source = 'payment_received' and source_ref = v_stranded;
+  if v_count <> 1 then raise exception 'ASSERT prk-8d: heal posted % times', v_count; end if;
+  select posted_at into v_posted from payments where id = v_stranded;
+  if v_posted is null then raise exception 'ASSERT prk-8d: heal did not stamp posted_at'; end if;
+end $$;
 SQL
 
-echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, and RPC execution probes all pass"
+echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, RPC execution probes, and PR-K payment-atomicity behaviour (exactly-once posting, redelivery adoption, stranded-payment heal) all pass"

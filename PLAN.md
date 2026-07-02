@@ -141,9 +141,15 @@ counterparties until PR-J, PR-K, and PR-M are merged.**
       the full app-loop drill needs PR-M's CI stack — tracked there)*
 
 ### PR-K — Payment atomicity
-- [ ] `payments` insert moved inside `post_payment_received` (single transaction)
-- [ ] Internal already-posted guard (idempotent re-invocation, no double ledger post)
-- [ ] Acceptance: crash between old insert/post points → redelivery posts exactly once
+- [x] Payment insert moved inside the posting transaction: `record_stripe_payment` RPC
+      (0018) resolves the invoice → inserts-or-adopts the payment → posts the ledger +
+      invoice transition, all in ONE transaction; the webhook projector is a thin caller
+- [x] Internal already-posted guard: `payments.posted_at` + payment-row lock in
+      `post_payment_received` (replaced in place, same signature) — double invocation
+      can no longer double-credit AR; stranded pre-0018 payments self-heal on redelivery
+- [x] Acceptance: crash between old insert/post points → redelivery posts exactly once
+      *(verified behaviourally by `scripts/verify-migrations.sh` §8: exactly-once posting,
+      redelivery adoption, direct re-run no-op, stranded-payment heal)*
 
 ### PR-L — Control-plane integrity
 - [ ] Bearer auth on all API routes (admin drain/sync included)
