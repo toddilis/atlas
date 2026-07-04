@@ -182,14 +182,22 @@ counterparties until PR-J, PR-K, and PR-M are merged.**
       duplicate-object-key bug in `pricing.test.ts`); build split to `tsconfig.build.json`
 
 ### PR-N — Statement correctness + polish
-- [ ] Real 61–90 aging band; bucket labels match cutoffs
-- [ ] Closing balance and aging buckets reconciled (one derivation, or asserted equal)
-- [ ] Calendar-day aging in `Pacific/Auckland`
-- [ ] `computeGstCents` precision bound: explicit input guard (or bigint port) — above
-      2^53 the JS number path loses precision where SQL bigint does not; the parity grid
-      deliberately stays below it
-- [ ] Tailwind `content` globs include `./components`; web `error.tsx`/`loading.tsx`
-- [ ] README/VERIFICATION refreshed to describe the current system
+- [x] Real 61–90 band (`aging_90_cents`, 0020); `90_plus` is genuinely >90; console
+      renders five bands + credit
+- [x] ONE derivation: per-invoice signed outstanding → buckets (positive) + `credit_cents`
+      (overpaid); `closing = Σ buckets − credit`; the activity identity
+      (opening + charges − payments = closing) is asserted in the RPC, which refuses to
+      emit a statement that doesn't reconcile; running balances unclamped so lines foot
+      (negative = customer in credit, ≥0 checks dropped)
+- [x] Calendar-day aging in `Pacific/Auckland`: new `overdue_days(anchor, as_of, tz)` SQL
+      function + TS mirror (the old elapsed-ms path also ROUNDED in SQL where TS floored);
+      DST-boundary cases parity-tested in CI
+- [x] `computeGstCents` BigInt port — exact for every representable input; throws rather
+      than approximating beyond `Number.MAX_SAFE_INTEGER`
+- [x] Tailwind `content` includes `./components` (paid/void badges no longer purge);
+      web `error.tsx`/`loading.tsx` boundaries added
+- [x] README status/verification rewritten (living CI verification); VERIFICATION.md
+      marked as the historical Phase 0 record; verifier §10 covers statement behaviour
 
 ### PR-O — Deployment (D1)
 - [ ] Dockerfile (API + worker), deploy to managed host; console on Vercel

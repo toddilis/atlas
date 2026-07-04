@@ -1621,11 +1621,13 @@ export type Database = {
           account_id: string
           aging_30_cents: number
           aging_60_cents: number
+          aging_90_cents: number
           aging_90_plus_cents: number
           aging_current_cents: number
           as_of_at: string
           charges_cents: number
           closing_balance_cents: number
+          credit_cents: number
           currency: string
           generated_at: string
           generated_by_agent: string | null
@@ -1642,11 +1644,13 @@ export type Database = {
           account_id: string
           aging_30_cents?: number
           aging_60_cents?: number
+          aging_90_cents?: number
           aging_90_plus_cents?: number
           aging_current_cents?: number
           as_of_at: string
           charges_cents: number
           closing_balance_cents: number
+          credit_cents?: number
           currency: string
           generated_at?: string
           generated_by_agent?: string | null
@@ -1663,11 +1667,13 @@ export type Database = {
           account_id?: string
           aging_30_cents?: number
           aging_60_cents?: number
+          aging_90_cents?: number
           aging_90_plus_cents?: number
           aging_current_cents?: number
           as_of_at?: string
           charges_cents?: number
           closing_balance_cents?: number
+          credit_cents?: number
           currency?: string
           generated_at?: string
           generated_by_agent?: string | null
@@ -1820,6 +1826,7 @@ export type Database = {
           p_generated_by?: string
           p_org_id: string
           p_period_start_at: string
+          p_timezone?: string
         }
         Returns: {
           closing_balance_cents: number
@@ -1841,6 +1848,10 @@ export type Database = {
         }[]
       }
       next_invoice_number: { Args: { p_org_id: string }; Returns: string }
+      overdue_days: {
+        Args: { p_anchor: string; p_as_of: string; p_tz?: string }
+        Returns: number
+      }
       pgp_armor_headers: {
         Args: { "": string }
         Returns: Record<string, unknown>[]

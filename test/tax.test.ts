@@ -46,3 +46,26 @@ test('computeGstCents — rejects negative rate', () => {
     /non-negative/,
   );
 });
+
+test('computeGstCents — rejects non-integer inputs', () => {
+  assert.throws(
+    () => computeGstCents(100.5, { rateBps: 1500, exempt: false }),
+    /integers/,
+  );
+});
+
+test('computeGstCents — exact above 2^53 product (PR-N BigInt path)', () => {
+  // subtotal × rate = ~1.35e19, far beyond 2^53 — the old float multiply lost precision
+  // here where SQL bigint did not. floor(9007199254740991 × 1500 / 10000):
+  assert.equal(
+    computeGstCents(9_007_199_254_740_991, { rateBps: 1500, exempt: false }),
+    1_351_079_888_211_148,
+  );
+});
+
+test('computeGstCents — refuses to return an unsafe result rather than approximate', () => {
+  assert.throws(
+    () => computeGstCents(9_007_199_254_740_991, { rateBps: 10001, exempt: false }),
+    /MAX_SAFE_INTEGER/,
+  );
+});

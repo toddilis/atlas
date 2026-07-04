@@ -8,46 +8,48 @@ businesses.
 The **Controller** (Finance) is Agent #1 — built end-to-end first as the vertical slice. The
 real data shape teaches what a speculative second agent would guess wrong.
 
-## Status — Phase 0
+## Status
 
-Phase 0 is the substrate + thin spine + canonical sync. It establishes:
+Tracked in **`PLAN.md`** (the standing reference: module roadmap, decision log, phased
+PR slices with acceptance checkboxes). Shipped so far:
 
-- Repo scaffold + config + all migrations (`supabase/migrations/0001`–`0010`).
-- Append-only `event_log` spine + projection dispatch (CQRS).
-- Thin agent contract + registry + base worker.
-- Control plane: approvals, risk tiers, audit log.
-- Tool registry + transactional outbox + agent→tool grants.
-- Observations write path (memory is designed-in; consolidation/retrieval deferred).
-- Shopify canonical sync (products, all orders, all customers — idempotent).
-- Shopify fulfillment webhook (HMAC verified) → event → `shopify_fulfillments` →
-  location routing → `fulfillment_events`.
+- **Phase 0** — substrate: event spine (append-only `event_log` + projection dispatch),
+  agent contract + registry, control plane (approvals / risk tiers / audit), tool
+  registry + transactional outbox + grants, observations write path, Shopify canonical
+  sync + HMAC-verified fulfillment webhook → routing.
+- **Phase 1 (PR-A…PR-F)** — the Controller's wholesale loop end-to-end: policy engine,
+  `issue_invoice` through the approval gate, Stripe outbox + payment ingestion + ledger
+  posting, pricing resolver + `draft_invoice`, GST, account statements.
+- **Phase 2 start (PR-G…PR-H)** — operator console scaffold: approvals queue,
+  invoice browser, statement preview (read-only).
+- **Phase 2.5 (PR-J…PR-N)** — hardening from the code review: projection durability +
+  replay, single-transaction payment ingestion, admin bearer auth + outbox reaper +
+  single-use approvals + audit immutability triggers, CI on real Postgres + typed
+  Supabase client + SQL↔TS parity, statement aging/reconciliation correctness.
 
-### Verification
+### Verification (living, in CI)
 
-Verified against a live Supabase project. Results — see `VERIFICATION.md` for the full
-transcript of SQL assertions:
+Every push runs three jobs (`.github/workflows/atlas-ci.yml`):
 
-| # | Task | Status |
-|---|---|---|
-| 1 | `tsc --noEmit` typecheck | PASS |
-| 2 | `node --test` unit tests (HMAC, env-driven routing) | PASS — 6/6 |
-| 3 | Migrations apply clean (`0001`→`0010`) | PASS |
-| 4 | `vector` extension installed; balance + immutability triggers wired; FKs resolve | PASS |
-| 5 | `supabase gen types` + `tsc` compile against generated types | PASS |
-| 6 | Spine test (events project into canonical read-model; idempotency_key dedups replay) | PASS |
-| 7 | Seam-1 proof (DTC customer + order land canonically; fulfillment routed `ignored`) | PASS |
-| 8 | Routing test (venue → consignment / main+linked-account → wholesale / else → ignored) | PASS |
-| 9 | Contract + outbox test (`issue_invoice` blocked by approval gate; exactly-once side-effect) | Deferred to Phase 1 |
-| 10 | Memory write (observation with source event ref; activity links to event) | PASS |
-| 11 | Boundary test (no Claude in Phase 0 code paths; full pricing/ledger boundary verified in Phase 1) | PASS for Phase 0 |
+1. `typecheck + unit tests` — strict `tsc` over `src`/`test`/`scripts`, `node --test`.
+2. `migrations + RPC probes + SQL⇄TS parity` — applies every migration in order to a
+   real Postgres (pgvector image) via `scripts/verify-migrations.sh`, then runs its
+   behavioural suites: projection-state trigger/backfill, immutability triggers, dedup
+   keys, RPC execution probes, payment atomicity (exactly-once, stranded-heal),
+   control-plane integrity, and statement aging/reconciliation. `scripts/sql-ts-parity.ts`
+   then executes the SQL money functions and compares them with their TS mirrors.
+3. `console typecheck + build`.
 
-Plus: Supabase security advisor returns 0 findings after `0010_security_hardening`.
+Regenerate DB types after adding a migration: `npm run gen:types` (spins an ephemeral
+cluster from the migrations — no live project needed). `VERIFICATION.md` is the
+historical Phase 0 verification record.
 
 ## Layout
 
 ```
 atlas/
-  supabase/migrations/        # 0001..0015 — applied in order; never edited after merge
+  supabase/migrations/        # 0001..0020 — applied in order; never edited after merge
+  scripts/                    # verify-migrations.sh, sql-ts-parity.ts, gen-types.sh
   src/
     data/                     # canonical read-models access + generated types
     platform/

@@ -23,7 +23,9 @@ interface StatementDetail {
   aging_current_cents: number;
   aging_30_cents: number;
   aging_60_cents: number;
+  aging_90_cents: number;
   aging_90_plus_cents: number;
+  credit_cents: number;
   generated_at: string;
   generated_by_agent: string | null;
   sent_at: string | null;
@@ -53,7 +55,7 @@ async function loadStatement(id: string): Promise<{
   const { data: statement, error: stErr } = await sb
     .from('statements')
     .select(
-      'id, state, currency, period_start_at, as_of_at, opening_balance_cents, charges_cents, payments_cents, closing_balance_cents, aging_current_cents, aging_30_cents, aging_60_cents, aging_90_plus_cents, generated_at, generated_by_agent, sent_at, notes, account:accounts(id, name, billing_email)',
+      'id, state, currency, period_start_at, as_of_at, opening_balance_cents, charges_cents, payments_cents, closing_balance_cents, aging_current_cents, aging_30_cents, aging_60_cents, aging_90_cents, aging_90_plus_cents, credit_cents, generated_at, generated_by_agent, sent_at, notes, account:accounts(id, name, billing_email)',
     )
     .eq('org_id', org)
     .eq('id', id)
@@ -224,7 +226,11 @@ function AgingPanel({ s }: { s: StatementDetail }) {
     { label: 'Current', amount: s.aging_current_cents, tone: 'text-zinc-900 dark:text-zinc-100' },
     { label: '1-30 days', amount: s.aging_30_cents, tone: 'text-zinc-700 dark:text-zinc-300' },
     { label: '31-60 days', amount: s.aging_60_cents, tone: 'text-amber-700 dark:text-amber-300' },
-    { label: '60+ days', amount: s.aging_90_plus_cents, tone: 'text-red-700 dark:text-red-400' },
+    { label: '61-90 days', amount: s.aging_90_cents, tone: 'text-orange-700 dark:text-orange-400' },
+    { label: '90+ days', amount: s.aging_90_plus_cents, tone: 'text-red-700 dark:text-red-400' },
+    ...(s.credit_cents > 0
+      ? [{ label: 'Credit', amount: -s.credit_cents, tone: 'text-green-700 dark:text-green-400' }]
+      : []),
   ];
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4">

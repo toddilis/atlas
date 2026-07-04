@@ -346,6 +346,81 @@ begin
   get diagnostics v_n = row_count;
   if v_n <> 0 then raise exception 'ASSERT prl-9b: approval consumed twice'; end if;
 end $$;
+
+-- 10 · PR-N statement correctness: one derivation, real 61–90 band, credit handling,
+-- reconciliation identity, unclamped line footing.
+do $$
+declare
+  v_org       uuid;
+  v_account   uuid;
+  v_inv_over  uuid;
+  r           record;
+  s           record;
+  v_last_running bigint;
+  v_line_count   integer;
+begin
+  select id into v_org from orgs where slug = 'verify';
+  insert into accounts (org_id, name) values (v_org, 'Verify Venue Statements')
+    returning id into v_account;
+
+  -- Five open invoices, one per aging band (due dates chosen mid-band, away from
+  -- calendar-day boundary effects), plus one overpaid invoice (credit).
+  insert into invoices (org_id, channel, account_id, invoice_number, state, currency,
+                        subtotal_cents, tax_cents, total_cents, issued_at, due_at)
+  values
+    (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+     10000, 0, 10000, now() - interval '100 days', now() - interval '95 days'),   -- 90_plus
+    (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+     20000, 0, 20000, now() - interval '80 days',  now() - interval '75 days'),   -- 90
+    (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+     30000, 0, 30000, now() - interval '50 days',  now() - interval '45 days'),   -- 60
+    (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+     40000, 0, 40000, now() - interval '20 days',  now() - interval '15 days'),   -- 30
+    (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+     50000, 0, 50000, now() - interval '5 days',   now() + interval '9 days');    -- current
+
+  insert into invoices (org_id, channel, account_id, invoice_number, state, currency,
+                        subtotal_cents, tax_cents, total_cents, issued_at, due_at)
+  values (v_org, 'wholesale', v_account, next_invoice_number(v_org), 'issued', 'NZD',
+          1000, 0, 1000, now() - interval '10 days', now() + interval '4 days')
+  returning id into v_inv_over;
+  insert into payments (org_id, invoice_id, amount_cents, currency, method,
+                        stripe_payment_id, received_at)
+  values (v_org, v_inv_over, 3000, 'NZD', 'stripe',
+          'stripe_event:evt_verify_stmt', now() - interval '2 days');             -- credit 2000
+
+  select * into r from generate_statement_atomic(
+    v_org, v_account, now() - interval '120 days', now());
+
+  select * into s from statements where id = r.statement_id;
+  if s.aging_90_plus_cents <> 10000 then raise exception 'ASSERT prn-10: 90_plus = %', s.aging_90_plus_cents; end if;
+  if s.aging_90_cents      <> 20000 then raise exception 'ASSERT prn-10: 90 = % (61-90 band)', s.aging_90_cents; end if;
+  if s.aging_60_cents      <> 30000 then raise exception 'ASSERT prn-10: 60 = %', s.aging_60_cents; end if;
+  if s.aging_30_cents      <> 40000 then raise exception 'ASSERT prn-10: 30 = %', s.aging_30_cents; end if;
+  if s.aging_current_cents <> 50000 then raise exception 'ASSERT prn-10: current = %', s.aging_current_cents; end if;
+  if s.credit_cents        <> 2000  then raise exception 'ASSERT prn-10: credit = %', s.credit_cents; end if;
+  if s.closing_balance_cents <> 148000 then
+    raise exception 'ASSERT prn-10: closing = % (want buckets - credit = 148000)', s.closing_balance_cents;
+  end if;
+  if s.opening_balance_cents <> 0 or s.charges_cents <> 151000 or s.payments_cents <> 3000 then
+    raise exception 'ASSERT prn-10: activity totals %/%/% (want 0/151000/3000)',
+      s.opening_balance_cents, s.charges_cents, s.payments_cents;
+  end if;
+
+  -- Lines foot without clamping: the last line's running balance is the closing balance,
+  -- and line_count = opening + 6 invoices + 1 payment + closing = 9.
+  select count(*)::integer into v_line_count from statement_lines where statement_id = r.statement_id;
+  if v_line_count <> 9 or r.line_count <> 9 then
+    raise exception 'ASSERT prn-10: line_count % / % (want 9)', v_line_count, r.line_count;
+  end if;
+  select running_balance_cents into v_last_running
+    from statement_lines where statement_id = r.statement_id
+    order by sort_order desc limit 1;
+  if v_last_running <> s.closing_balance_cents then
+    raise exception 'ASSERT prn-10: lines do not foot — last running % vs closing %',
+      v_last_running, s.closing_balance_cents;
+  end if;
+end $$;
 SQL
 
-echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, RPC execution probes, PR-K payment-atomicity behaviour (exactly-once posting, redelivery adoption, stranded-payment heal), and PR-L control-plane integrity (audit_log immutability, approval single-use CAS) all pass"
+echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, RPC execution probes, PR-K payment atomicity (exactly-once posting, redelivery adoption, stranded-payment heal), PR-L control-plane integrity (audit_log immutability, approval single-use CAS), and PR-N statement correctness (real 61-90 band, credit, reconciliation identity, unclamped footing) all pass"
