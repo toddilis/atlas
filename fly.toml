@@ -1,0 +1,43 @@
+# Fly.io app config (PR-O, decision D7). One app, two process groups from one image:
+#   api    — Fastify server (webhooks + admin), behind Fly's proxy with health checks
+#   worker — outbox drain + projection replay loop (PR-R grows it into the scheduler)
+#
+# First deploy (see DEPLOY.md):
+#   fly launch --no-deploy --copy-config
+#   fly secrets set SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… ATLAS_ORG_ID=… \
+#     ATLAS_API_TOKEN=… SHOPIFY_SHOP_DOMAIN=… SHOPIFY_ADMIN_API_TOKEN=… \
+#     SHOPIFY_WEBHOOK_SECRET=… STRIPE_SECRET_KEY=… STRIPE_WEBHOOK_SECRET=… \
+#     SHOPIFY_MAIN_LOCATION_ID=… VENUE_LOCATION_IDS=…
+#   fly deploy
+
+app = "atlas-api"
+# Supabase project lives in ap-southeast-1 (Singapore) — keep compute next to the DB.
+primary_region = "sin"
+
+[processes]
+  api    = "node dist/api/server.js"
+  worker = "node dist/worker/main.js"
+
+[env]
+  PORT = "3001"
+  ATLAS_LOG_LEVEL = "info"
+
+[http_service]
+  processes = ["api"]
+  internal_port = 3001
+  force_https = true
+  # Webhooks must always have a listener — never scale the API to zero.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/readyz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

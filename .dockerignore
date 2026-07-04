@@ -1,0 +1,11 @@
+node_modules
+dist
+web
+test
+scripts
+supabase
+.github
+.git
+*.md
+.env
+.env.*

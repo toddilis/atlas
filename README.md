@@ -44,6 +44,8 @@ Regenerate DB types after adding a migration: `npm run gen:types` (spins an ephe
 cluster from the migrations — no live project needed). `VERIFICATION.md` is the
 historical Phase 0 verification record.
 
+Deployment (Fly.io API + worker, Vercel console): see `DEPLOY.md`.
+
 ## Layout
 
 ```
