@@ -6,22 +6,26 @@ on:
     paths:
       - 'src/**'
       - 'test/**'
+      - 'scripts/**'
       - 'supabase/migrations/**'
       - 'web/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
+      - 'tsconfig.build.json'
       - '.github/workflows/atlas-ci.yml'
   pull_request:
     branches: [main, 'claude/**']
     paths:
       - 'src/**'
       - 'test/**'
+      - 'scripts/**'
       - 'supabase/migrations/**'
       - 'web/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
+      - 'tsconfig.build.json'
       - '.github/workflows/atlas-ci.yml'
 
 jobs:
@@ -36,11 +40,49 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - run: npm install
+      - run: npm ci
 
       - run: npm run typecheck
 
       - run: npm test
+
+  migrations:
+    name: migrations + RPC probes + SQL⇄TS parity (real Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: atlas_verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/atlas_verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Applies 0001→current in order and runs the behavioural assertions: 0017
+      # trigger/backfill, immutability triggers, dedup keys, RPC execution probes
+      # (the 0016 bug class), payment atomicity (exactly-once, stranded-heal), and
+      # control-plane integrity. The 0016 post-mortem lesson, wired into CI.
+      - run: ./scripts/verify-migrations.sh
+
+      # The deterministic boundary, executed: TS mirrors must equal the SQL money
+      # functions on every grid point.
+      - run: npx tsx scripts/sql-ts-parity.ts
 
   web:
     name: console typecheck + build
@@ -57,7 +99,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
-      - run: npm install
+      - run: npm ci
 
       - run: npm run typecheck
 

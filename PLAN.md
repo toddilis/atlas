@@ -165,15 +165,29 @@ counterparties until PR-J, PR-K, and PR-M are merged.**
       behaviourally in `scripts/verify-migrations.sh` §9 along with the single-use CAS
 
 ### PR-M — Verification backbone
-- [ ] CI job: apply migrations 0001→current to ephemeral Postgres, exercise all RPCs
-- [ ] `createClient<Database>` typed client; regenerate `database.types.ts`
-- [ ] SQL↔TS parity tests for GST and aging (the boundary claimed in comments)
-- [ ] `npm ci` in CI; test files included in typecheck
+- [x] CI job `migrations` on a real Postgres (`pgvector/pgvector:pg16` service): applies
+      0001→current in order and runs the behavioural suites in `verify-migrations.sh`
+      (0017 trigger/backfill, immutability, dedup, RPC execution probes, payment
+      atomicity, control-plane integrity)
+- [x] `createClient<Database>` typed client; `database.types.ts` regenerated from the
+      migrations themselves via `scripts/gen-types.sh` (ephemeral cluster +
+      postgres-meta — no Docker image pulls, no live project needed). The typed client
+      immediately caught a real bug: outbox dead-lettering wrote `null` into NOT NULL
+      `next_attempt_at`, so dead rows would have failed 23502 and looped forever
+- [x] SQL↔TS parity in CI (`scripts/sql-ts-parity.ts`): `compute_gst_cents` and
+      `age_bucket` executed against the migrated DB and compared with their TS mirrors
+      over boundary grids (114 cases) — the deterministic boundary, executed instead of
+      asserted in comments
+- [x] `npm ci` in all CI jobs; test files included in typecheck (immediately caught a
+      duplicate-object-key bug in `pricing.test.ts`); build split to `tsconfig.build.json`
 
 ### PR-N — Statement correctness + polish
 - [ ] Real 61–90 aging band; bucket labels match cutoffs
 - [ ] Closing balance and aging buckets reconciled (one derivation, or asserted equal)
 - [ ] Calendar-day aging in `Pacific/Auckland`
+- [ ] `computeGstCents` precision bound: explicit input guard (or bigint port) — above
+      2^53 the JS number path loses precision where SQL bigint does not; the parity grid
+      deliberately stays below it
 - [ ] Tailwind `content` globs include `./components`; web `error.tsx`/`loading.tsx`
 - [ ] README/VERIFICATION refreshed to describe the current system
 

@@ -1,4 +1,5 @@
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import type { ApprovalState, RiskTier } from './types.js';
 
 export interface ApprovalRequest {
@@ -33,7 +34,7 @@ export async function requestApproval(req: ApprovalRequest): Promise<string> {
       action: req.action,
       subject_type: req.subjectType,
       subject_id: req.subjectId ?? null,
-      payload: req.payload,
+      payload: req.payload as unknown as Json,
       proposed_summary: req.proposedSummary ?? null,
       risk: req.risk,
       expires_at: req.expiresAt?.toISOString() ?? null,
