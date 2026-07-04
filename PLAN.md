@@ -102,6 +102,7 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D4 | 2026-07-02 | Scheduling via a dedicated worker process (not pg_cron) — it also hosts replay, outbox drain, digest build, and later consolidation. |
 | D5 | 2026-07-02 | Atlas is explicitly modular: platform substrate + vertical modules. Boundary rules in §1. |
 | D6 | 2026-07-02 | Module roadmap adopted (§10): Controller → Quartermaster → Rep → Marketer → Concierge → Registrar. Quartermaster takes the #2 slot (its data already flows through the substrate; better second consumer of the module contract than Marketing). Rep + Marketer may merge into one Growth module. Analytics is a platform capability, not a module. |
+| D7 | 2026-07-04 | D1's deferred host pick: **Fly.io** — one app, two process groups (api + worker) from one image, compute in `sin` next to the Supabase project. Console on Vercel per D1. |
 
 ---
 
@@ -199,10 +200,17 @@ counterparties until PR-J, PR-K, and PR-M are merged.**
 - [x] README status/verification rewritten (living CI verification); VERIFICATION.md
       marked as the historical Phase 0 record; verifier §10 covers statement behaviour
 
-### PR-O — Deployment (D1)
-- [ ] Dockerfile (API + worker), deploy to managed host; console on Vercel
-- [ ] Health checks probe DB + env, not just process-up
-- [ ] Secrets via host env; graceful shutdown (SIGTERM drains in-flight work)
+### PR-O — Deployment (D1/D7: Fly.io)
+- [x] Dockerfile (multi-stage, one image) + `fly.toml` (api + worker process groups; API
+      never scales to zero — webhooks need a listener) + `DEPLOY.md` runbook; console →
+      Vercel (root `web/`). Worker v0 loops outbox drain + projection replay
+      (`src/worker/main.ts`); PR-R grows it into the full scheduler. *(Repo side complete;
+      the first `fly launch` / `fly deploy` + webhook re-pointing is an operator action —
+      see DEPLOY.md.)*
+- [x] Health checks probe DB + env: `/readyz` (readiness — Fly's http check target)
+      alongside `/healthz` (liveness)
+- [x] Secrets via `fly secrets` only (nothing baked into the image); graceful shutdown on
+      SIGTERM — API drains in-flight requests, worker finishes its current tick
 
 ---
 

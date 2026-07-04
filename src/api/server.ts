@@ -1,30 +1,17 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import { log } from '../platform/log.js';
-import { handleFulfillmentWebhook, registerShopifyProjectors } from '../integrations/shopify/webhook.js';
-import { registerShopifyTools } from '../integrations/shopify/tools.js';
-import { registerStripeTools } from '../integrations/stripe/tools.js';
-import { handleStripeWebhook, registerStripeProjectors } from '../integrations/stripe/webhook.js';
-import { registerControllerTools } from '../agents/controller/tools/index.js';
-import { bootAgents } from '../platform/orchestration/dispatch.js';
+import { supabase, orgId } from '../data/supabase.js';
+import { handleFulfillmentWebhook } from '../integrations/shopify/webhook.js';
+import { handleStripeWebhook } from '../integrations/stripe/webhook.js';
+import { bootPlatform } from '../platform/orchestration/boot.js';
 import { syncAll } from '../integrations/shopify/sync.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
 import { bearerAuthState } from './auth.js';
 
-async function boot() {
-  // Wire platform components in dependency order: tools registered, projectors registered,
-  // agents booted (which depends on the projector dispatcher being available).
-  registerShopifyTools();
-  registerStripeTools();
-  registerControllerTools();
-  registerShopifyProjectors();
-  registerStripeProjectors();
-  await bootAgents();
-}
-
 async function main() {
-  await boot();
+  await bootPlatform();
 
   const app = Fastify({
     logger: false,
@@ -54,7 +41,31 @@ async function main() {
     }
   });
 
+  // Liveness: process is up. Readiness (below) is what deploy health checks should use.
   app.get('/healthz', async () => ({ ok: true }));
+
+  // Readiness: config present AND the database answers. Fly's http check points here
+  // (fly.toml), so a machine with broken env or an unreachable Supabase is taken out of
+  // rotation instead of 200-ing while every webhook fails behind it.
+  app.get('/readyz', async (_req, reply) => {
+    const missing = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATLAS_ORG_ID'].filter(
+      (k) => !process.env[k],
+    );
+    if (missing.length > 0) {
+      return reply.code(503).send({ ok: false, error: `missing env: ${missing.join(', ')}` });
+    }
+    try {
+      const { error } = await supabase()
+        .from('orgs')
+        .select('id')
+        .eq('id', orgId())
+        .limit(1);
+      if (error) throw error;
+      return reply.send({ ok: true });
+    } catch (e) {
+      return reply.code(503).send({ ok: false, error: (e as Error).message });
+    }
+  });
 
   app.post('/webhooks/shopify/fulfillments', async (req, reply) => {
     const result = await handleFulfillmentWebhook(
@@ -109,6 +120,27 @@ async function main() {
       return reply.code(500).send({ ok: false, error: (e as Error).message });
     }
   });
+
+  // Graceful shutdown: stop accepting connections, let in-flight requests finish
+  // (Fastify's close() drains them), then exit. Fly sends SIGTERM on deploy/stop.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log.info('api.shutdown_requested', { signal });
+    app
+      .close()
+      .then(() => {
+        log.info('api.stopped');
+        process.exit(0);
+      })
+      .catch((e) => {
+        log.error('api.shutdown_failed', { error: (e as Error).message });
+        process.exit(1);
+      });
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen({ port, host: '0.0.0.0' });
