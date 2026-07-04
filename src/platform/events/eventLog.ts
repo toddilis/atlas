@@ -1,4 +1,5 @@
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import { log } from '../log.js';
 import type { AppendedEvent, EventInput } from './types.js';
 import { dispatchTracked, getProjectionState } from './projector.js';
@@ -28,7 +29,7 @@ export async function appendEvent(input: EventInput): Promise<AppendResult> {
     agent_name: input.agentName ?? null,
     subject_type: input.subjectType ?? null,
     subject_id: input.subjectId ?? null,
-    payload: input.payload,
+    payload: input.payload as unknown as Json,
     occurred_at: (input.occurredAt ?? new Date()).toISOString(),
     idempotency_key: input.idempotencyKey ?? null,
   };

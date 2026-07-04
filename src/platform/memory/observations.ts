@@ -1,4 +1,5 @@
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 
 export type ObservationKind = 'fact' | 'preference' | 'pattern' | 'anomaly' | 'note';
 
@@ -36,7 +37,7 @@ export async function recordObservation(input: ObservationInput): Promise<string
       subject_id: input.subjectId ?? null,
       source_event_id: input.sourceEventId ?? null,
       confidence: input.confidence ?? 0.7,
-      metadata: input.metadata ?? null,
+      metadata: (input.metadata ?? null) as unknown as Json,
       dedup_key: input.dedupKey ?? null,
     })
     .select('id')

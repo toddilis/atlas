@@ -1,4 +1,5 @@
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 
 export type ActivityKind = 'observation' | 'action' | 'decision' | 'note';
 
@@ -32,7 +33,7 @@ export async function recordActivity(input: ActivityInput): Promise<void> {
     subject_type: input.subjectType ?? null,
     subject_id: input.subjectId ?? null,
     event_id: input.eventId ?? null,
-    detail: input.detail ?? null,
+    detail: (input.detail ?? null) as unknown as Json,
     dedup_key: input.dedupKey ?? null,
   });
   if (error) {

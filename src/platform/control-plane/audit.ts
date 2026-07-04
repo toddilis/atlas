@@ -1,4 +1,5 @@
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import type { AuditOutcome, RiskTier } from './types.js';
 
 export interface AuditInput {
@@ -29,7 +30,7 @@ export async function audit(input: AuditInput): Promise<void> {
     approval_id: input.approvalId ?? null,
     risk: input.risk,
     outcome: input.outcome,
-    detail: input.detail ?? null,
+    detail: (input.detail ?? null) as unknown as Json,
   });
   if (error) throw error;
 }

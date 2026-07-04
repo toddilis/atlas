@@ -14,6 +14,7 @@
 
 import type Stripe from 'stripe';
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import { appendEvent } from '../../platform/events/eventLog.js';
 import { registerProjector } from '../../platform/events/projector.js';
 import { log } from '../../platform/log.js';
@@ -85,7 +86,8 @@ async function projectStripeInvoicePaid(event: {
   const stripeEvent = event.payload as unknown as Stripe.Event;
   const stripeInvoice = stripeEvent.data.object as Stripe.Invoice;
 
-  if (!stripeInvoice.id) {
+  const stripeInvoiceId = stripeInvoice.id;
+  if (!stripeInvoiceId) {
     throw new Error('stripe.invoice.paid event has no invoice id');
   }
 
@@ -123,17 +125,18 @@ async function projectStripeInvoicePaid(event: {
   const { data: recorded, error: rpcErr } = await sb
     .rpc('record_stripe_payment', {
       p_org_id: orgId(),
-      p_stripe_invoice_id: stripeInvoice.id,
+      p_stripe_invoice_id: stripeInvoiceId,
       p_stripe_payment_id: stripePaymentId,
       p_amount_cents: stripeInvoice.amount_paid,
-      p_currency: stripeInvoice.currency ? stripeInvoice.currency.toUpperCase() : null,
+      // '' → the RPC's nullif() falls back to the invoice's own currency.
+      p_currency: stripeInvoice.currency ? stripeInvoice.currency.toUpperCase() : '',
       p_received_at: receivedAt,
       p_raw: {
         stripe_event_id: stripeEvent.id,
-        stripe_invoice_id: stripeInvoice.id,
+        stripe_invoice_id: stripeInvoiceId,
         payment_ref: paymentRef,
         invoice: stripeInvoice,
-      } as unknown as Record<string, unknown>,
+      } as unknown as Json,
     })
     .single();
   if (rpcErr) throw rpcErr;

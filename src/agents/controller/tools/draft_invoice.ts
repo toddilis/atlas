@@ -15,6 +15,7 @@
 // is what trips the policy engine + approval gate.
 
 import { supabase, orgId } from '../../../data/supabase.js';
+import type { Json } from '../../../data/database.types.js';
 import { appendEvent } from '../../../platform/events/eventLog.js';
 import { resolvePricesForAccount } from '../../../platform/pricing/resolve.js';
 import type { ToolContext } from '../../../platform/tools/registry.js';
@@ -157,7 +158,7 @@ export async function execute(
     p_account_id: fe.account_id as string,
     p_fulfillment_event_id: fe.id as string,
     p_currency: currency,
-    p_lines: lines,
+    p_lines: lines as unknown as Json,
   });
   if (rpcErr) throw rpcErr;
   const row = Array.isArray(data) ? data[0] : data;

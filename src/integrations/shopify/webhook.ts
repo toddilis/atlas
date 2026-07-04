@@ -5,6 +5,7 @@
 // fulfillment_events row recorded with route + reason.
 
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import { appendEvent } from '../../platform/events/eventLog.js';
 import { registerProjector } from '../../platform/events/projector.js';
 import { verifyWebhookHmac } from './hmac.js';
@@ -105,7 +106,7 @@ async function projectFulfillment(event: { payload: Record<string, unknown> }): 
     status: p.status,
     tracking_company: p.tracking_company ?? null,
     tracking_numbers: p.tracking_numbers ?? [],
-    raw: p,
+    raw: p as unknown as Json,
     occurred_at: p.created_at ?? p.updated_at ?? new Date().toISOString(),
     synced_at: new Date().toISOString(),
   };

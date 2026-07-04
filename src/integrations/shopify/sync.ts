@@ -9,6 +9,7 @@
 
 import 'dotenv/config';
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import { log } from '../../platform/log.js';
 import { iteratePages } from './client.js';
 
@@ -89,9 +90,9 @@ export async function syncCustomers(): Promise<number> {
       email: c.email ?? null,
       first_name: c.first_name ?? null,
       last_name: c.last_name ?? null,
-      default_address: c.default_address ?? null,
+      default_address: (c.default_address ?? null) as unknown as Json,
       tags: tagsArray(c.tags),
-      raw: c,
+      raw: c as unknown as Json,
       created_at_source: c.created_at ?? null,
       updated_at_source: c.updated_at ?? null,
       synced_at: new Date().toISOString(),
@@ -158,7 +159,7 @@ export async function syncOrders(): Promise<number> {
       financial_status: o.financial_status ?? null,
       fulfillment_status: o.fulfillment_status ?? null,
       tags: tagsArray(o.tags),
-      raw: o,
+      raw: o as unknown as Json,
       placed_at: o.created_at ?? null,
       updated_at_source: o.updated_at ?? null,
       synced_at: new Date().toISOString(),

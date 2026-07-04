@@ -8,7 +8,7 @@ import { pickPriceBook, pickEntry } from '../src/platform/pricing/resolve.js';
 import type { PriceBook, AccountPriceBookBinding } from '../src/platform/pricing/types.js';
 
 function book(over: Partial<PriceBook> & { id: string }): PriceBook {
-  return { id: over.id, currency: 'NZD', isDefault: false, active: true, ...over };
+  return { currency: 'NZD', isDefault: false, active: true, ...over };
 }
 
 function binding(over: { priceBookId: string; effectiveFrom: string }): AccountPriceBookBinding {

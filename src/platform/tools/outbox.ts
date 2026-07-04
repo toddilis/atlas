@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import { log } from '../log.js';
 import { getTool } from './registry.js';
 
@@ -37,7 +38,7 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
       org_id: orgId(),
       tool_name: input.toolName,
       action: input.action,
-      payload: input.payload,
+      payload: input.payload as unknown as Json,
       idempotency_key: idempotencyKey,
       related_subject_type: input.relatedSubjectType ?? null,
       related_subject_id: input.relatedSubjectId ?? null,
@@ -143,7 +144,7 @@ export async function drain(limit = 25): Promise<number> {
         .from('outbox')
         .update({
           state: 'sent',
-          result: result as Record<string, unknown>,
+          result: result as unknown as Json,
           updated_at: new Date().toISOString(),
         })
         .eq('id', row.id);
@@ -155,7 +156,10 @@ export async function drain(limit = 25): Promise<number> {
         .from('outbox')
         .update({
           state: dead ? 'dead' : 'pending',
-          next_attempt_at: dead ? null : nextBackoff(attempts).toISOString(),
+          // Column is NOT NULL — omit it for dead rows rather than writing null. (The
+          // typed client caught this: writing null here made every dead-lettering update
+          // fail 23502 at runtime, leaving the row in_flight instead of dead.)
+          next_attempt_at: dead ? undefined : nextBackoff(attempts).toISOString(),
           last_error: (e as Error).message,
           updated_at: new Date().toISOString(),
         })

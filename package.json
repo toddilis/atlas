@@ -8,12 +8,14 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "api": "tsx src/api/server.ts",
     "sync:shopify": "tsx src/integrations/shopify/sync.ts",
     "test": "node --test --import tsx test/*.test.ts",
-    "gen:types": "supabase gen types typescript --local > src/data/database.types.ts"
+    "gen:types": "./scripts/gen-types.sh",
+    "verify:migrations": "./scripts/verify-migrations.sh",
+    "verify:parity": "tsx scripts/sql-ts-parity.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
