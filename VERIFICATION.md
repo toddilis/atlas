@@ -1,5 +1,12 @@
 # Phase 0 Verification
 
+> **Historical record (2026-06).** This documents the original one-off Phase 0 proof
+> against a live Supabase project, covering migrations 0001–0010 and the 6-test suite of
+> the time. Verification is now living and repeatable: CI applies every migration to a
+> real Postgres and runs behavioural suites on each push — see the Verification section
+> of `README.md`, `scripts/verify-migrations.sh`, `scripts/sql-ts-parity.ts`, and
+> `PLAN.md` §5 (PR-M). Nothing below is maintained.
+
 This document records the proof that Phase 0 of the Atlas build plan meets its
 verification criteria. Verification was run against a fresh Supabase project
 (`Atlas`, organisation `VICE`, region `ap-southeast-1`) provisioned via the
