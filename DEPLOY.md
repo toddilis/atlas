@@ -63,8 +63,18 @@ Next.js). Set environment variables:
 SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 ATLAS_ORG_ID
+NEXT_PUBLIC_SUPABASE_URL          # same project URL — browser-safe
+NEXT_PUBLIC_SUPABASE_ANON_KEY     # anon key — browser-safe, session handling only
+ATLAS_OPERATOR_EMAILS             # comma-separated allowlist; empty = nobody signs in
 ```
 
-The service-role key stays server-side (all pages are server components); console auth
-is PR-P — until it lands, restrict access (Vercel deployment protection or private
-deployment), per the standing single-operator caveat in `README.md`.
+One-time auth setup in the Supabase dashboard (Authentication):
+
+1. Create the operator user (email + password) under Users.
+2. Disable public sign-ups (Providers → Email → turn off sign-ups). The console's
+   allowlist fails closed regardless, but there's no reason to accept strangers'
+   accounts into the auth table.
+
+The service-role key stays server-side (all pages are server components) and only runs
+behind the middleware session gate (PR-P, decision D3). Real RLS-scoped access is a v2
+multi-tenant item.

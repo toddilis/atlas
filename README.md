@@ -85,8 +85,9 @@ npm install
 npm run dev                     # http://localhost:3002
 ```
 
-Service-role key bypasses RLS — fine for the single-operator v1; auth-scoped
-access lands when authentication does.
+Access is gated by Supabase Auth + an operator email allowlist (PR-P; middleware
+session check on every route). Data access uses the server-side service-role key
+behind that gate — per decision D3, RLS-scoped access is a v2 multi-tenant item.
 
 ## Deterministic boundary (platform-wide invariant)
 
