@@ -220,8 +220,12 @@ The interaction model (§2) becomes real. End state: morning dashboard → decid
 escalated items → ask the assistant a follow-up → done.
 
 ### PR-P — Console auth (D3)
-- [ ] Supabase Auth, single operator account, middleware-gated routes
-- [ ] Service-role key stays server-side behind the auth gate
+- [x] Supabase Auth with cookie sessions (`@supabase/ssr`): request proxy gates every
+      route, refreshes the session, and enforces a fail-closed operator email
+      allowlist (`ATLAS_OPERATOR_EMAILS` — empty admits nobody; non-allowlisted
+      accounts are signed out). Login page + sign-out; auth setup steps in DEPLOY.md
+- [x] Service-role key stays server-side behind the gate (anon key is the only
+      browser-side credential, used solely for session handling)
 
 ### PR-Q — Approve/deny in the console + module-aware shell
 - [ ] Server actions → `decideApproval` → hardened `executeApproved`
