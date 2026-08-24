@@ -6,7 +6,7 @@ import { authEnv } from '../../../lib/auth';
 export async function POST(request: Request) {
   const env = authEnv();
   if (env) {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerClient(env.url, env.anonKey, {
       cookies: {
         getAll: () => cookieStore.getAll(),

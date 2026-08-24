@@ -220,7 +220,7 @@ The interaction model (§2) becomes real. End state: morning dashboard → decid
 escalated items → ask the assistant a follow-up → done.
 
 ### PR-P — Console auth (D3)
-- [x] Supabase Auth with cookie sessions (`@supabase/ssr`): middleware gates every
+- [x] Supabase Auth with cookie sessions (`@supabase/ssr`): request proxy gates every
       route, refreshes the session, and enforces a fail-closed operator email
       allowlist (`ATLAS_OPERATOR_EMAILS` — empty admits nobody; non-allowlisted
       accounts are signed out). Login page + sign-out; auth setup steps in DEPLOY.md

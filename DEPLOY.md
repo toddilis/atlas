@@ -75,6 +75,9 @@ One-time auth setup in the Supabase dashboard (Authentication):
    allowlist fails closed regardless, but there's no reason to accept strangers'
    accounts into the auth table.
 
+Keep Vercel Deployment Protection enabled until an allowed operator has passed login,
+session refresh and sign-out, and a non-allowlisted account has been denied in production.
+
 The service-role key stays server-side (all pages are server components) and only runs
-behind the middleware session gate (PR-P, decision D3). Real RLS-scoped access is a v2
+behind the request proxy session gate (PR-P, decision D3). Real RLS-scoped access is a v2
 multi-tenant item.

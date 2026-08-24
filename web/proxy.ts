@@ -6,8 +6,9 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { authEnv, operatorAllowed } from './lib/auth';
+import { redirectWithCookies } from './lib/auth-response';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isLogin = path === '/login' || path.startsWith('/login/');
 
@@ -37,15 +38,15 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     if (isLogin) return response;
-    return NextResponse.redirect(new URL('/login', request.url));
+    return redirectWithCookies(new URL('/login', request.url), response);
   }
 
   if (!operatorAllowed(user.email)) {
     await supabase.auth.signOut();
-    return NextResponse.redirect(new URL('/login?denied=1', request.url));
+    return redirectWithCookies(new URL('/login?denied=1', request.url), response);
   }
 
-  if (isLogin) return NextResponse.redirect(new URL('/', request.url));
+  if (isLogin) return redirectWithCookies(new URL('/', request.url), response);
   return response;
 }
 

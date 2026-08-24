@@ -38,7 +38,7 @@ Every push runs three jobs (`.github/workflows/atlas-ci.yml`):
    keys, RPC execution probes, payment atomicity (exactly-once, stranded-heal),
    control-plane integrity, and statement aging/reconciliation. `scripts/sql-ts-parity.ts`
    then executes the SQL money functions and compares them with their TS mirrors.
-3. `console typecheck + build`.
+3. `console auth tests + typecheck + build`.
 
 Regenerate DB types after adding a migration: `npm run gen:types` (spins an ephemeral
 cluster from the migrations — no live project needed). `VERIFICATION.md` is the
@@ -85,7 +85,7 @@ npm install
 npm run dev                     # http://localhost:3002
 ```
 
-Access is gated by Supabase Auth + an operator email allowlist (PR-P; middleware
+Access is gated by Supabase Auth + an operator email allowlist (PR-P; request proxy
 session check on every route). Data access uses the server-side service-role key
 behind that gate — per decision D3, RLS-scoped access is a v2 multi-tenant item.
 
