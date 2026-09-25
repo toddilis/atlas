@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, type RealtimeClientOptions } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import type { Database } from './database.types.js';
 
 let cached: SupabaseClient<Database> | null = null;
@@ -19,6 +20,10 @@ export function supabase(): SupabaseClient<Database> {
   cached = createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: 'public' },
+    // Supabase initializes its realtime client even for REST-only callers.
+    // Node 20 needs an explicit transport; constructing it opens no subscription.
+    // ws and Supabase's constructor types differ despite the supported transport.
+    realtime: { transport: WebSocket as unknown as RealtimeClientOptions['transport'] },
   });
   return cached;
 }
