@@ -1,15 +1,19 @@
 # Atlas first build queue
 
+For the full delivery sequence, inventory and later modules, read the
+[segmented build plan](SEGMENTED_ROADMAP.md). The next independent coding slice is
+[DATA-01](tasks/DATA-01.md); PRICING-01 is the next new operator-facing feature.
+
 Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa2`. This queue makes the proposed first milestone executable. Read current code and open PRs again before claiming work. Task readiness does not grant authority outside the user's current mandate.
 
-`PLAN.md` remains the standing product plan. Preserve PR-P through PR-T references; they correspond to existing product slices. This queue supplies their missing prerequisite repairs and the autonomous-development setup. Controller is the first completed responsibility; the full roadmap remains Controller → Quartermaster → Rep → Marketer → Concierge → Registrar.
+`PLAN.md` remains the standing product plan. Preserve PR-P through PR-T references; they correspond to existing product slices. This queue supplies their missing prerequisite repairs and the autonomous-development setup. Controller is the first responsibility targeted for full completion; the module order remains Controller → Quartermaster → Rep → Marketer → Concierge → Registrar.
 
 | Task | Outcome | Prerequisites | Completion evidence |
 | --- | --- | --- | --- |
 | BUILD-01 | Establish reproducible coding/test environment | Bootstrap instructions available | Root/web checks and real-database CI verified on a named revision; missing capability explicitly recorded |
 | BUILD-02 | Demonstrate persistent autonomous handoff/recovery | BUILD-01; configured runner credentials/budget for live activation | Accepted task finishes, next eligible task is selected, and restart/duplicate wake-ups cause no duplicate work; release authority is enforced |
 | AUTH-01 / PR-P | Complete and verify existing console authentication work | BUILD-01 | Review PR #19 before building overlap; permitted/denied/expired-session cases and protected server-side reads/actions |
-| DATA-01 | Represent successful dispatch lines and order-linked invoice-part identity | BUILD-01; Controller fixture contract | Order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; distinct stable invoice parts for partial dispatches; no overlapping billed allocations |
+| DATA-01 | Represent successful dispatch lines and order-linked invoice-part identity | BUILD-01; Controller fixture contract | Follow tasks/DATA-01.md: order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; stable internal invoice-part identity and no overlapping billed allocations |
 | PRICING-01 | Manage and preview adaptable product and shipping pricing in Atlas | BUILD-01; AUTH-01 and AUTHZ-01 for protected operator editing | Follow tasks/PRICING-01.md: editable price books, retailer agreements/discounts and shipping rules; effective dates, explained preview, reasoned overrides and immutable invoice snapshots; real console and database evidence |
 | BILL-01 | Draft dispatched quantities as order invoices or suffixed invoice parts | DATA-01, PRICING-01; confirmed numbering and pilot pricing/freight configuration for live validation | 40/60 dispatches create parts A/B for 40/60; configured retailer prices/discounts, allocated freight and tax match approved expectations; standard or owner-selected terms are stored per invoice |
 | AUTHZ-01 | Enforce entitlement before policy thresholds | BUILD-01 | Follow the bounded task brief in tasks/AUTHZ-01.md; configured policy cannot bypass revoked/missing grants |
@@ -46,4 +50,12 @@ The [owner-confirmed receivables contract](../product/VICE_RECEIVABLES.md) and P
 
 ## Later milestone
 
-Quartermaster starts when stock quantities by location/state, inbound commitments, supplier lead times/costs and purchasing constraints are trustworthy. Build visibility, then reorder proposals, then purchase/receipt execution. Validate a joint Controller/Quartermaster decision before broadening to Rep. The full later module charter remains in PLAN.md.
+Inventory work is explicit in INV-01 through INV-04 of the segmented plan: verify
+opening stock/source ownership, represent stock states, ingest movements and deliver
+reconciliation screens. It can begin once shared identities/access and its source
+contract are ready. Products and fulfillment headers alone do not establish balances.
+
+Quartermaster then advances through planning (QM-01 through QM-03), purchasing
+(BUY-01/02) and receiving (RECEIVE-01). Validate a joint Controller/Quartermaster
+purchase/receipt/bill case before broadening to Rep. Later scope includes wider
+finance, Rep, Marketer, Concierge and Registrar; the module charter remains in PLAN.md.

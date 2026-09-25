@@ -10,6 +10,11 @@ real data shape teaches what a speculative second agent would guess wrong.
 
 ## Status
 
+For current delivery milestones and their completion gates, read the
+[segmented build plan](docs/development/SEGMENTED_ROADMAP.md). The history below
+describes code already present; it does not establish that the new VICE invoice,
+inventory or Quartermaster workflows have been validated in live operation.
+
 Tracked in **`PLAN.md`** (the standing reference: module roadmap, decision log, phased
 PR slices with acceptance checkboxes). Shipped so far:
 
@@ -100,4 +105,5 @@ narration. **No agent's Claude/memory path ever writes the books.**
 - Phase 1 — Controller agent end-to-end (wholesale slice).
 - Phase 2 — human surfaces (web console, digests, conversational assistant).
 - Deferred — memory consolidation + pgvector retrieval, approval-as-training autonomy graduation,
-  consignment v1.1, inter-co v1.2, DTC ledger posting, Agent #2 (Growth), v2+ generalization.
+  consignment v1.1, inter-co v1.2, DTC ledger posting, reconciled inventory and Agent #2
+  (Quartermaster), then Rep/Marketer/Concierge/Registrar and v2+ generalization.

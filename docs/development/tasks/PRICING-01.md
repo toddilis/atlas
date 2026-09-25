@@ -110,10 +110,13 @@ but do not calculate money or activate pricing without the configured authority.
 | Restart after activation or invoice snapshot | One durable version/calculation survives; retries do not reprice historical work |
 
 Use independent expected calculations, application/database boundary tests and a
-real authenticated browser journey for edit -> preview -> activate -> draft ->
-override -> review. Exercise persisted versions, authorization and concurrency in a
-disposable database. Run the required root/web checks, migration probes and parity
-checks for schema changes. Unit-only resolver tests do not complete this feature.
+real authenticated browser journey for edit -> preview -> activate, including
+reasoned overrides on a persisted pricing preview. Exercise versions, authorization
+and concurrency in a disposable database. This is the PRICING-01 configuration
+delivery gate; it can complete before BILL-01 consumes the calculation contract.
+The invoice draft -> override -> review integration and approval-invalidation cases
+are joint BILL-01/AUTHZ-02/FLOW-01 gates. Run required root/web checks, migration
+probes and parity for schema changes. Unit-only resolver tests do not complete the editor.
 
 ## Handoff
 

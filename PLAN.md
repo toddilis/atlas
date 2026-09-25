@@ -1,5 +1,11 @@
 # Atlas — development plan
 
+The [segmented build plan](docs/development/SEGMENTED_ROADMAP.md) gives the current
+delivery sequence, dependencies and acceptance gates across Controller, inventory,
+Quartermaster and the later modules. Its segment numbers do not replace the
+historical phase/PR numbering below. Historical shipped code is not evidence that
+the newly confirmed VICE operating journey is deployed or validated.
+
 For ChatGPT/Codex execution, read [AGENTS.md](AGENTS.md), the [first build queue](docs/development/BUILD_QUEUE.md), and the [setup/runbook](docs/development/CHATGPT_RUNBOOK.md). These bootstrap files define proposed work and verification; they do not indicate that an unattended runner is active.
 
 Tracked plan for Atlas. Checkboxes are updated in the PR that lands them; each PR
@@ -108,6 +114,7 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D8 | 2026-09-25 | Owner-confirmed first VICE receivables flow: Shopify orders; one invoice per order at dispatch; existing Excel retailer pricing/discounts; variable GoSweetSpot freight; usually 20th-of-following-month terms with exceptions; owner approval; print/occasional email carrying the Shopify order number; full bank-transfer settlement; new shipments only. This supersedes generic per-shipment/Stripe assumptions for the pilot. Split-dispatch timing, exact terms/tax rules, workbook mappings and bank/accounting source remain open in [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md). |
 | D9 | 2026-09-25 | Owner clarified D8: partial fulfillments produce invoice parts such as `#xxxxA`, `#xxxxB`, etc., linked to the same order and billing each part's dispatched quantities. This replaces the earlier one-invoice-across-all-dispatches interpretation. Terms exceptions are case by case and must be specified per invoice before approval. Wise and ASB are the banks used; export/feed availability and the official accounting record remain unconfirmed. See [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md) for the current contract and remaining workbook/sample inputs. |
 | D10 | 2026-09-25 | Owner clarified the product requirement: Atlas must provide adaptable product and shipping pricing. The uploaded Excel workbook is an initial data/layout reference; it does not define an immutable pricing policy. Operators must manage prices, retailer agreements, discounts and freight rules in Atlas, preview their effect and approve invoice-specific exceptions. Versioned calculations preserve agreed historical invoice amounts. [PRICING-01](docs/development/tasks/PRICING-01.md) defines the implementation and acceptance scope; actual rates and commercial policies remain operator configuration. |
+| D11 | 2026-09-25 | Publish an entire segmented delivery plan at the owner's request. Preserve the module order and make inventory source/balance reconciliation an explicit foundation before Quartermaster planning, purchasing and receiving. DATA-01 is the next independent coding slice; pricing configuration is the next new operator-facing feature. Later modules remain trigger-based, and development automation runs as a separate track. See [SEGMENTED_ROADMAP.md](docs/development/SEGMENTED_ROADMAP.md). |
 
 ---
 
@@ -281,12 +288,16 @@ console pages, digest contributor. Whatever it *does* require is the generalizat
 backlog, fixed in the platform, not patched in the module.
 
 - [ ] Formal module manifest (registration interface extracted from the two consumers)
-- [ ] Quartermaster v1 — read/alert half, zero new integrations: stock read-models and
-      low-stock / venue-discrepancy / demand-spike detection over spine data that
-      already flows (products, orders, fulfillments, consignment movements)
-- [ ] Quartermaster v1.1 — act half: reorder PO drafts within per-supplier caps, POs
-      above threshold to the approvals queue; outbound supplier channel (PO delivery)
-      is the one new integration
+- [ ] Inventory foundation (INV-01 through INV-04): verify authoritative opening
+      balances, locations/ownership, availability states and movement reconciliation.
+      Reuse existing sources where sufficient; current product/order sync is not an
+      inventory balance feed. Add verified stock-source ingestion where required.
+- [ ] Quartermaster v1 - read/alert and planning: stock read-models, low-stock /
+      venue-discrepancy / demand detection and explained replenishment proposals over
+      reconciled balances, inbound commitments and configured supplier/lead-time data
+- [ ] Quartermaster v1.1 — purchasing/receiving: PO proposals within configured supplier
+      limits, policy-bound approval, selected supplier delivery/acknowledgement channel,
+      inbound tracking and exactly-once partial receipts with discrepancy resolution
 - [ ] v2 multi-tenant: real RLS (org GUC set per-request), roles, per-module
       enable/disable per org
 
