@@ -41,6 +41,13 @@ export function prepareFixture(directory: string): string {
 export class FixtureProvider implements Provider {
   constructor(readonly directory: string) {}
   receipt(run: Run): Receipt | undefined {
+    // The fixture effect and its reconciliation evidence share one publication.
+    // A crash before the separate completion notification must not lose success.
+    if (run.stage === 'release') {
+      const released = readIfPresent<{ receipt: Receipt }>(
+        join(this.directory, 'provider', 'releases', `${run.id}.json`));
+      if (released?.receipt) return released.receipt;
+    }
     return readIfPresent(join(this.directory, 'provider', 'receipts', `${run.id}.json`));
   }
   async submit(state: State, run: Run): Promise<void> {
@@ -81,17 +88,22 @@ function claimWorker(directory: string, runId: string): boolean {
 
 // Called only by the fixed fixture worker, with the accepted plan read from the
 // trusted journal. The build output cannot supply verification/release receipts.
-export function executeFixture(directory: string, runId: string): void {
-  const state = new Journal<State>(join(directory, 'state')).read();
-  const run = state.runs.find((item) => item.id === runId);
-  if (!run) throw new Error('Unrecognized run');
-  const receiptFile = join(directory, 'provider', 'receipts', `${run.id}.json`);
-  if (readIfPresent(receiptFile)) return;
-  if (!claimWorker(directory, run.id)) return;
+export function executeFixture(directory: string, runId: string, crashAfterRelease = false): void {
+  const journal = new Journal<State>(join(directory, 'state'));
+  const initialRun = journal.read().runs.find((item) => item.id === runId);
+  if (!initialRun) throw new Error('Unrecognized run');
+  const provider = new FixtureProvider(directory);
+  if (provider.receipt(initialRun)) return;
+  if (!claimWorker(directory, runId)) return;
   // A previous owner may have published its result immediately before exiting.
-  if (readIfPresent(receiptFile)) return;
+  if (provider.receipt(initialRun)) return;
+  // Claim acquisition may race pause or a candidate change. Check the current
+  // subject after ownership is established, not the pre-claim snapshot.
+  const state = journal.read();
+  const run = state.runs.find((item) => item.id === runId)!;
+  const receiptFile = join(directory, 'provider', 'receipts', `${run.id}.json`);
   const taskState = state.tasks.find((item) => item.activeRunId === run.id);
-  if (!taskState || state.paused || run.status !== 'pending') return;
+  if (!taskState || state.paused || run.status !== 'pending' || taskState.epoch !== run.epoch) return;
   const task = state.plan.tasks.find((item) => item.id === run.taskId)!;
   let candidate = run.candidate;
   let ok = true;
@@ -116,9 +128,6 @@ export function executeFixture(directory: string, runId: string): void {
       item.id === currentTask.evidence[stage as 'verify' | 'review'] && item.status === 'succeeded' &&
       item.candidate === candidate && item.epoch === run.epoch));
     ok = current.releaseAllowed && !current.paused && evidence && currentTask.activeRunId === run.id;
-    if (ok) publish(join(directory, 'provider', 'releases', `${run.id}.json`), {
-      candidate, runId, taskId: task.id, kind: 'fixture-only',
-    });
     detail = ok ? 'Recorded one idempotent fixture release receipt; no external release' : 'Release authority or evidence missing';
   }
   const receipt: Receipt = {
@@ -126,5 +135,11 @@ export function executeFixture(directory: string, runId: string): void {
     candidate, ok, detail, externalRunId: `fixture-run:${run.id}`,
     pullRequestId: `fixture-pr:${state.workflowId}/${task.id}`,
   };
+  if (run.stage === 'release' && ok) {
+    publish(join(directory, 'provider', 'releases', `${run.id}.json`), {
+      candidate, runId, taskId: task.id, kind: 'fixture-only', receipt,
+    });
+    if (crashAfterRelease) process.exit(87); // Fixture effect committed; notification not yet published.
+  }
   publish(receiptFile, receipt);
 }

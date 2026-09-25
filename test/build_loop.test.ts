@@ -1,7 +1,7 @@
 import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,7 @@ import { FixtureProvider, candidateFor, fixtureGit, prepareFixture, workerEnviro
 const execute = promisify(execFile);
 const cli = fileURLToPath(new URL('../scripts/build-loop/cli.ts', import.meta.url));
 const launcher = fileURLToPath(new URL('./fixtures/build-loop-launcher.ts', import.meta.url));
+const worker = fileURLToPath(new URL('../scripts/build-loop/fixture-worker.ts', import.meta.url));
 function plan(): Plan {
   return { mode: 'fixture', limits: { maxTasks: 2, maxAttempts: 2, maxUnits: 12, maxConcurrent: 1, runTimeoutMs: 30000 },
     allowFixtureRelease: true, tasks: [
@@ -162,6 +163,77 @@ test('pause and release revocation survive fresh processes; task text cannot res
   assert.match(state.tasks[0]!.reason!, /authority/);
   assert.equal(state.tasks[1]!.status, 'ready');
   assert.equal(readdirSync(join(directory, 'provider', 'releases')).length, 0);
+});
+
+test('a changed candidate retains its concurrency slot until the old worker result is reconciled', async (t) => {
+  const { directory } = fixture(t);
+  const real = new FixtureProvider(directory);
+  let withheldRun: string | undefined;
+  let deliver = false;
+  let submissions = 0;
+  const coordinator = new Coordinator(directory, {
+    receipt: (run) => run.id === withheldRun && !deliver ? undefined : real.receipt(run),
+    submit: async (state, run) => {
+      submissions++;
+      if (run.stage === 'verify' && !withheldRun) withheldRun = run.id;
+      await real.submit(state, run);
+    },
+  });
+  await coordinator.tick(); // build
+  await coordinator.tick(); // real verification worker completes; delivery is delayed
+  const before = coordinator.journal.read();
+  const candidate = candidateFor(directory, before.plan.tasks[0]!, 2);
+  coordinator.observeCandidate('FIRST', candidate);
+  await coordinator.tick();
+  await coordinator.tick();
+  const waiting = coordinator.journal.read();
+  assert.equal(waiting.tasks[0]!.activeRunId, withheldRun);
+  assert.equal(waiting.runs[1]!.status, 'pending');
+  assert.equal(waiting.unitsReserved, 2, 'unresolved work still consumes the single concurrency slot');
+  assert.equal(submissions, 2, 'do not resubmit the superseded subject or start a new check');
+  assert.deepEqual(waiting.tasks[0]!.evidence, {});
+  deliver = true;
+  await coordinator.tick();
+  const reconciled = coordinator.journal.read();
+  assert.equal(reconciled.runs[1]!.status, 'superseded');
+  assert.equal(reconciled.runs[1]!.receipt!.runId, withheldRun);
+  assert.equal(reconciled.runs[2]!.candidate, candidate);
+  assert.equal(reconciled.unitsReserved, 3);
+  await command(directory, 'run');
+  assert.deepEqual(coordinator.journal.read().tasks.map((task) => task.status), ['done', 'done']);
+});
+
+test('release effect survives worker death before notification and reconciles while paused and revoked', async (t) => {
+  const { directory } = fixture(t);
+  const real = new FixtureProvider(directory);
+  const coordinator = new Coordinator(directory, {
+    receipt: (run) => real.receipt(run),
+    submit: (state, run) => run.stage === 'release' ? Promise.resolve() : real.submit(state, run),
+  });
+  for (let i = 0; i < 4; i++) await coordinator.tick();
+  const release = coordinator.journal.read().runs[3]!;
+  await assert.rejects(execute(process.execPath,
+    ['--import', 'tsx', worker, directory, release.id, '--crash-after-release'],
+    { env: workerEnvironment(), windowsHide: true, timeout: 10000 }),
+  (error: unknown) => (error as { code: number }).code === 87);
+  assert.equal(existsSync(join(directory, 'provider', 'receipts', `${release.id}.json`)), false);
+  assert.equal(readdirSync(join(directory, 'provider', 'releases')).length, 1);
+  coordinator.control('pause');
+  coordinator.control('revoke-release');
+  await Promise.all([command(directory, 'tick'), command(directory, 'tick')]);
+  const recovered = coordinator.journal.read();
+  assert.equal(recovered.tasks[0]!.status, 'done', 'already committed release must be reported truthfully');
+  assert.equal(recovered.tasks[1]!.status, 'ready', 'pause still prevents successor dispatch');
+  assert.equal(recovered.runs[3]!.id, release.id);
+  assert.equal(recovered.runs[3]!.receipt!.ok, true);
+  assert.equal(recovered.unitsReserved, 4);
+  assert.equal(recovered.paused, true);
+  assert.equal(recovered.releaseAllowed, false);
+  await real.submit(recovered, release);
+  assert.equal(readdirSync(join(directory, 'provider', 'releases')).length, 1);
+  const revision = coordinator.journal.read().revision;
+  await command(directory, 'tick');
+  assert.equal(coordinator.journal.read().revision, revision);
 });
 
 test('repair succeeds within limits and blocks when attempts or reserved units are exhausted', async (t) => {

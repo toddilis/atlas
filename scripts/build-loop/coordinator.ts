@@ -109,13 +109,13 @@ export class Coordinator {
         throw new Error('Candidate observation requires an active pre-release candidate');
       }
       if (task.candidate === candidate) return false;
-      const active = state.runs.find((run) => run.id === task.activeRunId);
-      if (active) active.status = 'superseded';
+      // Changing the subject does not prove that its previous worker stopped.
+      // Retain pending work and its concurrency reservation until its receipt
+      // is reconciled, even though it can no longer supply current evidence.
       task.candidate = candidate;
       task.epoch++;
       task.evidence = {};
       task.stage = 'verify';
-      delete task.activeRunId;
       return true;
     });
   }
@@ -144,6 +144,10 @@ export class Coordinator {
       // job identity. Global pause/revocation are still checked before dispatch.
       task.status = 'running';
       delete task.reason;
+      if (run.epoch !== task.epoch) {
+        run.status = 'superseded';
+        return true;
+      }
       if (!result.ok) {
         if (run.stage === 'release') {
           task.status = 'blocked';
@@ -236,7 +240,8 @@ export class Coordinator {
         // Re-read authority after claiming and before external submission.
         const current = this.journal.read();
         if (current.paused || (run.stage === 'release' && !current.releaseAllowed) ||
-            !current.tasks.some((item) => item.activeRunId === run.id && item.status === 'running')) continue;
+            !current.tasks.some((item) => item.activeRunId === run.id && item.status === 'running' &&
+              item.epoch === run.epoch)) continue;
         try {
           await this.provider.submit(current, run);
         } catch (error) {

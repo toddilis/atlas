@@ -77,8 +77,15 @@ run or a future audited operator recovery mechanism, not editing task prose.
   claim when the owning process is proven dead; a slow or paused owner is not evicted.
 - Verification and review receipts must match the dispatched role, identity and
   candidate. Observing a new candidate clears the old evidence and increments its
-  epoch. Once release is dispatched, its candidate cannot be changed; first reconcile
+  epoch. An unresolved earlier check retains its run ID and concurrency reservation
+  until its receipt arrives; it cannot advance the new candidate or be resubmitted.
+  If it never resolves, the deadline produces a visible blocked outcome.
+  Once release is dispatched, its candidate cannot be changed; first reconcile
   that release. Release independently rechecks authority and current evidence.
+- The fixture release record includes its completion evidence atomically. A worker
+  interrupted after recording the effect can be reconciled without a separate
+  notification, including while paused or revoked. This reports an existing effect;
+  it does not restore authority to dispatch new work.
 - Build/check failures return to build while attempts and units remain. Exhaustion,
   missing release authority, mismatched receipts and uncertain provider submissions
   remain visibly blocked. A release failure requires reconciliation rather than a
@@ -114,7 +121,8 @@ The fixture adapter is deliberately not a bridge to an arbitrary shell command.
 `npm test` includes `test/build_loop.test.ts`. It uses actual subprocesses, immutable
 disk records and Git objects to test the full two-task journey, crash after provider
 submission, simultaneous wake-ups, completion after the launching process exits,
-candidate changes, pause/revocation, bounded repair, task/unit caps, uncertain
+candidate changes with unresolved checks, interruption between release and its
+notification, pause/revocation, bounded repair, task/unit caps, uncertain
 submission, late results, invalid receipts and invalid contracts. The detached
 process test is a controlled analogue of losing the initiating session, not proof
 that a live Codex/GitHub runner survives a real chat ending.
