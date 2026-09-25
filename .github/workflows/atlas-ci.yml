@@ -15,7 +15,7 @@ on:
       - 'tsconfig.build.json'
       - '.github/workflows/atlas-ci.yml'
   pull_request:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'codex/atlas-autonomous-build-bootstrap']
     paths:
       - 'src/**'
       - 'test/**'
@@ -45,6 +45,8 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+      - run: npm run build
 
   migrations:
     name: migrations + RPC probes + SQL⇄TS parity (real Postgres)
