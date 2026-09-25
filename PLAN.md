@@ -1,10 +1,21 @@
 # Atlas — development plan
 
+The [segmented build plan](docs/development/SEGMENTED_ROADMAP.md) gives the current
+delivery sequence, dependencies and acceptance gates across Controller, inventory,
+Quartermaster and the later modules. Its segment numbers do not replace the
+historical phase/PR numbering below. Historical shipped code is not evidence that
+the newly confirmed VICE operating journey is deployed or validated.
+
+For ChatGPT/Codex execution, read [AGENTS.md](AGENTS.md), the [first build queue](docs/development/BUILD_QUEUE.md), and the [setup/runbook](docs/development/CHATGPT_RUNBOOK.md). These bootstrap files define proposed work and verification; they do not indicate that an unattended runner is active.
+
 Tracked plan for Atlas. Checkboxes are updated in the PR that lands them; each PR
 references its section here. Decisions that change scope get a row in the decision log
 (§3) rather than silent edits.
 
-Atlas is **internal vertical AI software built as modules over one shared substrate**.
+Atlas is **a reusable business operating product built as modules over one shared substrate**.
+VICE is the first configured deployment. The [product contract](docs/product/PLATFORM_PRODUCT.md)
+requires business configuration, optional modules, integration boundaries and explicit
+business context from the first release, with isolation proven before shared-business use.
 Finance (the Controller) is module #1; Quartermaster (operations & inventory) is next,
 with the full sequence in the module roadmap (§10). The platform exists so that each
 new module is a registration, not a rebuild.
@@ -103,6 +114,11 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D5 | 2026-07-02 | Atlas is explicitly modular: platform substrate + vertical modules. Boundary rules in §1. |
 | D6 | 2026-07-02 | Module roadmap adopted (§10): Controller → Quartermaster → Rep → Marketer → Concierge → Registrar. Quartermaster takes the #2 slot (its data already flows through the substrate; better second consumer of the module contract than Marketing). Rep + Marketer may merge into one Growth module. Analytics is a platform capability, not a module. |
 | D7 | 2026-07-04 | D1's deferred host pick: **Fly.io** — one app, two process groups (api + worker) from one image, compute in `sin` next to the Supabase project. Console on Vercel per D1. |
+| D8 | 2026-09-25 | Owner-confirmed first VICE receivables flow: Shopify orders; one invoice per order at dispatch; existing Excel retailer pricing/discounts; variable GoSweetSpot freight; usually 20th-of-following-month terms with exceptions; owner approval; print/occasional email carrying the Shopify order number; full bank-transfer settlement; new shipments only. This supersedes generic per-shipment/Stripe assumptions for the pilot. Split-dispatch timing, exact terms/tax rules, workbook mappings and bank/accounting source remain open in [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md). |
+| D9 | 2026-09-25 | Owner clarified D8: partial fulfillments produce invoice parts such as `#xxxxA`, `#xxxxB`, etc., linked to the same order and billing each part's dispatched quantities. This replaces the earlier one-invoice-across-all-dispatches interpretation. Terms exceptions are case by case and must be specified per invoice before approval. Wise and ASB are the banks used; export/feed availability and the official accounting record remain unconfirmed. See [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md) for the current contract and remaining workbook/sample inputs. |
+| D10 | 2026-09-25 | Owner clarified the product requirement: Atlas must provide adaptable product and shipping pricing. The uploaded Excel workbook is an initial data/layout reference; it does not define an immutable pricing policy. Operators must manage prices, retailer agreements, discounts and freight rules in Atlas, preview their effect and approve invoice-specific exceptions. Versioned calculations preserve agreed historical invoice amounts. [PRICING-01](docs/development/tasks/PRICING-01.md) defines the implementation and acceptance scope; actual rates and commercial policies remain operator configuration. |
+| D11 | 2026-09-25 | Publish an entire segmented delivery plan at the owner's request. Preserve the module order and make inventory source/balance reconciliation an explicit foundation before Quartermaster planning, purchasing and receiving. DATA-01 is the next independent coding slice; pricing configuration is the next new operator-facing feature. Later modules remain trigger-based, and development automation runs as a separate track. See [SEGMENTED_ROADMAP.md](docs/development/SEGMENTED_ROADMAP.md). |
+| D12 | 2026-09-25 | Owner reaffirmed that Atlas must be a product usable by many different types of businesses. VICE is the first configuration/reference customer, not the product boundary. Reusable modules, provider adapters, versioned business setup and explicit business context apply now. This supersedes deferring those design boundaries to v2; isolation must be verified before a second real business shares an environment. Prove portability early with contrasting synthetic profiles, then a scoped second-customer pilot. See [PLATFORM_PRODUCT.md](docs/product/PLATFORM_PRODUCT.md). |
 
 ---
 
@@ -276,14 +292,20 @@ console pages, digest contributor. Whatever it *does* require is the generalizat
 backlog, fixed in the platform, not patched in the module.
 
 - [ ] Formal module manifest (registration interface extracted from the two consumers)
-- [ ] Quartermaster v1 — read/alert half, zero new integrations: stock read-models and
-      low-stock / venue-discrepancy / demand-spike detection over spine data that
-      already flows (products, orders, fulfillments, consignment movements)
-- [ ] Quartermaster v1.1 — act half: reorder PO drafts within per-supplier caps, POs
-      above threshold to the approvals queue; outbound supplier channel (PO delivery)
-      is the one new integration
-- [ ] v2 multi-tenant: real RLS (org GUC set per-request), roles, per-module
-      enable/disable per org
+- [ ] Inventory foundation (INV-01 through INV-04): verify authoritative opening
+      balances, locations/ownership, availability states and movement reconciliation.
+      Reuse existing sources where sufficient; current product/order sync is not an
+      inventory balance feed. Add verified stock-source ingestion where required.
+- [ ] Quartermaster v1 - read/alert and planning: stock read-models, low-stock /
+      venue-discrepancy / demand detection and explained replenishment proposals over
+      reconciled balances, inbound commitments and configured supplier/lead-time data
+- [ ] Quartermaster v1.1 — purchasing/receiving: PO proposals within configured supplier
+      limits, policy-bound approval, selected supplier delivery/acknowledgement channel,
+      inbound tracking and exactly-once partial receipts with discrepancy resolution
+- [ ] Product track from the foundation: explicit business context, memberships/roles,
+      per-business module configuration and connector contracts. Run a contrasting
+      synthetic-profile test early; verify database/API/job/retrieval isolation and
+      business lifecycle before shared-business deployment (D12 supersedes v2 deferral).
 
 ---
 
