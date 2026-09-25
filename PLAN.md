@@ -1,5 +1,7 @@
 # Atlas — development plan
 
+For ChatGPT/Codex execution, read [AGENTS.md](AGENTS.md), the [first build queue](docs/development/BUILD_QUEUE.md), and the [setup/runbook](docs/development/CHATGPT_RUNBOOK.md). These bootstrap files define proposed work and verification; they do not indicate that an unattended runner is active.
+
 Tracked plan for Atlas. Checkboxes are updated in the PR that lands them; each PR
 references its section here. Decisions that change scope get a row in the decision log
 (§3) rather than silent edits.
