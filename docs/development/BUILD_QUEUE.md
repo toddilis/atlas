@@ -9,11 +9,11 @@ Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa
 | BUILD-01 | Establish reproducible coding/test environment | Bootstrap instructions available | Root/web checks and real-database CI verified on a named revision; missing capability explicitly recorded |
 | BUILD-02 | Demonstrate persistent autonomous handoff/recovery | BUILD-01; configured runner credentials/budget for live activation | Accepted task finishes, next eligible task is selected, and restart/duplicate wake-ups cause no duplicate work; release authority is enforced |
 | AUTH-01 / PR-P | Complete and verify existing console authentication work | BUILD-01 | Review PR #19 before building overlap; permitted/denied/expired-session cases and protected server-side reads/actions |
-| DATA-01 | Represent successful fulfillment lines and billable allocations | BUILD-01; Controller fixture contract | Order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; known unsupported state is explicit |
-| BILL-01 | Draft only fulfilled/unbilled quantities with consistent terms | DATA-01 | 100-unit order fulfilled 40/60 produces corresponding quantities; repeated events do not overbill; terms agree across internal/provider contract |
+| DATA-01 | Represent successful dispatch lines and order-level invoice identity | BUILD-01; Controller fixture contract | Order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; one invoice per order; unresolved split-dispatch behavior is explicit |
+| BILL-01 | Draft one invoice per order using confirmed dispatch, workbook pricing and terms | DATA-01; workbook mappings; agreed split-dispatch rule | 40/60 dispatches preserve one invoice identity under the agreed timing rule; retailer prices/discounts, GoSweetSpot freight, tax and calendar due date match approved examples |
 | AUTHZ-01 | Enforce entitlement before policy thresholds | BUILD-01 | Follow the bounded task brief in tasks/AUTHZ-01.md; configured policy cannot bypass revoked/missing grants |
 | AUTHZ-02 | Bind persisted approval to canonical action | AUTHZ-01; agreed action contract | Stored action execution, lossless money serialization, stale/forged/wrong-subject refusal and correct retry status |
-| FLOW-01 | Complete durable Controller continuation and reconciliation | BILL-01, AUTHZ-02 | Draft → policy → approval if required → issue → external result → settlement; failure and restart cases converge |
+| FLOW-01 | Complete durable Controller continuation and bank reconciliation | BILL-01, AUTHZ-02; confirmed bank-data source | Draft → owner approval → printable invoice/authorized email → full bank-payment match; channel status, ambiguous payments, failure and restart cases are visible and recoverable |
 | UI-01 / PR-Q | Make decisions and recovery usable | AUTH-01, AUTHZ-02, FLOW-01 | Operator decides in console, sees execution outcome, and resolves a supported exception without manual API calls |
 | JOBS-01 / PR-R | Schedule ingestion, work discovery, recovery and rollups | FLOW-01 | Independent job records; a full operating cycle runs without manual endpoint calls; stale/missing input is visible |
 | TODAY-01 / PR-S | Deliver daily deterministic dashboard | UI-01, JOBS-01 | Completed/blocked/pending/upcoming work and source freshness are accurate with the model unavailable |
@@ -21,6 +21,8 @@ Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa
 | CLOSE-01 | Finish declared Controller coverage and VICE validation | Prior Controller tasks; authoritative business setup | Statements/overdue work, supported corrections/settlement/accounting handoff, live-scope evidence and explicit owner for exceptions |
 
 BUILD-02 infrastructure can be implemented against local fixtures without a paid key. Its live unattended acceptance cannot be claimed until the runner is connected and tested. Work on independent product tasks can continue in active authorized sessions while that activation is pending.
+
+The [owner-confirmed receivables contract](../product/VICE_RECEIVABLES.md) and PLAN decision D8 govern DATA-01 onward. The first VICE flow uses Excel-derived pricing, print/occasional email and bank transfer. Do not assume Stripe issuance/settlement or separate invoices for partial shipments. New shipments only; automatic invoice sending has not been delegated.
 
 ## BUILD-01 acceptance
 

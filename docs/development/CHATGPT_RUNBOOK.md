@@ -65,4 +65,4 @@ Suggested states: ready, leased, building, verifying, reviewing, release-ready, 
 
 ## What the owner supplies
 
-The owner supplies the selected coding environment/account connection, a spending limit for any paid background runner, and the intended production merge/release authority. Existing session authority takes precedence; do not ask again for already-authorized routine steps. Commercial workflow inputs are recorded in `docs/product/CONTROLLER_V1.md`. Unknown billing facts do not prevent test-environment setup, auth review or bounded correctness repairs.
+The owner supplies the selected coding environment/account connection, a spending limit for any paid background runner, and the intended production merge/release authority. Existing session authority takes precedence; do not ask again for already-authorized routine steps. Commercial workflow acceptance is recorded in `docs/product/CONTROLLER_V1.md`; confirmed VICE business decisions and remaining inputs are in [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md). Unknown billing facts do not prevent test-environment setup, auth review or bounded correctness repairs.

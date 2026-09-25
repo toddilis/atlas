@@ -105,6 +105,7 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D5 | 2026-07-02 | Atlas is explicitly modular: platform substrate + vertical modules. Boundary rules in §1. |
 | D6 | 2026-07-02 | Module roadmap adopted (§10): Controller → Quartermaster → Rep → Marketer → Concierge → Registrar. Quartermaster takes the #2 slot (its data already flows through the substrate; better second consumer of the module contract than Marketing). Rep + Marketer may merge into one Growth module. Analytics is a platform capability, not a module. |
 | D7 | 2026-07-04 | D1's deferred host pick: **Fly.io** — one app, two process groups (api + worker) from one image, compute in `sin` next to the Supabase project. Console on Vercel per D1. |
+| D8 | 2026-09-25 | Owner-confirmed first VICE receivables flow: Shopify orders; one invoice per order at dispatch; existing Excel retailer pricing/discounts; variable GoSweetSpot freight; usually 20th-of-following-month terms with exceptions; owner approval; print/occasional email carrying the Shopify order number; full bank-transfer settlement; new shipments only. This supersedes generic per-shipment/Stripe assumptions for the pilot. Split-dispatch timing, exact terms/tax rules, workbook mappings and bank/accounting source remain open in [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md). |
 
 ---
 
