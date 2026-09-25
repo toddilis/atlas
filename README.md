@@ -1,9 +1,10 @@
 # Atlas
 
-Vertical AI management platform (Jarvis for VICE): a shared data substrate plus a team of agentic
-employees, each owning a domain, coordinated by an assistant/orchestration layer that executes
-work and reports business activity to the operator. v1 is VICE-specific; v2+ generalizes across
-businesses.
+Atlas is a modular business operating product intended for many types of businesses.
+VICE is the first configured deployment. Shared data, permissions, approvals and
+durable execution support optional business modules and integration adapters.
+Business-specific rules live in configuration; portability is a design requirement
+from the first release. See [the product contract](docs/product/PLATFORM_PRODUCT.md).
 
 The **Controller** (Finance) is Agent #1 — built end-to-end first as the vertical slice. The
 real data shape teaches what a speculative second agent would guess wrong.
@@ -90,8 +91,9 @@ npm install
 npm run dev                     # http://localhost:3002
 ```
 
-Service-role key bypasses RLS — fine for the single-operator v1; auth-scoped
-access lands when authentication does.
+The current service-role client bypasses RLS and uses a single-business deployment
+context. Shared-business deployment requires the membership, authorization and
+isolation gates in the product contract; an org column alone is insufficient.
 
 ## Deterministic boundary (platform-wide invariant)
 
@@ -106,4 +108,6 @@ narration. **No agent's Claude/memory path ever writes the books.**
 - Phase 2 — human surfaces (web console, digests, conversational assistant).
 - Deferred — memory consolidation + pgvector retrieval, approval-as-training autonomy graduation,
   consignment v1.1, inter-co v1.2, DTC ledger posting, reconciled inventory and Agent #2
-  (Quartermaster), then Rep/Marketer/Concierge/Registrar and v2+ generalization.
+  (Quartermaster), then Rep/Marketer/Concierge/Registrar. Reusable business setup and
+  portability apply throughout delivery; shared-business operation has an explicit
+  isolation gate before a second real business is onboarded.

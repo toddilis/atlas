@@ -4,6 +4,11 @@ For the full delivery sequence, inventory and later modules, read the
 [segmented build plan](SEGMENTED_ROADMAP.md). The next independent coding slice is
 [DATA-01](tasks/DATA-01.md); PRICING-01 is the next new operator-facing feature.
 
+All slices follow the [multi-business product contract](../product/PLATFORM_PRODUCT.md)
+and PLAN D12. VICE's module sequence is the first-customer delivery path, not mandatory
+setup for every future business. PLAT-01 is implemented within the affected foundation,
+data and pricing slices; it is not a reason to defer business boundaries until v2.
+
 Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa2`. This queue makes the proposed first milestone executable. Read current code and open PRs again before claiming work. Task readiness does not grant authority outside the user's current mandate.
 
 `PLAN.md` remains the standing product plan. Preserve PR-P through PR-T references; they correspond to existing product slices. This queue supplies their missing prerequisite repairs and the autonomous-development setup. Controller is the first responsibility targeted for full completion; the module order remains Controller → Quartermaster → Rep → Marketer → Concierge → Registrar.
@@ -11,9 +16,10 @@ Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa
 | Task | Outcome | Prerequisites | Completion evidence |
 | --- | --- | --- | --- |
 | BUILD-01 | Establish reproducible coding/test environment | Bootstrap instructions available | Root/web checks and real-database CI verified on a named revision; missing capability explicitly recorded |
+| PLAT-01 | Establish explicit business context and reusable source contracts in each affected slice | BUILD-01; product contract | Business/connection identity and trusted authority propagate across data, actions and retries; affected boundaries reject cross-business references |
 | BUILD-02 | Demonstrate persistent autonomous handoff/recovery | BUILD-01; configured runner credentials/budget for live activation | Accepted task finishes, next eligible task is selected, and restart/duplicate wake-ups cause no duplicate work; release authority is enforced |
 | AUTH-01 / PR-P | Complete and verify existing console authentication work | BUILD-01 | Review PR #19 before building overlap; permitted/denied/expired-session cases and protected server-side reads/actions |
-| DATA-01 | Represent successful dispatch lines and order-linked invoice-part identity | BUILD-01; Controller fixture contract | Follow tasks/DATA-01.md: order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; stable internal invoice-part identity and no overlapping billed allocations |
+| DATA-01 | Represent successful dispatch lines and order-linked invoice-part identity | BUILD-01; Controller fixture contract; implement its PLAT-01 boundary | Follow tasks/DATA-01.md: business-scoped domain/source identities, partial/cancelled/corrected/out-of-order cases; stable internal invoice-part identity and no overlapping billed allocations |
 | PRICING-01 | Manage and preview adaptable product and shipping pricing in Atlas | BUILD-01; AUTH-01 and AUTHZ-01 for protected operator editing | Follow tasks/PRICING-01.md: editable price books, retailer agreements/discounts and shipping rules; effective dates, explained preview, reasoned overrides and immutable invoice snapshots; real console and database evidence |
 | BILL-01 | Draft dispatched quantities as order invoices or suffixed invoice parts | DATA-01, PRICING-01; confirmed numbering and pilot pricing/freight configuration for live validation | 40/60 dispatches create parts A/B for 40/60; configured retailer prices/discounts, allocated freight and tax match approved expectations; standard or owner-selected terms are stored per invoice |
 | AUTHZ-01 | Enforce entitlement before policy thresholds | BUILD-01 | Follow the bounded task brief in tasks/AUTHZ-01.md; configured policy cannot bypass revoked/missing grants |
@@ -24,6 +30,12 @@ Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa
 | TODAY-01 / PR-S | Deliver daily deterministic dashboard | UI-01, JOBS-01 | Completed/blocked/pending/upcoming work and source freshness are accurate with the model unavailable |
 | AI-01 / PR-T | Add grounded narration and read-only assistant | TODAY-01 | Record-linked answers, scoped queries, honest missing-data behavior and model-outage fallback |
 | CLOSE-01 | Finish declared Controller coverage and VICE validation | Prior Controller tasks; authoritative business setup | Statements/overdue work, supported corrections/settlement/accounting handoff, live-scope evidence and explicit owner for exceptions |
+
+Product expansion gates run alongside this queue: CONFIG-01 (reusable setup) and
+PORT-01 (contrasting synthetic business profiles) start with catalogue/pricing.
+TENANT-01 must pass before another real business shares an environment. PILOT-02
+then proves a scoped second customer's workflow without a codebase fork. These gates
+do not wait for every VICE module; they require the selected workflow's dependencies.
 
 BUILD-02 infrastructure can be implemented against local fixtures without a paid key. Its live unattended acceptance cannot be claimed until the runner is connected and tested. Work on independent product tasks can continue in active authorized sessions while that activation is pending.
 

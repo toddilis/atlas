@@ -25,6 +25,13 @@ canonical IDs and forward-only migration history.
 
 ## Scope and boundary
 
+- Follow [the product contract](../../product/PLATFORM_PRODUCT.md). Implement this
+  slice's PLAT-01 boundary with explicit business/connection context and an Atlas
+  dispatch/order-line contract. Keep Shopify payload interpretation and external IDs
+  in its adapter/source mapping; another provider must not require copying Controller.
+- Preserve tenant-scoped identity and deduplication when two businesses use identical
+  SKUs or source IDs. Never infer authority from an untrusted business ID. Test the
+  affected boundaries with two synthetic businesses; this alone does not pass TENANT-01.
 - Normalize dispatch-line source identity and its original order-line relationship.
   Preserve fulfillment identity, source status, quantity, revision/time and location.
 - Define successful/billable eligibility explicitly. Missing lines, unknown original

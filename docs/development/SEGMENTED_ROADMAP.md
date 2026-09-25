@@ -5,12 +5,23 @@ with the first milestones executed through [BUILD_QUEUE.md](BUILD_QUEUE.md).
 These segment numbers do not renumber the historical PR phases in PLAN.md.
 Later capabilities are planned scope, not implemented features or delegated authority.
 
+Atlas is a product for many types of business. VICE is the first configured deployment.
+The twelve segments below are its initial delivery path; other businesses select the
+modules and supported workflows they need. The [product architecture contract](../product/PLATFORM_PRODUCT.md)
+requires reusable business setup, provider adapters and explicit business context now,
+with isolation verified before shared-business use. Portability is not deferred to v2.
+
 ## What happens next
 
 The next independent coding slice is [DATA-01](tasks/DATA-01.md): preserve actual
 dispatched lines and quantities, so shipments of 40 and 60 cannot each invoice the
 original 100-unit order. It is ready for synthetic implementation after BUILD-01;
 final invoice numbering is a later configuration dependency.
+
+DATA-01 also establishes its part of PLAT-01: business-scoped canonical records and
+source mappings, with Shopify-specific interpretation in an adapter. PRICING-01 must
+support separate business configurations and optional shipping. These requirements
+shape the current slices rather than postponing them for a future generalisation pass.
 
 Alongside that work, finish review/integration of the existing authentication and
 permission changes, then bind approvals to the exact stored action in AUTHZ-02.
@@ -181,11 +192,28 @@ delegated merge/release policy. Its completion gate is work continuing after the
 ends and recovering from interruption. It can advance alongside product work; it is
 not active and is not required for ordinary authorized coding sessions.
 
-**Shared platform:** every segment reuses identities, permissions, audit, approvals,
-events, durable work and the console. Add memory over reliable source records. Any
-increase in authority is explicit and action-specific. Extract the common module
-contract when Quartermaster supplies the second real consumer. Multi-business tenancy
-and wider roles come later, after VICE's workflows are proven.
+**Product platform:** every segment reuses identities, permissions, audit, approvals,
+events, durable work and the console. Carry explicit business context through new
+boundaries now; keep pricing, branding, tax/terms and workflows in versioned business
+configuration and provider mappings in adapters. Modules are selected per business.
+Add memory over reliable, business-isolated records. Any increase in authority is
+explicit and action-specific. Quartermaster tests reuse by a second module, while
+PORT-01 separately tests use by a different business. A second module alone does not
+prove that the product supports other businesses.
+
+## Product expansion gates across the segments
+
+| Gate | Delivery point | Completion evidence |
+| --- | --- | --- |
+| PLAT-01: business context/source contracts | Foundation and each affected data/action slice | Explicit business and connection identity, trusted authority and cross-business boundary tests |
+| CONFIG-01: reusable onboarding | Catalogue/pricing and module setup | Configure branding, users/roles, enabled modules, supported business rules and connections without a code fork |
+| PORT-01: contrasting business profiles | Early with pricing; extend as workflows become available | Synthetic wholesale and non-stock service profiles use the same codebase; the latter can configure supported pricing with no Shopify, inventory or shipping |
+| TENANT-01: isolation and lifecycle | Before a second real business shares any environment | Database/API/job/retrieval/cache/file/secret isolation, membership roles, usage controls and business-specific export/offboarding/recovery |
+| PILOT-02: second customer | When its selected workflow and product gates pass | Onboard and complete a scoped different-business workflow using reusable configuration/modules/adapters |
+
+The second-customer pilot need not wait for every VICE module. Its scope must fit
+supported capabilities. New industries may require reusable extensions, with explicit
+acceptance criteria; this plan does not claim all business types are already supported.
 
 ## Dependencies and release standard
 

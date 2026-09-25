@@ -29,6 +29,13 @@ sufficient to develop and test the feature; live business values are set at onbo
 
 ## Product pricing
 
+- Follow [the product contract](../../product/PLATFORM_PRODUCT.md). Prices, rules,
+  templates, approval permissions and snapshots belong to a business. A second
+  business can configure different values without source edits or shared defaults.
+- Product/shipping pricing is an installed capability. Test separate synthetic
+  business profiles, including supported non-stock offerings with shipping disabled;
+  do not require Shopify or Quartermaster for a price preview. Missing capabilities
+  remain explicit rather than simulated with fake dispatch or stock records.
 - Maintain named price books with exact SKU/product mapping, currency, explicit tax
   basis, effective dates and a version history. Validate duplicate/missing mappings,
   invalid ranges and unsupported money values before activation.
