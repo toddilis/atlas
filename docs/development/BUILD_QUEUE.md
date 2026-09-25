@@ -32,6 +32,10 @@ BUILD-02 infrastructure can be implemented against local fixtures without a paid
 
 ## BUILD-02 acceptance
 
+The [fixture coordinator rehearsal](BUILD_LOOP.md) implements local handoff and
+recovery drills. Its production provider, independent engineering review and live
+unattended acceptance remain open; fixture success does not complete BUILD-02.
+
 - Use a harmless fixture task to prove claim → implementation → verification → review/release eligibility → durable result → next task.
 - Stop the dispatcher at a handoff and restart it. It resumes or reconciles the same work identity.
 - Deliver the same completion event twice. At most one successor task is leased.

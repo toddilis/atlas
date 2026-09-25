@@ -31,6 +31,9 @@ The first run establishes a working environment. It does not prove unattended mu
 
 ## Continuous execution
 
+The [BUILD-02 fixture coordinator](BUILD_LOOP.md) is available for bounded local
+handoff/restart rehearsals. It has no live provider and activates no paid runner.
+
 Recommended implementation for BUILD-02:
 
 - A small dispatcher consumes versioned accepted tasks and durable run state. It checks prerequisites, leases one eligible task, records the commit/branch/run identity and invokes a coding job.

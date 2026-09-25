@@ -15,7 +15,8 @@
     "test": "node --test --import tsx test/*.test.ts",
     "gen:types": "./scripts/gen-types.sh",
     "verify:migrations": "./scripts/verify-migrations.sh",
-    "verify:parity": "tsx scripts/sql-ts-parity.ts"
+    "verify:parity": "tsx scripts/sql-ts-parity.ts",
+    "build-loop": "tsx scripts/build-loop/cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
