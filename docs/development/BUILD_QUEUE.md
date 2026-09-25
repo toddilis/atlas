@@ -9,8 +9,8 @@ Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa
 | BUILD-01 | Establish reproducible coding/test environment | Bootstrap instructions available | Root/web checks and real-database CI verified on a named revision; missing capability explicitly recorded |
 | BUILD-02 | Demonstrate persistent autonomous handoff/recovery | BUILD-01; configured runner credentials/budget for live activation | Accepted task finishes, next eligible task is selected, and restart/duplicate wake-ups cause no duplicate work; release authority is enforced |
 | AUTH-01 / PR-P | Complete and verify existing console authentication work | BUILD-01 | Review PR #19 before building overlap; permitted/denied/expired-session cases and protected server-side reads/actions |
-| DATA-01 | Represent successful dispatch lines and order-level invoice identity | BUILD-01; Controller fixture contract | Order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; one invoice per order; unresolved split-dispatch behavior is explicit |
-| BILL-01 | Draft one invoice per order using confirmed dispatch, workbook pricing and terms | DATA-01; workbook mappings; agreed split-dispatch rule | 40/60 dispatches preserve one invoice identity under the agreed timing rule; retailer prices/discounts, GoSweetSpot freight, tax and calendar due date match approved examples |
+| DATA-01 | Represent successful dispatch lines and order-linked invoice-part identity | BUILD-01; Controller fixture contract | Order/shipment-line identity, partial/cancelled/corrected/out-of-order cases; distinct stable invoice parts for partial dispatches; no overlapping billed allocations |
+| BILL-01 | Draft dispatched quantities as order invoices or suffixed invoice parts | DATA-01; workbook mappings and numbering/freight examples | 40/60 dispatches create parts A/B for 40/60; retailer prices/discounts, allocated GoSweetSpot freight and tax match examples; standard or owner-selected terms are stored per invoice |
 | AUTHZ-01 | Enforce entitlement before policy thresholds | BUILD-01 | Follow the bounded task brief in tasks/AUTHZ-01.md; configured policy cannot bypass revoked/missing grants |
 | AUTHZ-02 | Bind persisted approval to canonical action | AUTHZ-01; agreed action contract | Stored action execution, lossless money serialization, stale/forged/wrong-subject refusal and correct retry status |
 | FLOW-01 | Complete durable Controller continuation and bank reconciliation | BILL-01, AUTHZ-02; confirmed bank-data source | Draft → owner approval → printable invoice/authorized email → full bank-payment match; channel status, ambiguous payments, failure and restart cases are visible and recoverable |
@@ -22,7 +22,7 @@ Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa
 
 BUILD-02 infrastructure can be implemented against local fixtures without a paid key. Its live unattended acceptance cannot be claimed until the runner is connected and tested. Work on independent product tasks can continue in active authorized sessions while that activation is pending.
 
-The [owner-confirmed receivables contract](../product/VICE_RECEIVABLES.md) and PLAN decision D8 govern DATA-01 onward. The first VICE flow uses Excel-derived pricing, print/occasional email and bank transfer. Do not assume Stripe issuance/settlement or separate invoices for partial shipments. New shipments only; automatic invoice sending has not been delegated.
+The [owner-confirmed receivables contract](../product/VICE_RECEIVABLES.md) and PLAN decisions D8/D9 govern DATA-01 onward. The first VICE flow uses Excel-derived pricing, suffixed invoice parts for partial dispatches, case-specific terms, print/occasional email and Wise/ASB bank transfer. Do not assume Stripe issuance/settlement or an available bank feed. New shipments only; automatic invoice sending has not been delegated.
 
 ## BUILD-01 acceptance
 
