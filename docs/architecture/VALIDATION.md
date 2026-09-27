@@ -36,6 +36,18 @@ reference revision's local evidence; combined-candidate remote checks must pass 
 merge and are recorded on the PR. User acceptance does not substitute for failed or
 missing checks, browser acceptance or production evidence.
 
+## Combined-candidate CI
+
+Candidate `901dc91de0a0ce734e9cf7f70770f1f9f331cc6a` passed
+[CI run 36306553820](https://github.com/toddilis/atlas/actions/runs/36306553820):
+136 unit tests, root typecheck/build, console typecheck/build, real disposable
+Postgres/pgvector migrations and RPC probes, dispatch concurrency/interruption,
+generated database-type drift check and SQL/TypeScript parity. This supersedes the
+initial missing-remote-CI limitation. The following evidence-only documentation update
+does not change executable code; the final PR head still requires its own passing checks.
+No production migration, deployment, provider operation or auth browser acceptance is
+claimed by the disposable CI run.
+
 Reference validation covers lossless monetary serialization, exact approval fingerprint,
 tenant/reference linkage, revision/expiry/revocation, duplicate attempt identities,
 uncertain-result ownership, forbidden transition edges, channel-specific confirmation,

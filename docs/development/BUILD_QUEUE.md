@@ -116,7 +116,7 @@ the task with "Reviewed, green lit"; passing candidate checks remain mandatory.
 | Bootstrap / PR #20 | Merged as `3ad3834`; approved head `3d0e3f6` had passing CI | Foundation dependency satisfied |
 | AUTHZ-01 / PR #22 | Merged as `b7074fe`; approved head `947fd37` had passing application/database/console checks | AUTHZ-02 still required for stored approval execution |
 | DATA-01 / PR #23 | Merged as `b0cec87`; final head `96bfa4e` passed run `36306182729`, including real DB probes, type generation and parity | PRICING-01 then BILL-01; no live billing activated |
-| ARCH-01 / PR #24 | User review accepted; retargeted to main and integrated with merged prerequisites | Merge only after CI on the combined candidate; record checks in PR |
+| ARCH-01 / PR #24 | User review accepted; combined implementation `901dc91` passed CI run `36306553820` (136 tests, root/console builds and real DB checks) | Final evidence-only revision must pass CI; PR records merge state |
 | AUTH-01 / PR #19 | Still open; historical CI does not establish permitted/denied/expired-session browser acceptance | Verify against a disposable configured auth environment before integration |
 | BUILD-02 / PR #21 | Separate fixture coordinator remains open | No unattended/live runner activation implied |
 

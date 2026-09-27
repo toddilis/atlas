@@ -10,6 +10,10 @@ do not alter the tested contracts, fixtures or runtime. The PR head is the merge
 User review was accepted on 27 September 2026 ("Reviewed, green lit"). Integration
 commit `5e6a60b` includes merged #20/#22/#23; required combined-candidate CI remains
 the merge gate. See the current queue status and PR checks for the release result.
+Combined implementation `901dc91` passed CI run `36306553820`, including 136 tests,
+root/console builds and real database/concurrency/type-generation/parity checks.
+Subsequent evidence-only documentation preserves that executable implementation;
+the final candidate's checks and merge state are recorded on PR #24.
 
 ## Outcome
 
