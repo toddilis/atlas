@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { supabase, orgId } from '../../data/supabase.js';
-import type { Json } from '../../data/database.types.js';
 import { log } from '../log.js';
-import { getTool } from './registry.js';
+import { executeApproved } from './registry.js';
+import { loadBoundAction } from '../control-plane/bound-actions.js';
+import { assertEffectsAllowed } from '../events/context.js';
 
 export interface OutboxEnqueueInput {
   toolName: string;
@@ -12,6 +13,8 @@ export interface OutboxEnqueueInput {
   idempotencyKey?: string;
   relatedSubjectType?: string;
   relatedSubjectId?: string | null;
+  /** A persisted approval for exactly the queued provider action, never inherited implicitly. */
+  approvalId?: string;
 }
 
 export interface OutboxRow {
@@ -30,15 +33,19 @@ export interface OutboxRow {
  * either both land or neither does (transactional outbox pattern).
  */
 export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
+  assertEffectsAllowed();
+  if (!input.approvalId) throw new Error('outbox enqueue requires a bound provider action approval');
+  const action = await loadBoundAction(input.approvalId);
+  if (action.intent.tool_name !== input.toolName) throw new Error('outbox tool differs from approved action');
   const sb = supabase();
-  const idempotencyKey = input.idempotencyKey ?? randomUUID();
+  const idempotencyKey = `${orgId()}:${input.idempotencyKey ?? randomUUID()}`;
   const { data, error } = await sb
     .from('outbox')
     .insert({
       org_id: orgId(),
       tool_name: input.toolName,
       action: input.action,
-      payload: input.payload as unknown as NonNullable<Json>,
+      payload: { approval_id: input.approvalId, company_id: orgId() },
       idempotency_key: idempotencyKey,
       related_subject_type: input.relatedSubjectType ?? null,
       related_subject_id: input.relatedSubjectId ?? null,
@@ -52,6 +59,7 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
       const prior = await sb
         .from('outbox')
         .select('id')
+        .eq('org_id', orgId())
         .eq('idempotency_key', idempotencyKey)
         .single();
       if (prior.error || !prior.data) throw error;
@@ -67,22 +75,20 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
 export const LEASE_TTL_MS = 5 * 60_000;
 
 /**
- * Recover rows stranded in `in_flight` by a crash between lease and terminal update (PR-L:
- * previously nothing ever re-scanned them, so they were stuck forever). Reaped rows return
- * to `pending` and re-execute on the next drain — safe because tool side-effects are
- * externally idempotent (e.g. Stripe idempotency keys derived from the invoice id), so a
- * lease whose external call actually succeeded re-executes to the same result.
+ * A lost lease does not prove that the provider did nothing. Quarantine it for
+ * reconciliation rather than returning it to executable work.
  */
 export async function reapStaleLeases(): Promise<number> {
+  assertEffectsAllowed();
   const sb = supabase();
   const cutoff = new Date(Date.now() - LEASE_TTL_MS).toISOString();
   const now = new Date().toISOString();
   const { data, error } = await sb
     .from('outbox')
     .update({
-      state: 'pending',
+      state: 'failed',
       next_attempt_at: now,
-      last_error: 'lease expired; reaped back to pending',
+      last_error: 'RECONCILIATION_REQUIRED: lease expired with unknown external result',
       updated_at: now,
     })
     .eq('org_id', orgId())
@@ -98,11 +104,11 @@ export async function reapStaleLeases(): Promise<number> {
 /**
  * Drain pending outbox rows up to `limit`. Returns the number of rows processed. Caller is
  * responsible for the schedule (cron / setInterval / etc.). Each row is leased by flipping
- * state to `in_flight` before calling the tool — exactly-once relies on the tool's external
- * idempotency (Stripe idempotency-key, etc.). Stale leases from crashed drains are reaped
- * back to `pending` first.
+ * state to `in_flight` before executing the stored approved action. Unknown outcomes
+ * and stale leases are held for reconciliation; they never become automatic retries.
  */
 export async function drain(limit = 25): Promise<number> {
+  assertEffectsAllowed();
   const sb = supabase();
   await reapStaleLeases();
   const { data: rows, error } = await sb
@@ -123,63 +129,47 @@ export async function drain(limit = 25): Promise<number> {
       .from('outbox')
       .update({ state: 'in_flight', attempts: (row.attempts as number) + 1, updated_at: new Date().toISOString() })
       .eq('id', row.id)
+      .eq('org_id', orgId())
       .eq('state', 'pending')
       .select('id')
       .maybeSingle();
     if (lease.error || !lease.data) continue;             // someone else took it
 
-    const tool = getTool(row.tool_name as string);
-    if (!tool) {
-      await markFailed(row.id as string, `unknown tool: ${row.tool_name}`);
+    const payload = row.payload as Record<string, unknown>;
+    if (typeof payload.approval_id !== 'string' || payload.company_id !== orgId()) {
+      await markFailed(row.id as string, 'BOUND_APPROVAL_REQUIRED: legacy/unbound outbox held for operator reconciliation');
       continue;
     }
 
     try {
-      const result = await tool.execute(row.payload as Record<string, unknown>, {
-        agentName: 'outbox',
-        subjectType: (row.related_subject_type as string | null) ?? undefined,
-        subjectId: (row.related_subject_id as string | null) ?? null,
-      });
-      await sb
+      const stored = await loadBoundAction(payload.approval_id);
+      if (stored.intent.tool_name !== row.tool_name || stored.intent.subject_id !== row.related_subject_id)
+        throw new Error('outbox binding differs from stored action');
+      const result = await executeApproved(payload.approval_id, { companyId: orgId(), actorId: 'trusted-outbox-worker' });
+      const { error: saveError } = await sb
         .from('outbox')
         .update({
-          state: 'sent',
-          result: result as unknown as Json,
+          state: result.status === 'CONFIRMED' ? 'sent' : 'failed',
+          result: { action_id: result.actionId, execution_id: result.executionId, status: result.status },
+          last_error: result.status === 'CONFIRMED' ? null : 'RECONCILIATION_REQUIRED: effect not confirmed',
           updated_at: new Date().toISOString(),
         })
-        .eq('id', row.id);
+        .eq('id', row.id).eq('org_id', orgId());
+      if (saveError) throw saveError;
       processed++;
     } catch (e) {
-      const attempts = (row.attempts as number) + 1;
-      const dead = attempts >= 8;
-      await sb
-        .from('outbox')
-        .update({
-          state: dead ? 'dead' : 'pending',
-          // Column is NOT NULL — omit it for dead rows rather than writing null. (The
-          // typed client caught this: writing null here made every dead-lettering update
-          // fail 23502 at runtime, leaving the row in_flight instead of dead.)
-          next_attempt_at: dead ? undefined : nextBackoff(attempts).toISOString(),
-          last_error: (e as Error).message,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-      log.warn('outbox.attempt_failed', { id: row.id, attempts, error: (e as Error).message });
+      await markFailed(row.id, `RECONCILIATION_REQUIRED: ${(e as Error).message}`);
+      log.warn('outbox.attempt_failed', { id: row.id, error: (e as Error).message });
     }
   }
   return processed;
 }
 
-function nextBackoff(attempts: number): Date {
-  // 2^attempts seconds, capped at 1 hour.
-  const seconds = Math.min(2 ** attempts, 3600);
-  return new Date(Date.now() + seconds * 1000);
-}
-
 async function markFailed(id: string, error: string): Promise<void> {
   const sb = supabase();
-  await sb
+  const { error: saveError } = await sb
     .from('outbox')
     .update({ state: 'failed', last_error: error, updated_at: new Date().toISOString() })
-    .eq('id', id);
+    .eq('id', id).eq('org_id', orgId());
+  if (saveError) throw saveError;
 }

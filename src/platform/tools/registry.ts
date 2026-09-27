@@ -8,8 +8,15 @@
 // tools (shopify reads) don't need to know the engine exists.
 
 import { supabase, orgId } from '../../data/supabase.js';
+import type { Json } from '../../data/database.types.js';
 import { audit } from '../control-plane/audit.js';
-import { requestApproval, consumeApproval } from '../control-plane/approvals.js';
+import {
+  assertConfiguredCompany, currentPolicySnapshot, encodeActionValue, decodeActionValue,
+  prepareBoundApproval, loadBoundAction, claimBoundAction, finishBoundAction,
+  stableActionJson, KnownNoEffectError,
+} from '../control-plane/bound-actions.js';
+import { parseConfig } from '../policy/config.js';
+import { assertEffectsAllowed } from '../events/context.js';
 import type { RiskTier } from '../control-plane/types.js';
 import {
   buildState,
@@ -20,9 +27,14 @@ import {
 } from '../policy/index.js';
 
 export interface ToolContext {
+  /** Trusted deployment binding; arbitrary client tenant selection is never accepted. */
+  companyId?: string;
   agentName: string;
   subjectType?: string;
   subjectId?: string | null;
+  actionId?: string;
+  executionId?: string;
+  idempotencyKey?: string;
 }
 
 export interface ToolDefinition<I, O> {
@@ -39,6 +51,10 @@ export interface ToolDefinition<I, O> {
    * audit pipeline.
    */
   policyInput?: (input: I, ctx: ToolContext) => Omit<PolicyInput, 'action'>;
+  /** Required for approval of a mutating tool. Read all material preconditions. */
+  approvalSnapshot?: (input: I, ctx: ToolContext) => Promise<Record<string, unknown>>;
+  /** Declared effect confirmation. A returned handler result alone is not delivery proof. */
+  confirmation?: (result: O, input: I, ctx: ToolContext) => Record<string, unknown> | null;
   execute: (input: I, ctx: ToolContext) => Promise<O>;
 }
 
@@ -77,6 +93,12 @@ export async function effectiveRisk(agentName: string, toolName: string): Promis
 
   if (data) {
     if (!data.enabled) throw new Error(`tool grant disabled: ${agentName} → ${toolName}`);
+    if (def.mutating) {
+      const { error: authorityError } = await sb.rpc('assert_action_authority', {
+        p_org_id: orgId(), p_agent: agentName, p_tool: toolName,
+      });
+      if (authorityError) throw authorityError;
+    }
     return data.risk as RiskTier;
   }
   if (def.mutating) {
@@ -123,6 +145,8 @@ export async function invokeTool<I, O>(
   input: I,
   ctx: ToolContext,
 ): Promise<InvocationResult<O>> {
+  assertEffectsAllowed();
+  assertConfiguredCompany(ctx.companyId);
   const def = tools.get(name);
   if (!def) throw new Error(`unknown tool: ${name}`);
 
@@ -156,13 +180,9 @@ export async function invokeTool<I, O>(
       }
 
       if (decision.decision === 'escalate') {
-        const approvalId = await requestApproval({
-          agentName: ctx.agentName,
-          action: name,
-          subjectType: ctx.subjectType ?? policyInput.subjectType,
+        const approvalId = await prepareToolApproval(name, input, {
+          ...ctx, subjectType: ctx.subjectType ?? policyInput.subjectType,
           subjectId: ctx.subjectId ?? policyInput.subjectId,
-          payload: { input, decision } as Record<string, unknown>,
-          risk,
         });
         await audit({
           agentName: ctx.agentName,
@@ -211,14 +231,7 @@ export async function invokeTool<I, O>(
 
   // ---------- legacy risk-tier path (unchanged from Phase 0) ----------
   if (risk === 'approve_required') {
-    const approvalId = await requestApproval({
-      agentName: ctx.agentName,
-      action: name,
-      subjectType: ctx.subjectType ?? 'unknown',
-      subjectId: ctx.subjectId ?? null,
-      payload: input as Record<string, unknown>,
-      risk,
-    });
+    const approvalId = await prepareToolApproval(name, input, ctx);
     await audit({
       agentName: ctx.agentName,
       action: name,
@@ -264,47 +277,66 @@ export async function invokeTool<I, O>(
   }
 }
 
-/**
- * After an approval is granted, callers use this to actually execute the previously-blocked
- * tool. The approval is CONSUMED first (single-use compare-and-swap on executed_at, with
- * expiry enforced) — a second call with the same approval id throws, and a failed execution
- * spends the approval rather than leaving it silently replayable (PR-L).
- */
-export async function executeApproved<I, O>(
-  approvalId: string,
-  name: string,
-  input: I,
-  ctx: ToolContext,
-): Promise<O> {
-  const def = tools.get(name);
-  if (!def) throw new Error(`unknown tool: ${name}`);
-  await consumeApproval(approvalId);
+async function prepareToolApproval(name: string, input: unknown, ctx: ToolContext): Promise<string> {
+  const def = tools.get(name)!;
+  if (def.mutating && !def.approvalSnapshot) throw new Error(`tool ${name} has no material-state approval contract`);
+  const snapshot = def.approvalSnapshot ? await def.approvalSnapshot(input, ctx) : {};
+  const encoded = encodeActionValue(input);
+  if (!encoded || Array.isArray(encoded) || typeof encoded !== 'object') throw new Error('tool input must be an object');
+  return prepareBoundApproval({ schema_version: 1, org_id: orgId(), agent_name: ctx.agentName,
+    tool_name: name, subject_type: ctx.subjectType ?? 'unknown', subject_id: ctx.subjectId ?? null,
+    input: encoded, subject_snapshot: encodeActionValue(snapshot) as Record<string, unknown>,
+    policy_snapshot: await currentPolicySnapshot(name),
+  });
+}
 
-  try {
-    const result = (await def.execute(input, ctx)) as O;
-    await audit({
-      agentName: ctx.agentName,
-      action: name,
-      toolName: name,
-      subjectType: ctx.subjectType ?? null,
-      subjectId: ctx.subjectId ?? null,
-      approvalId,
-      risk: 'approve_required',
-      outcome: 'success',
-    });
-    return result;
-  } catch (e) {
-    await audit({
-      agentName: ctx.agentName,
-      action: name,
-      toolName: name,
-      subjectType: ctx.subjectType ?? null,
-      subjectId: ctx.subjectId ?? null,
-      approvalId,
-      risk: 'approve_required',
-      outcome: 'failure',
-      detail: { error: (e as Error).message },
-    });
-    throw e;
+export interface ApprovedExecutionContext { companyId: string; actorId: string }
+export interface ApprovedExecutionResult<O = unknown> {
+  actionId: string; executionId: string; status: 'CONFIRMED' | 'UNRESOLVED'; result: O;
+}
+
+/** Executes exclusively the persisted intent. No caller-selected tool, arguments or agent. */
+export async function executeApproved<O = unknown>(approvalId: string, trusted: ApprovedExecutionContext): Promise<ApprovedExecutionResult<O>> {
+  assertEffectsAllowed();
+  assertConfiguredCompany(trusted.companyId);
+  if (!trusted.actorId.trim()) throw new Error('trusted executor identity required');
+  const stored = await loadBoundAction(approvalId);
+  const intent = stored.intent;
+  assertConfiguredCompany(intent.org_id);
+  const def = tools.get(intent.tool_name);
+  if (!def) throw new Error(`unknown stored tool ${intent.tool_name}`);
+  if (def.mutating && !def.approvalSnapshot) throw new Error('stored tool lacks material-state contract');
+  const input = decodeActionValue(intent.input as Json);
+  const ctx: ToolContext = { companyId: intent.org_id, agentName: intent.agent_name,
+    subjectType: intent.subject_type, subjectId: intent.subject_id };
+  await effectiveRisk(ctx.agentName, intent.tool_name);
+  const policy = await currentPolicySnapshot(intent.tool_name);
+  if (stableActionJson(policy) !== stableActionJson(intent.policy_snapshot)) throw new Error('policy changed; new approval required');
+  if (policy) {
+    if (!def.policyInput) throw new Error('policy configured but stored tool has no extractor');
+    const decision = evaluate({ action: intent.tool_name, ...def.policyInput(input, ctx) },
+      await buildState(intent.tool_name), parseConfig(policy.config));
+    if (decision.decision === 'block') throw new Error(`current policy blocks action: ${decision.reasons.join('; ')}`);
+    // A still-applicable escalation is precisely the decision this approval authorizes.
   }
+  const snapshot = def.approvalSnapshot ? await def.approvalSnapshot(input, ctx) : {};
+  if (stableActionJson(encodeActionValue(snapshot)) !== stableActionJson(intent.subject_snapshot)) throw new Error('material subject changed; new approval required');
+  const claim = await claimBoundAction(approvalId, trusted.actorId, policy, snapshot);
+  if (stableActionJson(claim.intent) !== stableActionJson(intent)) throw new Error('stored action changed during claim');
+  Object.assign(ctx, { actionId: claim.action_id, executionId: claim.execution_id, idempotencyKey: claim.idempotency_key });
+  let result: unknown;
+  try {
+    result = await def.execute(input, ctx);
+  } catch (error) {
+    const known = error instanceof KnownNoEffectError;
+    await finishBoundAction(claim.action_id, claim.execution_id, known ? 'FAILED' : 'UNRESOLVED', null,
+      known ? error.evidence : null, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+  // Confirmation failure is itself unresolved, never a free retry of the business effect.
+  let evidence: Record<string, unknown> | null = null;
+  try { evidence = def.confirmation?.(result, input, ctx) ?? null; } catch { /* unresolved below */ }
+  const status = evidence && Object.keys(evidence).length ? 'CONFIRMED' : 'UNRESOLVED';
+  await finishBoundAction(claim.action_id, claim.execution_id, status, result, evidence);
+  return { actionId: claim.action_id, executionId: claim.execution_id, status, result: result as O };
 }
