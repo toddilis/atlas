@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "enabled": false,
+  "repository": "toddilis/atlas",
+  "writerAppId": 0,
+  "baseBranches": ["main"],
+  "model": "",
+  "maxInputTokens": 40000,
+  "maxOutputTokens": 6000,
+  "maxContextBytes": 180000,
+  "maxFiles": 40,
+  "timeoutMs": 180000,
+  "maxReviews": 0,
+  "maxTotalMicroUsd": 0,
+  "inputMicroUsdPerMillionTokens": 0,
+  "outputMicroUsdPerMillionTokens": 0,
+  "requiredJobs": [
+    "typecheck + unit tests",
+    "migrations + RPC probes + SQL⇄TS parity (real Postgres)",
+    "console typecheck + build"
+  ],
+  "contextFiles": [
+    "AGENTS.md",
+    "docs/architecture/README.md",
+    "docs/architecture/AUTHORITY_AND_GOVERNANCE.md",
+    "docs/development/BUILD_QUEUE.md"
+  ]
+}
