@@ -29,7 +29,7 @@ export async function appendEvent(input: EventInput): Promise<AppendResult> {
     agent_name: input.agentName ?? null,
     subject_type: input.subjectType ?? null,
     subject_id: input.subjectId ?? null,
-    payload: input.payload as unknown as Json,
+    payload: input.payload as unknown as NonNullable<Json>,
     occurred_at: (input.occurredAt ?? new Date()).toISOString(),
     idempotency_key: input.idempotencyKey ?? null,
   };
@@ -47,6 +47,7 @@ export async function appendEvent(input: EventInput): Promise<AppendResult> {
       const prior = await sb
         .from('event_log')
         .select(EVENT_COLUMNS)
+        .eq('org_id', row.org_id)
         .eq('idempotency_key', input.idempotencyKey)
         .single();
       if (prior.error || !prior.data) throw error;

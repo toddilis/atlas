@@ -1,0 +1,206 @@
+{
+  "observation": {
+    "contract_version": 1,
+    "company_id": "fixture-wholesale",
+    "created_at": "2026-09-27T00:00:00Z",
+    "observation_id": "obs-1",
+    "subject": {
+      "company_id": "fixture-wholesale",
+      "type": "Invoice",
+      "id": "inv-1",
+      "revision": 1
+    },
+    "source": "fixture",
+    "connection_id": null,
+    "occurred_at": "2026-09-27T00:00:00Z",
+    "observed_at": "2026-09-27T00:00:00Z",
+    "evidence_refs": [
+      {
+        "company_id": "fixture-wholesale",
+        "type": "Evidence",
+        "id": "e-dispatch"
+      }
+    ],
+    "quality": "verified"
+  },
+  "decision": {
+    "contract_version": 1,
+    "company_id": "fixture-wholesale",
+    "created_at": "2026-09-27T00:00:00Z",
+    "decision_id": "dec-1",
+    "revision": 1,
+    "decision_type": "controller.invoice_delivery",
+    "subject_refs": [
+      {
+        "company_id": "fixture-wholesale",
+        "type": "Invoice",
+        "id": "inv-1",
+        "revision": 1
+      }
+    ],
+    "trigger_refs": [
+      {
+        "company_id": "fixture-wholesale",
+        "type": "Observation",
+        "id": "obs-1"
+      }
+    ],
+    "state_snapshot_ref": {
+      "company_id": "fixture-wholesale",
+      "type": "Snapshot",
+      "id": "snap-1"
+    },
+    "options_considered": [
+      "prepare-print",
+      "hold"
+    ],
+    "recommended_option": "prepare-print",
+    "expected_outcomes": [
+      "invoice available for packing"
+    ],
+    "rationale": "Synthetic approved dispatch fixture",
+    "assumptions": [],
+    "uncertainties": [
+      "Customer receipt is not observed"
+    ],
+    "risk_class": "B",
+    "policy_refs": [
+      {
+        "company_id": "fixture-wholesale",
+        "type": "Policy",
+        "id": "fixture-policy",
+        "revision": 1
+      }
+    ],
+    "model_or_rule_provenance": "fixture-rule-v1",
+    "expires_at": "2026-09-28T00:00:00Z"
+  },
+  "approval": {
+    "contract_version": 1,
+    "company_id": "fixture-wholesale",
+    "created_at": "2026-09-27T00:00:00Z",
+    "approval_id": "appr-1",
+    "decision_id": "dec-1",
+    "decision_revision": 1,
+    "action_id": "act-1",
+    "action_revision": 1,
+    "action_intent_hash": "70da2d377e6c1114e2f5c5c68994f4a09b7c9abe37071aaf22ef4eef6111fea6",
+    "requested_authority": "ACT_WITH_APPROVAL",
+    "approver_id": "fixture-operator",
+    "disposition": "approved",
+    "reason": null,
+    "operator_edits_ref": null,
+    "policy_snapshot_ref": {
+      "company_id": "fixture-wholesale",
+      "type": "Policy",
+      "id": "fixture-policy",
+      "revision": 1
+    },
+    "decided_at": "2026-09-27T00:01:00Z",
+    "expires_at": "2026-09-28T00:00:00Z",
+    "revoked_at": null
+  },
+  "action": {
+    "contract_version": 1,
+    "company_id": "fixture-wholesale",
+    "created_at": "2026-09-27T00:00:00Z",
+    "action_id": "act-1",
+    "revision": 1,
+    "decision_id": "dec-1",
+    "decision_revision": 1,
+    "action_type": "controller.invoice.deliver",
+    "tool": "fixture.invoice.render",
+    "subject": {
+      "company_id": "fixture-wholesale",
+      "type": "Invoice",
+      "id": "inv-1",
+      "revision": 1
+    },
+    "target": {
+      "account_id": "account-1",
+      "connection_id": null
+    },
+    "parameters": {
+      "invoice_id": "inv-1",
+      "invoice_revision": 1,
+      "document_snapshot_ref": {
+        "company_id": "fixture-wholesale",
+        "type": "DocumentSnapshot",
+        "id": "doc-1",
+        "revision": 1
+      },
+      "total": {
+        "amount_minor": "9007199254740993",
+        "currency": "NZD",
+        "scale": 2
+      },
+      "channel": "print",
+      "recipient": null
+    },
+    "risk_class": "B",
+    "required_authority": "ACT_WITH_APPROVAL",
+    "idempotency_key": "fixture-wholesale:act-1:1",
+    "policy_snapshot_ref": {
+      "company_id": "fixture-wholesale",
+      "type": "Policy",
+      "id": "fixture-policy",
+      "revision": 1
+    },
+    "execution_state": "CONFIRMED",
+    "prepared_at": "2026-09-27T00:00:00Z",
+    "authorised_at": "2026-09-27T00:02:00Z"
+  },
+  "executions": [
+    {
+      "contract_version": 1,
+      "company_id": "fixture-wholesale",
+      "created_at": "2026-09-27T00:00:00Z",
+      "execution_id": "exec-1",
+      "action_id": "act-1",
+      "action_revision": 1,
+      "attempt_number": 1,
+      "idempotency_key": "fixture-wholesale:act-1:1",
+      "connection_id": null,
+      "state": "CONFIRMED",
+      "started_at": "2026-09-27T00:03:00Z",
+      "finished_at": "2026-09-27T00:04:00Z",
+      "provider_reference": null,
+      "result": "document_generated",
+      "evidence_refs": [
+        {
+          "company_id": "fixture-wholesale",
+          "type": "Artifact",
+          "id": "pdf-1"
+        }
+      ],
+      "error_code": null,
+      "reconciliation_owner": null
+    }
+  ],
+  "outcome": {
+    "contract_version": 1,
+    "company_id": "fixture-wholesale",
+    "created_at": "2026-09-27T00:00:00Z",
+    "outcome_id": "out-1",
+    "decision_id": "dec-1",
+    "action_ids": [
+      "act-1"
+    ],
+    "measurement_window": {
+      "start": "2026-09-27T00:00:00Z",
+      "end": "2026-09-28T00:00:00Z"
+    },
+    "status": "unknown",
+    "metrics_before": [],
+    "metrics_after": [],
+    "expected_outcomes": [
+      "invoice available for packing"
+    ],
+    "observed_outcomes": [],
+    "confounders": [],
+    "evaluation": "unavailable",
+    "evidence_refs": [],
+    "measured_at": null,
+    "unknown_reason": "Window open; packing and cash collection not observed"
+  }
+}

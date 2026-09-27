@@ -15,7 +15,7 @@ on:
       - 'tsconfig.build.json'
       - '.github/workflows/atlas-ci.yml'
   pull_request:
-    branches: [main, 'claude/**']
+    branches: [main, 'claude/**', 'codex/authz-01-entitlement-before-policy']
     paths:
       - 'src/**'
       - 'test/**'
@@ -45,6 +45,8 @@ jobs:
       - run: npm run typecheck
 
       - run: npm test
+
+      - run: npm run build
 
   migrations:
     name: migrations + RPC probes + SQL⇄TS parity (real Postgres)
@@ -79,6 +81,17 @@ jobs:
       # (the 0016 bug class), payment atomicity (exactly-once, stranded-heal), and
       # control-plane integrity. The 0016 post-mortem lesson, wired into CI.
       - run: ./scripts/verify-migrations.sh
+
+      - run: ./scripts/verify-dispatch-concurrency.sh
+
+      - run: GEN_TYPES_DATABASE_URL="$DATABASE_URL" ./scripts/gen-types.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: database-types-generated
+          path: src/data/database.types.ts
+
+      - run: git diff --exit-code -- src/data/database.types.ts
 
       # The deterministic boundary, executed: TS mirrors must equal the SQL money
       # functions on every grid point.

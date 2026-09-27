@@ -30,6 +30,7 @@ export interface EventInput {
 
 export interface AppendedEvent {
   id: string;
+  orgId: string;
   seq: number;
   type: EventType;
   source: string;

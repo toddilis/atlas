@@ -57,8 +57,9 @@ export function listTools(): string[] {
 }
 
 /**
- * Look up the effective risk tier for an (agent, tool) pair from the legacy grant table.
- * Used as fallback when no policy_rules row exists for the action.
+ * Validate entitlement and resolve the legacy risk tier for an (agent, tool) pair.
+ * Entitlement is mandatory; the returned tier controls dispatch only when no
+ * policy_rules row exists for the action.
  */
 export async function effectiveRisk(agentName: string, toolName: string): Promise<RiskTier> {
   const def = tools.get(toolName);
@@ -107,6 +108,8 @@ export type InvocationResult<O> =
 
 /**
  * Invoke a tool. The dispatch:
+ *   0. Validate entitlement. Missing mutation grants and any disabled grant throw
+ *      before policy extraction/evaluation, approval creation or execution.
  *   1. If the tool has a `policyInput` extractor AND a policy_rules row exists for the
  *      action, run evaluate() and switch on the decision:
  *        allow    → execute → audit success
@@ -122,6 +125,11 @@ export async function invokeTool<I, O>(
 ): Promise<InvocationResult<O>> {
   const def = tools.get(name);
   if (!def) throw new Error(`unknown tool: ${name}`);
+
+  // A policy can constrain an entitled action, but cannot grant tool access.
+  // Reuse this lookup's tier on the fallback path; configured policy retains
+  // its existing allow/escalate/block precedence after entitlement succeeds.
+  const risk = await effectiveRisk(ctx.agentName, name);
 
   // ---------- policy-engine path ----------
   if (def.policyInput) {
@@ -202,8 +210,6 @@ export async function invokeTool<I, O>(
   }
 
   // ---------- legacy risk-tier path (unchanged from Phase 0) ----------
-  const risk = await effectiveRisk(ctx.agentName, name);
-
   if (risk === 'approve_required') {
     const approvalId = await requestApproval({
       agentName: ctx.agentName,
