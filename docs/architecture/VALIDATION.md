@@ -3,6 +3,10 @@
 Scope: ARCH-01, based on bootstrap `3d0e3f6195ce2304ccb75baf091f181ab1d89cd4`.
 This report travels with the candidate commit; the export manifest records that commit
 and artifact hashes. Tests concern reference contracts and existing application checks.
+The verified implementation is commit `5245c64`, handed off in
+[draft PR #24](https://github.com/toddilis/atlas/pull/24). A following documentation-only
+handoff records this identity; contract/test sources are unchanged. Review the PR head
+as the merge candidate, not a historical green result on another implementation.
 
 | Check | Result |
 | --- | --- |

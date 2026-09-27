@@ -4,6 +4,10 @@ Owner track: Integration. Starting commit: `3d0e3f6195ce2304ccb75baf091f181ab1d8
 Branch: `codex/architecture-foundation-v02`. Base: `codex/atlas-autonomous-build-bootstrap` (PR #20).
 Contract version: Controller v1; documentation pack v0.2. Status: implemented locally,
 verification recorded in the [validation report](../../architecture/VALIDATION.md).
+Review handoff: [draft PR #24](https://github.com/toddilis/atlas/pull/24).
+Verified implementation commit: `5245c64`; subsequent handoff-only documentation changes
+do not alter the tested contracts, fixtures or runtime. The PR head is the merge candidate;
+independent review and required target-branch checks remain pending.
 
 ## Outcome
 
