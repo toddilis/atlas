@@ -1,32 +1,14 @@
 name: atlas CI
 
+# Candidate jobs must never receive reviewer ledger/check-write authority.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'scripts/**'
-      - 'supabase/migrations/**'
-      - 'web/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'tsconfig.build.json'
-      - '.github/workflows/atlas-ci.yml'
   pull_request:
     branches: [main, 'claude/**', 'codex/authz-01-entitlement-before-policy']
-    paths:
-      - 'src/**'
-      - 'test/**'
-      - 'scripts/**'
-      - 'supabase/migrations/**'
-      - 'web/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'tsconfig.build.json'
-      - '.github/workflows/atlas-ci.yml'
 
 jobs:
   test:
