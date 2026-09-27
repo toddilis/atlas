@@ -71,3 +71,36 @@ Quartermaster then advances through planning (QM-01 through QM-03), purchasing
 (BUY-01/02) and receiving (RECEIVE-01). Validate a joint Controller/Quartermaster
 purchase/receipt/bill case before broadening to Rep. Later scope includes wider
 finance, Rep, Marketer, Concierge and Registrar; the module charter remains in PLAN.md.
+
+
+## Architecture foundation and parallel adoption — 2026-09-27
+
+This remains the sole live queue. Foundation [track briefs](../architecture/PARALLEL_TRACK_BRIEFS.md)
+extend existing tasks without replacing programme priorities. Snapshot readiness is not
+a claim that PRs merged. Check current prerequisites and PR heads before taking a lease.
+Reference contract version: Controller v1, exported in architecture pack v0.2.
+
+| ID / owner track | Status at foundation revision | Dependencies / merge constraint | Expected contracts or surfaces | Verification |
+| --- | --- | --- | --- | --- |
+| ARCH-01 / Integration | Reference implementation; checks recorded in foundation validation report | Bootstrap PR #20 baseline; merge before dependent contract consumers | Foundation docs, contracts/controller-v1, fixtures, queue | Schema/fixture tests, documentation links, compatibility review |
+| AUTHZ-02 / Authorization | Planned runtime adoption; existing task retained | AUTHZ-01 PR #22 + ARCH-01 | Approval/action binding, trusted tool/API/DB boundary | Edited/stale/revoked/wrong-business refusal and durable attempt handoff |
+| EVENT-01 / Platform events | Planned | ARCH-01; coordinate DATA-01 PR #23 surfaces | Envelope adapters, event log, outbox, receipts/replay | Real DB atomicity, duplicates, ordering, crash and replay cases |
+| EVIDENCE-01 / Evidence | Planned; fixture work may run in parallel | ARCH-01; integrate with AUTHZ-02, EVENT-01 and FLOW-01 | Decision/attempt/outcome persistence and read models | Immutable snapshots, explicit unknowns, complete linkage |
+| UI-01 / Operator | Existing task; fixture prototype can start after ARCH-01 | Retain AUTH-01/AUTHZ-02/FLOW-01 integration gates | Approvals, execution and exception views | Real authenticated browser recovery journey |
+| VERIFY-ARCH-01 / Independent verification | Pending candidates | Exact candidate revisions from affected tasks | Read-only review, journey evidence | Full failure/tenant/recovery gate in adoption gaps |
+
+FLOW-01 additionally consumes EVENT-01 and EVIDENCE-01 for production readiness; their
+shared contracts allow concurrent implementation, with the integrated journey verified
+after all are available. This does not make the evidence track depend on completed FLOW-01.
+DATA-01 and PRICING-01 retain their existing acceptance and business prerequisites.
+
+Each claimed item must add: named owner, branch/PR, starting commit, accepted contract
+commit/version, expected files, dependency commit(s), status, merge dependency, candidate
+commit, verification result and next eligible task. A new candidate invalidates affected
+review evidence. Unclaimed planned rows have role owners, not an implied active worker.
+Use isolated branches. Do not independently modify another track's contracts or reorder
+the programme. Missing live configuration does not block synthetic/read-only work.
+
+Open PR inventory checked during this revision: #19 authentication, #20 bootstrap,
+#21 fixture build coordinator (based on bootstrap), #22 entitlement, #23 dispatch data
+(based on entitlement). No merge/completion is implied. Recheck before implementation.

@@ -59,3 +59,12 @@ For a user-facing workflow, done includes the data/API behavior, console journey
 Do not weaken acceptance cases or required checks to make a task pass. Material changes to the accepted contract need a recorded decision. Independent review and automated release rules must not be replaced by a builder's self-assessment.
 
 Routine merges/deployments can run automatically where the user has already delegated that authority and required gates pass. Do not add repetitive approval requests inside an existing mandate. This bootstrap does not itself grant production authority or a model-spending budget.
+
+## Shared architectural foundation
+
+Read [the v0.2 foundation](docs/architecture/README.md) and relevant boundary specs
+before changing contracts, events, authority or memory. Use the single existing build
+queue and record exact contract/dependency revisions. Coordinate shared-file changes
+through the Integration Architect; routine bounded implementation remains independent.
+Schema fixtures are not runtime or production verification. No new execution authority
+is granted by this foundation.
