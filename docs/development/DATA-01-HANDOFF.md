@@ -86,7 +86,34 @@ The order/product sync's broader source freshness, integration credential lifecy
 approval execution and worker authority remain separate work. A read of eligible
 quantities is not an approved invoice, and a dispatch feed is not an inventory balance.
 
-## Verification in progress
+## Verification and handoff - 27 September 2026
+
+Implementation candidate `fadf255c4ee0d2dfdd81387cabe786b4a4714b70`, tree
+`153fe627d16b0d7be30acd202d5f3290e921bb3c`, passed
+[CI run 36305976723](https://github.com/toddilis/atlas/actions/runs/36305976723).
+The [draft PR #23](https://github.com/toddilis/atlas/pull/23) description records
+the final head and subsequent checks. This handoff also pins type generation to the
+same `@supabase/postgres-meta@0.99.0` used by that passing run.
+
+- Local Node 20.20.2: root typecheck, **120 tests**, root production build, console
+  typecheck and production build passed. The default parallel local test launch hit
+  Windows worker/memory failures; running all files with `--test-concurrency=1` passed.
+  CI's normal `npm test` also passed all 120 tests with its default concurrency.
+- CI passed **21 migrations**, existing SQL invariants, new dispatch/role probes,
+  separate-session concurrency/interruption checks and **121 SQL/TS parity cases**.
+- Types were generated against that real migrated Postgres schema and committed;
+  the subsequent clean regeneration/diff check passed. Updated non-null JSON object
+  annotations in existing event/approval/outbox/sync writers match the new generator;
+  they do not change approval or outbox runtime behavior.
+- The local host has no Postgres/pgvector: database evidence is from the actual CI
+  disposable service, not a local database or a mock-only result.
+
+The early CI candidate intentionally exposed missing generated types. After importing
+the generator output, full application and database checks passed. No live data,
+production credential, invoice issuance, merge or deployment was used. Independent
+engineering review, actual provider fixtures and live-pilot acceptance remain open.
+
+Reproducible verification:
 
 - `test/dispatch_ingestion.test.ts`: real HTTP client/handlers with loopback provider
   and PostgREST fixtures, trusted context, replay, bulk sync, malformed IDs and draft guard.
@@ -95,8 +122,7 @@ quantities is not an approved invoice, and a dispatch feed is not an inventory b
 - `scripts/verify-dispatch-concurrency.sh`: independent database sessions racing
   claims; backend termination after allocation and before commit, followed by retry.
 - Required root/web commands, fresh Postgres/pgvector migration probes, SQL/TS parity
-  and generated types must pass on the final candidate. Current local host has no
-  PostgreSQL/pgvector; CI supplies the disposable database and generated type artifact.
+  and the generated-type drift check are wired into CI, including this stacked base.
 
 Next product slice: PRICING-01's business-scoped product/shipping configuration and
 explained preview. BILL-01 consumes that and this dispatch contract. DATA-01 alone

@@ -68,7 +68,7 @@ fi
 # ---------- postgres-meta typegen ----------
 mkdir -p "$WORK/pgmeta"
 (cd "$WORK/pgmeta" && npm init -y >/dev/null 2>&1 \
-  && npm install --no-audit --no-fund @supabase/postgres-meta >/dev/null 2>&1)
+  && npm install --no-audit --no-fund @supabase/postgres-meta@0.99.0 >/dev/null 2>&1)
 (cd "$WORK/pgmeta" && npm list --depth=0 @supabase/postgres-meta)
 
 (cd "$WORK/pgmeta" && \
