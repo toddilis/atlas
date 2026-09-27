@@ -62,6 +62,15 @@ fi
 
 # ---------- apply migrations in order ----------
 
+# Exercise Supabase role grants on the disposable database as well as owner-level RPCs.
+psql_run -f - <<'SQL' >/dev/null
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin bypassrls; end if;
+end $$;
+SQL
+
 shopt -s nullglob
 count=0
 for f in "$MIG_DIR"/*.sql; do
@@ -424,3 +433,4 @@ end $$;
 SQL
 
 echo "OK — $count migrations applied clean; 0017 trigger/backfill, immutability, dedup keys, money functions, RPC execution probes, PR-K payment atomicity (exactly-once posting, redelivery adoption, stranded-payment heal), PR-L control-plane integrity (audit_log immutability, approval single-use CAS), and PR-N statement correctness (real 61-90 band, credit, reconciliation identity, unclamped footing) all pass"
+psql_run -f "$SCRIPT_DIR/verify-dispatch.sql"

@@ -38,7 +38,7 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
       org_id: orgId(),
       tool_name: input.toolName,
       action: input.action,
-      payload: input.payload as unknown as Json,
+      payload: input.payload as unknown as NonNullable<Json>,
       idempotency_key: idempotencyKey,
       related_subject_type: input.relatedSubjectType ?? null,
       related_subject_id: input.relatedSubjectId ?? null,
