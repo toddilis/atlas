@@ -34,7 +34,7 @@ export async function requestApproval(req: ApprovalRequest): Promise<string> {
       action: req.action,
       subject_type: req.subjectType,
       subject_id: req.subjectId ?? null,
-      payload: req.payload as unknown as Json,
+      payload: req.payload as unknown as NonNullable<Json>,
       proposed_summary: req.proposedSummary ?? null,
       risk: req.risk,
       expires_at: req.expiresAt?.toISOString() ?? null,

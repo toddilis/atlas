@@ -203,7 +203,7 @@ export type Database = {
           expires_at: string | null
           id: string
           org_id: string
-          payload: Json
+          payload: NonNullable<Json>
           proposed_summary: string | null
           reason: string | null
           risk: Database["public"]["Enums"]["risk_tier"]
@@ -221,7 +221,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           org_id: string
-          payload: Json
+          payload: NonNullable<Json>
           proposed_summary?: string | null
           reason?: string | null
           risk: Database["public"]["Enums"]["risk_tier"]
@@ -239,7 +239,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           org_id?: string
-          payload?: Json
+          payload?: NonNullable<Json>
           proposed_summary?: string | null
           reason?: string | null
           risk?: Database["public"]["Enums"]["risk_tier"]
@@ -387,6 +387,301 @@ export type Database = {
           },
         ]
       }
+      dispatch_allocations: {
+        Row: {
+          dispatch_id: string
+          line_id: string
+          org_id: string
+          part_id: string
+          quantity: number
+          source_id: string
+        }
+        Insert: {
+          dispatch_id: string
+          line_id: string
+          org_id: string
+          part_id: string
+          quantity: number
+          source_id: string
+        }
+        Update: {
+          dispatch_id?: string
+          line_id?: string
+          org_id?: string
+          part_id?: string
+          quantity?: number
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_allocations_org_id_source_id_dispatch_id_line_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id", "line_id"]
+            referencedRelation: "dispatch_lines"
+            referencedColumns: ["org_id", "source_id", "dispatch_id", "id"]
+          },
+          {
+            foreignKeyName: "dispatch_allocations_org_id_source_id_dispatch_id_part_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id", "part_id"]
+            referencedRelation: "dispatch_invoice_parts"
+            referencedColumns: ["org_id", "source_id", "dispatch_id", "id"]
+          },
+        ]
+      }
+      dispatch_corrections: {
+        Row: {
+          created_at: string
+          dispatch_id: string
+          id: string
+          org_id: string
+          reason: string
+          revision_id: string
+          source_id: string
+        }
+        Insert: {
+          created_at?: string
+          dispatch_id: string
+          id?: string
+          org_id: string
+          reason: string
+          revision_id: string
+          source_id: string
+        }
+        Update: {
+          created_at?: string
+          dispatch_id?: string
+          id?: string
+          org_id?: string
+          reason?: string
+          revision_id?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_corrections_org_id_source_id_dispatch_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "source_id", "id"]
+          },
+          {
+            foreignKeyName: "dispatch_corrections_revision_id_fkey"
+            columns: ["revision_id"]
+            referencedRelation: "dispatch_revisions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_invoice_parts: {
+        Row: {
+          claim_key: string
+          created_at: string
+          dispatch_id: string
+          id: string
+          org_id: string
+          source_id: string
+          source_revision: string
+        }
+        Insert: {
+          claim_key: string
+          created_at?: string
+          dispatch_id: string
+          id?: string
+          org_id: string
+          source_id: string
+          source_revision: string
+        }
+        Update: {
+          claim_key?: string
+          created_at?: string
+          dispatch_id?: string
+          id?: string
+          org_id?: string
+          source_id?: string
+          source_revision?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_invoice_parts_org_id_source_id_dispatch_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "source_id", "id"]
+          },
+        ]
+      }
+      dispatch_lines: {
+        Row: {
+          active: boolean
+          dispatch_id: string
+          id: string
+          item_key: string | null
+          order_line_key: string
+          ordered_quantity: number
+          org_id: string
+          quantity: number
+          source_id: string
+          source_line_key: string
+        }
+        Insert: {
+          active?: boolean
+          dispatch_id: string
+          id?: string
+          item_key?: string | null
+          order_line_key: string
+          ordered_quantity: number
+          org_id: string
+          quantity: number
+          source_id: string
+          source_line_key: string
+        }
+        Update: {
+          active?: boolean
+          dispatch_id?: string
+          id?: string
+          item_key?: string | null
+          order_line_key?: string
+          ordered_quantity?: number
+          org_id?: string
+          quantity?: number
+          source_id?: string
+          source_line_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_lines_org_id_source_id_dispatch_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "source_id", "id"]
+          },
+        ]
+      }
+      dispatch_revisions: {
+        Row: {
+          dispatch_id: string
+          evidence: NonNullable<Json>
+          fingerprint: string
+          id: string
+          org_id: string
+          received_at: string
+          snapshot: NonNullable<Json>
+          source_id: string
+          source_revision: string
+        }
+        Insert: {
+          dispatch_id: string
+          evidence: NonNullable<Json>
+          fingerprint: string
+          id?: string
+          org_id: string
+          received_at?: string
+          snapshot: NonNullable<Json>
+          source_id: string
+          source_revision: string
+        }
+        Update: {
+          dispatch_id?: string
+          evidence?: NonNullable<Json>
+          fingerprint?: string
+          id?: string
+          org_id?: string
+          received_at?: string
+          snapshot?: NonNullable<Json>
+          source_id?: string
+          source_revision?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_revisions_org_id_source_id_dispatch_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "source_id", "id"]
+          },
+        ]
+      }
+      dispatch_sources: {
+        Row: {
+          connection_key: string
+          enabled: boolean
+          id: string
+          org_id: string
+          provider: string
+        }
+        Insert: {
+          connection_key: string
+          enabled?: boolean
+          id?: string
+          org_id: string
+          provider: string
+        }
+        Update: {
+          connection_key?: string
+          enabled?: boolean
+          id?: string
+          org_id?: string
+          provider?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_sources_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatches: {
+        Row: {
+          id: string
+          location_key: string | null
+          order_key: string
+          org_id: string
+          reason: string | null
+          snapshot: NonNullable<Json>
+          source_dispatch_key: string
+          source_id: string
+          source_occurred_at: string | null
+          source_revision: string
+          source_status: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          location_key?: string | null
+          order_key: string
+          org_id: string
+          reason?: string | null
+          snapshot: NonNullable<Json>
+          source_dispatch_key: string
+          source_id: string
+          source_occurred_at?: string | null
+          source_revision: string
+          source_status: string
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          location_key?: string | null
+          order_key?: string
+          org_id?: string
+          reason?: string | null
+          snapshot?: NonNullable<Json>
+          source_dispatch_key?: string
+          source_id?: string
+          source_occurred_at?: string | null
+          source_revision?: string
+          source_status?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatches_org_id_source_id_fkey"
+            columns: ["org_id", "source_id"]
+            referencedRelation: "dispatch_sources"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
       episodic_summaries: {
         Row: {
           agent_name: string
@@ -441,7 +736,7 @@ export type Database = {
           idempotency_key: string | null
           occurred_at: string
           org_id: string
-          payload: Json
+          payload: NonNullable<Json>
           seq: number
           source: string
           subject_id: string | null
@@ -455,7 +750,7 @@ export type Database = {
           idempotency_key?: string | null
           occurred_at?: string
           org_id: string
-          payload: Json
+          payload: NonNullable<Json>
           seq?: number
           source: string
           subject_id?: string | null
@@ -469,7 +764,7 @@ export type Database = {
           idempotency_key?: string | null
           occurred_at?: string
           org_id?: string
-          payload?: Json
+          payload?: NonNullable<Json>
           seq?: number
           source?: string
           subject_id?: string | null
@@ -987,7 +1282,7 @@ export type Database = {
           last_error: string | null
           next_attempt_at: string
           org_id: string
-          payload: Json
+          payload: NonNullable<Json>
           related_subject_id: string | null
           related_subject_type: string | null
           result: Json | null
@@ -1004,7 +1299,7 @@ export type Database = {
           last_error?: string | null
           next_attempt_at?: string
           org_id: string
-          payload: Json
+          payload: NonNullable<Json>
           related_subject_id?: string | null
           related_subject_type?: string | null
           result?: Json | null
@@ -1021,7 +1316,7 @@ export type Database = {
           last_error?: string | null
           next_attempt_at?: string
           org_id?: string
-          payload?: Json
+          payload?: NonNullable<Json>
           related_subject_id?: string | null
           related_subject_type?: string | null
           result?: Json | null
@@ -1095,7 +1390,7 @@ export type Database = {
       }
       policy_rules: {
         Row: {
-          config: Json
+          config: NonNullable<Json>
           created_at: string
           created_by: string | null
           enabled: boolean
@@ -1106,7 +1401,7 @@ export type Database = {
           version: number
         }
         Insert: {
-          config: Json
+          config: NonNullable<Json>
           created_at?: string
           created_by?: string | null
           enabled?: boolean
@@ -1117,7 +1412,7 @@ export type Database = {
           version?: number
         }
         Update: {
-          config?: Json
+          config?: NonNullable<Json>
           created_at?: string
           created_by?: string | null
           enabled?: boolean
@@ -1276,7 +1571,7 @@ export type Database = {
           subject_id: string
           subject_type: string
           superseded_by: string | null
-          value: Json
+          value: NonNullable<Json>
         }
         Insert: {
           confidence: number
@@ -1291,7 +1586,7 @@ export type Database = {
           subject_id: string
           subject_type: string
           superseded_by?: string | null
-          value: Json
+          value: NonNullable<Json>
         }
         Update: {
           confidence?: number
@@ -1306,7 +1601,7 @@ export type Database = {
           subject_id?: string
           subject_type?: string
           superseded_by?: string | null
-          value?: Json
+          value?: NonNullable<Json>
         }
         Relationships: [
           {
@@ -1333,7 +1628,7 @@ export type Database = {
           id: string
           last_name: string | null
           org_id: string
-          raw: Json
+          raw: NonNullable<Json>
           shopify_customer_id: string
           synced_at: string
           tags: string[]
@@ -1348,7 +1643,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           org_id: string
-          raw: Json
+          raw: NonNullable<Json>
           shopify_customer_id: string
           synced_at?: string
           tags?: string[]
@@ -1363,7 +1658,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           org_id?: string
-          raw?: Json
+          raw?: NonNullable<Json>
           shopify_customer_id?: string
           synced_at?: string
           tags?: string[]
@@ -1386,12 +1681,13 @@ export type Database = {
       }
       shopify_fulfillments: {
         Row: {
+          dispatch_id: string | null
           id: string
           location_id: string | null
           location_name: string | null
           occurred_at: string
           org_id: string
-          raw: Json
+          raw: NonNullable<Json>
           shopify_fulfillment_id: string
           shopify_order_id: string
           status: string
@@ -1400,12 +1696,13 @@ export type Database = {
           tracking_numbers: string[]
         }
         Insert: {
+          dispatch_id?: string | null
           id?: string
           location_id?: string | null
           location_name?: string | null
           occurred_at: string
           org_id: string
-          raw: Json
+          raw: NonNullable<Json>
           shopify_fulfillment_id: string
           shopify_order_id: string
           status: string
@@ -1414,12 +1711,13 @@ export type Database = {
           tracking_numbers?: string[]
         }
         Update: {
+          dispatch_id?: string | null
           id?: string
           location_id?: string | null
           location_name?: string | null
           occurred_at?: string
           org_id?: string
-          raw?: Json
+          raw?: NonNullable<Json>
           shopify_fulfillment_id?: string
           shopify_order_id?: string
           status?: string
@@ -1428,6 +1726,12 @@ export type Database = {
           tracking_numbers?: string[]
         }
         Relationships: [
+          {
+            foreignKeyName: "shopify_fulfillments_dispatch_scope"
+            columns: ["org_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "id"]
+          },
           {
             foreignKeyName: "shopify_fulfillments_org_id_fkey"
             columns: ["org_id"]
@@ -1447,7 +1751,7 @@ export type Database = {
           id: string
           org_id: string
           quantity: number
-          raw: Json
+          raw: NonNullable<Json>
           shopify_line_id: string
           shopify_order_id: string
           shopify_variant_id: string | null
@@ -1460,7 +1764,7 @@ export type Database = {
           id?: string
           org_id: string
           quantity: number
-          raw: Json
+          raw: NonNullable<Json>
           shopify_line_id: string
           shopify_order_id: string
           shopify_variant_id?: string | null
@@ -1473,7 +1777,7 @@ export type Database = {
           id?: string
           org_id?: string
           quantity?: number
-          raw?: Json
+          raw?: NonNullable<Json>
           shopify_line_id?: string
           shopify_order_id?: string
           shopify_variant_id?: string | null
@@ -1505,7 +1809,7 @@ export type Database = {
           id: string
           org_id: string
           placed_at: string | null
-          raw: Json
+          raw: NonNullable<Json>
           shopify_customer_id: string | null
           shopify_order_id: string
           shopify_order_name: string | null
@@ -1523,7 +1827,7 @@ export type Database = {
           id?: string
           org_id: string
           placed_at?: string | null
-          raw: Json
+          raw: NonNullable<Json>
           shopify_customer_id?: string | null
           shopify_order_id: string
           shopify_order_name?: string | null
@@ -1541,7 +1845,7 @@ export type Database = {
           id?: string
           org_id?: string
           placed_at?: string | null
-          raw?: Json
+          raw?: NonNullable<Json>
           shopify_customer_id?: string | null
           shopify_order_id?: string
           shopify_order_name?: string | null
@@ -1796,6 +2100,20 @@ export type Database = {
     }
     Functions: {
       age_bucket: { Args: { p_overdue_days: number }; Returns: string }
+      bind_shopify_dispatch_source: {
+        Args: { p_connection_key: string; p_org_id: string }
+        Returns: string
+      }
+      claim_dispatch: {
+        Args: {
+          p_claim_key: string
+          p_dispatch_id: string
+          p_org_id: string
+          p_revision: string
+          p_source_id: string
+        }
+        Returns: string
+      }
       compute_gst_cents: {
         Args: { p_rate_bps: number; p_subtotal_cents: number }
         Returns: number
@@ -1817,7 +2135,7 @@ export type Database = {
           was_existing: boolean
         }[]
       }
-      gen_random_uuid: { Args: never; Returns: string }
+      gen_random_uuid: { Args: Record<PropertyKey, never>; Returns: string }
       gen_salt: { Args: { "": string }; Returns: string }
       generate_statement_atomic: {
         Args: {
@@ -1864,6 +2182,26 @@ export type Database = {
           payment_id: string
         }[]
       }
+      project_dispatch: {
+        Args: {
+          p_block_reason: string
+          p_evidence: Json
+          p_lines: Json
+          p_location_key: string
+          p_occurred_at?: string
+          p_order_key: string
+          p_org_id: string
+          p_revision: string
+          p_source_dispatch_key: string
+          p_source_id: string
+          p_status: string
+        }
+        Returns: string
+      }
+      project_shopify_dispatch: {
+        Args: { p_connection_key: string; p_org_id: string; p_payload: Json }
+        Returns: string
+      }
       record_stripe_payment: {
         Args: {
           p_amount_cents: number
@@ -1899,7 +2237,11 @@ export type Database = {
         | "overdue"
         | "void"
       ledger_account_type:
-        "asset" | "liability" | "equity" | "revenue" | "expense"
+        | "asset"
+        | "liability"
+        | "equity"
+        | "revenue"
+        | "expense"
       ledger_source:
         | "invoice_issued"
         | "invoice_voided"
@@ -1956,7 +2298,8 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -1980,7 +2323,8 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
@@ -2004,7 +2348,8 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
   EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }

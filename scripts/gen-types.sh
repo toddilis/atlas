@@ -18,7 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIG_DIR="$SCRIPT_DIR/../supabase/migrations"
-OUT_FILE="$SCRIPT_DIR/../src/data/database.types.ts"
+OUT_FILE="${GEN_TYPES_OUT_FILE:-$SCRIPT_DIR/../src/data/database.types.ts}"
 
 PGPORT="${GEN_TYPES_PGPORT:-5498}"
 PGMETA_PORT="${GEN_TYPES_PGMETA_PORT:-8766}"
@@ -27,7 +27,6 @@ PGMETA_PID=""
 
 PG_BIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 [[ -n "$PG_BIN" ]] && export PATH="$PG_BIN:$PATH"
-command -v initdb >/dev/null || { echo "initdb not found — install postgresql" >&2; exit 1; }
 
 pg_user_exec() {
   if [[ $(id -u) -eq 0 ]]; then
@@ -39,12 +38,20 @@ pg_user_exec() {
 
 cleanup() {
   [[ -n "$PGMETA_PID" ]] && kill "$PGMETA_PID" >/dev/null 2>&1 || true
-  pg_user_exec "pg_ctl -D '$WORK/data' -m immediate stop" >/dev/null 2>&1 || true
+  if [[ -d "$WORK/data" ]]; then
+    pg_user_exec "pg_ctl -D '$WORK/data' -m immediate stop" >/dev/null 2>&1 || true
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
 
 # ---------- ephemeral cluster (TCP: postgres-meta connects over it) ----------
+if [[ -n "${GEN_TYPES_DATABASE_URL:-}" ]]; then
+  # Read an already-migrated DISPOSABLE database (CI's pgvector service). Do not
+  # apply migrations again or stop a caller-owned server on this path.
+  DB_URL="$GEN_TYPES_DATABASE_URL"
+else
+command -v initdb >/dev/null || { echo "initdb not found - install postgresql" >&2; exit 1; }
 mkdir -p "$WORK/sock"
 [[ $(id -u) -eq 0 ]] && chown -R postgres:postgres "$WORK"
 pg_user_exec "initdb -D '$WORK/data' -A trust" >/dev/null
@@ -56,11 +63,13 @@ for f in "$MIG_DIR"/*.sql; do
   psql "$DB_URL" -X -q -v ON_ERROR_STOP=1 -f "$f" >/dev/null
 done
 echo "applied $(ls "$MIG_DIR"/*.sql | wc -l) migrations"
+fi
 
 # ---------- postgres-meta typegen ----------
 mkdir -p "$WORK/pgmeta"
 (cd "$WORK/pgmeta" && npm init -y >/dev/null 2>&1 \
-  && npm install --no-audit --no-fund @supabase/postgres-meta >/dev/null 2>&1)
+  && npm install --no-audit --no-fund @supabase/postgres-meta@0.99.0 >/dev/null 2>&1)
+(cd "$WORK/pgmeta" && npm list --depth=0 @supabase/postgres-meta)
 
 (cd "$WORK/pgmeta" && \
   PG_META_DB_URL="$DB_URL" PG_META_PORT="$PGMETA_PORT" \
