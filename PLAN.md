@@ -87,9 +87,10 @@ worker schedule      →   reconciles            →   dashboard digest (push)
 2. **The policy engine escalates; the operator decides.** An approval shows the
    proposed action, amounts, machine reasons, and a Claude-written summary of why it
    deserves attention. Approve/reject with a reason. Decisions execute exactly once.
-3. **Approvals are training data.** Decision history is projected into facts the
-   control plane reads, so a repeatedly-approved (agent, action) graduates toward
-   auto-tier — each loosening ratified by the operator through the same queue.
+3. **Approvals record preference and authorization.** Preserve edits and reasons,
+   but do not treat repeated approval as business value or sufficient evidence for
+   expanded authority. Evidence-backed outcomes and an authorized governance decision
+   are required; learned memory cannot modify permissions.
 4. **The dashboard keeps you informed without being asked.** The console home is a
    tailored dashboard: deterministic daily rollup, Claude-narrated summary, and a
    needs-attention list (pending approvals, overdue accounts, dead-lettered jobs).
@@ -268,12 +269,13 @@ escalated items → ask the assistant a follow-up → done.
 
 ## 7 · Phase 3 — Memory + autonomy graduation
 
-- [ ] Consolidation worker: observations + approval decisions → `semantic_facts` /
-      `episodic_summaries`, pgvector embeddings
+- [ ] Evidence-backed memory: observations, decisions and measured outcomes →
+      candidates → gated episodic/semantic/procedural knowledge, with contradiction,
+      decay and revalidation. Approval edits remain preference evidence.
 - [ ] Retrieval wired into digest narration and assistant context
-- [ ] Autonomy graduation: per-(agent, action) threshold proposals from decision
-      history — ratified through the approvals queue (policy changes are themselves
-      approval-gated)
+- [ ] Authority change proposals: outcome quality, error/reversal and recovery evidence
+      for a scoped action domain; approval counts alone are insufficient. Only authorized
+      governance can enact changes; learned memory cannot change permissions.
 - [ ] Fix `conditionalGate` precondition amounts (graduated autonomy leans on it)
 
 ## 8 · Phase 4 — Widen the finance module
@@ -349,3 +351,11 @@ Rep's nudge converts → Controller invoices it. Event subscriptions, never impo
 3. The event spine is append-only and replayable; canonical state is derivable.
 4. Modules are islands: spine and read-models are the only bridges.
 5. Autonomy is earned per (agent, action) and ratified by the operator — never assumed.
+
+## Architecture foundation adoption — 2026-09-27
+
+The [v0.2 foundation](docs/architecture/README.md) and ADR-002 govern shared boundaries.
+The owner-confirmed product/receivables decisions and existing task IDs remain binding.
+ARCH-01 adds reference contracts; runtime adoption is separately queued. Approval
+frequency is preference evidence, not proof of business value or sufficient evidence
+for authority graduation. Outcome quality and authorized governance remain required.

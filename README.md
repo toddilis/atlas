@@ -111,3 +111,9 @@ narration. **No agent's Claude/memory path ever writes the books.**
   (Quartermaster), then Rep/Marketer/Concierge/Registrar. Reusable business setup and
   portability apply throughout delivery; shared-business operation has an explicit
   isolation gate before a second real business is onboarded.
+
+## Architectural foundation
+
+Read the [Atlas v0.2 foundation](docs/architecture/README.md) for shared contracts,
+approval/execution boundaries, source ownership and parallel delivery. The existing
+build queue remains authoritative. Reference schemas are not deployed safeguards.

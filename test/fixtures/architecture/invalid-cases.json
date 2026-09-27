@@ -1,0 +1,78 @@
+[
+  {
+    "name": "changed amount",
+    "path": [
+      "action",
+      "parameters",
+      "total",
+      "amount_minor"
+    ],
+    "value": "100"
+  },
+  {
+    "name": "wrong tenant",
+    "path": [
+      "approval",
+      "company_id"
+    ],
+    "value": "other-company"
+  },
+  {
+    "name": "stale revision",
+    "path": [
+      "approval",
+      "action_revision"
+    ],
+    "value": 2
+  },
+  {
+    "name": "expired approval",
+    "path": [
+      "approval",
+      "expires_at"
+    ],
+    "value": "2026-09-27T00:01:30Z"
+  },
+  {
+    "name": "revoked approval",
+    "path": [
+      "approval",
+      "revoked_at"
+    ],
+    "value": "2026-09-27T00:01:30Z"
+  },
+  {
+    "name": "wrong subject",
+    "path": [
+      "action",
+      "parameters",
+      "invoice_id"
+    ],
+    "value": "inv-other"
+  },
+  {
+    "name": "acceptance is not confirmation",
+    "path": [
+      "executions",
+      0,
+      "result"
+    ],
+    "value": "provider_accepted"
+  },
+  {
+    "name": "invented outcome",
+    "path": [
+      "outcome",
+      "evaluation"
+    ],
+    "value": "improved"
+  },
+  {
+    "name": "unsupported version",
+    "path": [
+      "action",
+      "contract_version"
+    ],
+    "value": 2
+  }
+]
