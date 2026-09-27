@@ -4,7 +4,7 @@ Scope: ARCH-01, based on bootstrap `3d0e3f6195ce2304ccb75baf091f181ab1d89cd4`.
 This report travels with the candidate commit; the export manifest records that commit
 and artifact hashes. Tests concern reference contracts and existing application checks.
 The verified implementation is commit `5245c64`, handed off in
-[draft PR #24](https://github.com/toddilis/atlas/pull/24). A following documentation-only
+[PR #24](https://github.com/toddilis/atlas/pull/24). A following documentation-only
 handoff records this identity; contract/test sources are unchanged. Review the PR head
 as the merge candidate, not a historical green result on another implementation.
 
@@ -20,7 +20,7 @@ as the merge candidate, not a historical green result on another implementation.
 | Export file hashes and ZIP integrity | Passed during pack export |
 | Database migration/parity | Not run: no database or migration changes |
 | Provider, browser journey and live pilot | Not run: no runtime/provider/UI behavior changes |
-| Independent architectural review | Pending; draft PR is the review handoff |
+| User architectural review | Accepted in task on 27 September 2026: "Reviewed, green lit" |
 
 Checks used Node 20.20.2 and existing lockfile-installed dependency copies from the local
 Atlas checkout. The machine's default Node failed with a memory error; Node 20 needed
@@ -29,11 +29,12 @@ run exposed a throwing wrong-subject validation path; it was fixed and the final
 suite passed. Windows test paths were enumerated explicitly because Node 20 did not
 expand `test/*.test.ts`. No test was weakened to bypass a failure.
 
-The existing CI workflow targets PR bases `main` and `claude/**`; this stacked draft's
-`codex/atlas-autonomous-build-bootstrap` base is outside that filter. Remote CI must not
-be reported as passed or independent verification merely from these local results.
-Before merge/release, obtain required checks on the actual target/candidate and resolve
-the existing stacked-PR CI coverage limitation through the release owner.
+The initial stacked PR had no remote CI because its bootstrap base was outside the
+workflow filter. After #20/#22/#23 merged, PR #24 was retargeted to main and integration
+commit `5e6a60b` incorporated those prerequisites. The results above are the original
+reference revision's local evidence; combined-candidate remote checks must pass before
+merge and are recorded on the PR. User acceptance does not substitute for failed or
+missing checks, browser acceptance or production evidence.
 
 Reference validation covers lossless monetary serialization, exact approval fingerprint,
 tenant/reference linkage, revision/expiry/revocation, duplicate attempt identities,

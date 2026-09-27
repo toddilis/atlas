@@ -1,13 +1,15 @@
 # ARCH-01 — architecture foundation and executable reference contracts
 
 Owner track: Integration. Starting commit: `3d0e3f6195ce2304ccb75baf091f181ab1d89cd4`.
-Branch: `codex/architecture-foundation-v02`. Base: `codex/atlas-autonomous-build-bootstrap` (PR #20).
+Branch: `codex/architecture-foundation-v02`. Base: `main` after bootstrap PR #20 merged.
 Contract version: Controller v1; documentation pack v0.2. Status: implemented locally,
 verification recorded in the [validation report](../../architecture/VALIDATION.md).
-Review handoff: [draft PR #24](https://github.com/toddilis/atlas/pull/24).
+Review handoff: [PR #24](https://github.com/toddilis/atlas/pull/24).
 Verified implementation commit: `5245c64`; subsequent handoff-only documentation changes
 do not alter the tested contracts, fixtures or runtime. The PR head is the merge candidate;
-independent review and required target-branch checks remain pending.
+User review was accepted on 27 September 2026 ("Reviewed, green lit"). Integration
+commit `5e6a60b` includes merged #20/#22/#23; required combined-candidate CI remains
+the merge gate. See the current queue status and PR checks for the release result.
 
 ## Outcome
 

@@ -1,8 +1,9 @@
 # Atlas first build queue
 
 For the full delivery sequence, inventory and later modules, read the
-[segmented build plan](SEGMENTED_ROADMAP.md). The next independent coding slice is
-[DATA-01](tasks/DATA-01.md); PRICING-01 is the next new operator-facing feature.
+[segmented build plan](SEGMENTED_ROADMAP.md). DATA-01 and AUTHZ-01 have merged.
+[PRICING-01](tasks/PRICING-01.md) is the next new operator-facing feature; protected
+editing requires AUTH-01 browser acceptance. See the current integration status below.
 
 All slices follow the [multi-business product contract](../product/PLATFORM_PRODUCT.md)
 and PLAN D12. VICE's module sequence is the first-customer delivery path, not mandatory
@@ -104,3 +105,21 @@ the programme. Missing live configuration does not block synthetic/read-only wor
 Open PR inventory checked during this revision: #19 authentication, #20 bootstrap,
 #21 fixture build coordinator (based on bootstrap), #22 entitlement, #23 dispatch data
 (based on entitlement). No merge/completion is implied. Recheck before implementation.
+
+## Current integration status — 27 September 2026
+
+This section supersedes historical readiness labels above. User review was accepted in
+the task with "Reviewed, green lit"; passing candidate checks remain mandatory.
+
+| Task | Current evidence and state | Next boundary |
+| --- | --- | --- |
+| Bootstrap / PR #20 | Merged as `3ad3834`; approved head `3d0e3f6` had passing CI | Foundation dependency satisfied |
+| AUTHZ-01 / PR #22 | Merged as `b7074fe`; approved head `947fd37` had passing application/database/console checks | AUTHZ-02 still required for stored approval execution |
+| DATA-01 / PR #23 | Merged as `b0cec87`; final head `96bfa4e` passed run `36306182729`, including real DB probes, type generation and parity | PRICING-01 then BILL-01; no live billing activated |
+| ARCH-01 / PR #24 | User review accepted; retargeted to main and integrated with merged prerequisites | Merge only after CI on the combined candidate; record checks in PR |
+| AUTH-01 / PR #19 | Still open; historical CI does not establish permitted/denied/expired-session browser acceptance | Verify against a disposable configured auth environment before integration |
+| BUILD-02 / PR #21 | Separate fixture coordinator remains open | No unattended/live runner activation implied |
+
+Independent ready work after ARCH-01: AUTHZ-02, EVENT-01 and EVIDENCE-01 with their
+declared dependencies. Pricing domain/fixture work can proceed while AUTH-01 acceptance
+is completed. Preserve BILL-01/FLOW-01 gates and live-configuration requirements.
