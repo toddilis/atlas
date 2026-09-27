@@ -49,7 +49,7 @@ export async function execute(
   // 1. Load the fulfillment event + verify it's wholesale.
   const { data: fe, error: feErr } = await sb
     .from('fulfillment_events')
-    .select('id, shopify_order_id, account_id, route')
+    .select('id, shopify_order_id, shopify_fulfillment_id, account_id, route')
     .eq('org_id', org)
     .eq('id', input.fulfillmentEventId)
     .maybeSingle();
@@ -64,6 +64,17 @@ export async function execute(
     throw new Error(
       `draft_invoice: wholesale fulfillment ${input.fulfillmentEventId} has no account_id`,
     );
+  }
+
+  // DATA-01 normalized dispatches must never fall back to the legacy order-quantity
+  // calculation below. BILL-01 will replace this guard with an atomic allocation +
+  // invoice transaction, after the configurable pricing contract is ready.
+  const { data: fulfillment, error: fulfillmentError } = await sb.from('shopify_fulfillments')
+    .select('dispatch_id').eq('org_id', org).eq('id', fe.shopify_fulfillment_id).maybeSingle();
+  if (fulfillmentError) throw fulfillmentError;
+  if (!fulfillment) throw new Error('draft_invoice: source fulfillment not found');
+  if (fulfillment.dispatch_id) {
+    throw new Error('draft_invoice: dispatch allocation required; BILL-01 invoice creation is not enabled');
   }
 
   // 2. Load the shopify_order_lines for this order. quantity drives the invoice line

@@ -12,6 +12,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import type { Json } from '../../data/database.types.js';
 import { log } from '../../platform/log.js';
 import { iteratePages } from './client.js';
+import { configuredShopifyDispatchContext, projectShopifyDispatch } from './dispatch.js';
 
 interface ShopifyCustomer {
   id: number | string;
@@ -55,15 +56,7 @@ interface ShopifyOrder {
     quantity: number;
     price?: string | null;
   }>;
-  fulfillments?: Array<{
-    id: number | string;
-    location_id?: number | string | null;
-    status: string;
-    tracking_company?: string | null;
-    tracking_numbers?: string[];
-    created_at?: string | null;
-    updated_at?: string | null;
-  }>;
+  fulfillments?: Array<Record<string, unknown>>;
 }
 
 function cents(value: string | null | undefined): number {
@@ -140,6 +133,7 @@ export async function syncProducts(): Promise<number> {
  */
 export async function syncOrders(): Promise<number> {
   const sb = supabase();
+  const dispatchContext = configuredShopifyDispatchContext();
   let total = 0;
   for await (const batch of iteratePages<ShopifyOrder>('orders.json', {
     limit: 250,
@@ -199,36 +193,24 @@ export async function syncOrders(): Promise<number> {
       if (lineErr) throw lineErr;
     }
 
-    // Fulfillments embedded in the order payload.
-    const fulfillmentRows = batch.flatMap((o) => {
-      const orderId = idByShopify.get(String(o.id));
-      if (!orderId) return [];
-      return (o.fulfillments ?? []).map((f) => ({
-        org_id: orgId(),
-        shopify_fulfillment_id: String(f.id),
-        shopify_order_id: orderId,
-        location_id: f.location_id ? String(f.location_id) : null,
-        location_name: null,
-        status: f.status,
-        tracking_company: f.tracking_company ?? null,
-        tracking_numbers: f.tracking_numbers ?? [],
-        raw: f,
-        occurred_at: f.created_at ?? f.updated_at ?? new Date().toISOString(),
-        synced_at: new Date().toISOString(),
-      }));
-    });
-    if (fulfillmentRows.length > 0) {
-      const { error: fErr } = await sb
-        .from('shopify_fulfillments')
-        .upsert(fulfillmentRows, { onConflict: 'org_id,shopify_fulfillment_id' });
-      if (fErr) throw fErr;
+    // Same atomic adapter as webhooks. Re-running a failed sync converges without
+    // replacing newer quantities or collapsing lines that happen to share a SKU.
+    let fulfillmentCount = 0;
+    for (const order of batch) {
+      for (const fulfillment of order.fulfillments ?? []) {
+        if (fulfillment.order_id != null && String(fulfillment.order_id) !== String(order.id)) {
+          throw new Error('embedded Shopify fulfillment belongs to a different order');
+        }
+        await projectShopifyDispatch(dispatchContext, { ...fulfillment, order_id: order.id });
+        fulfillmentCount++;
+      }
     }
 
     total += orderRows.length;
     log.info('sync.orders.batch', {
       orders: orderRows.length,
       lines: lineRows.length,
-      fulfillments: fulfillmentRows.length,
+      fulfillments: fulfillmentCount,
       total,
     });
   }

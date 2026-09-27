@@ -47,6 +47,7 @@ export async function appendEvent(input: EventInput): Promise<AppendResult> {
       const prior = await sb
         .from('event_log')
         .select(EVENT_COLUMNS)
+        .eq('org_id', row.org_id)
         .eq('idempotency_key', input.idempotencyKey)
         .single();
       if (prior.error || !prior.data) throw error;
