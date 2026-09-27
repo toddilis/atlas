@@ -69,6 +69,7 @@ fi
 mkdir -p "$WORK/pgmeta"
 (cd "$WORK/pgmeta" && npm init -y >/dev/null 2>&1 \
   && npm install --no-audit --no-fund @supabase/postgres-meta >/dev/null 2>&1)
+(cd "$WORK/pgmeta" && npm list --depth=0 @supabase/postgres-meta)
 
 (cd "$WORK/pgmeta" && \
   PG_META_DB_URL="$DB_URL" PG_META_PORT="$PGMETA_PORT" \

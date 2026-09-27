@@ -12,7 +12,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import type { Json } from '../../data/database.types.js';
 import { log } from '../../platform/log.js';
 import { iteratePages } from './client.js';
-import { configuredShopifyDispatchContext, projectShopifyDispatch } from './dispatch.js';
+import { assertShopifySourceId, bindShopifyDispatchSource, configuredShopifyDispatchContext, projectShopifyDispatch } from './dispatch.js';
 
 interface ShopifyCustomer {
   id: number | string;
@@ -74,6 +74,7 @@ function tagsArray(tags: string | undefined): string[] {
 /** Pull every customer and upsert into shopify_customers. */
 export async function syncCustomers(): Promise<number> {
   const sb = supabase();
+  await bindShopifyDispatchSource();
   let total = 0;
   for await (const batch of iteratePages<ShopifyCustomer>('customers.json', { limit: 250 })) {
     if (batch.length === 0) continue;
@@ -85,7 +86,7 @@ export async function syncCustomers(): Promise<number> {
       last_name: c.last_name ?? null,
       default_address: (c.default_address ?? null) as unknown as Json,
       tags: tagsArray(c.tags),
-      raw: c as unknown as Json,
+      raw: c as unknown as NonNullable<Json>,
       created_at_source: c.created_at ?? null,
       updated_at_source: c.updated_at ?? null,
       synced_at: new Date().toISOString(),
@@ -103,6 +104,7 @@ export async function syncCustomers(): Promise<number> {
 /** Pull every product + variant and upsert into products. */
 export async function syncProducts(): Promise<number> {
   const sb = supabase();
+  await bindShopifyDispatchSource();
   let total = 0;
   for await (const batch of iteratePages<ShopifyProduct>('products.json', { limit: 250 })) {
     if (batch.length === 0) continue;
@@ -134,12 +136,25 @@ export async function syncProducts(): Promise<number> {
 export async function syncOrders(): Promise<number> {
   const sb = supabase();
   const dispatchContext = configuredShopifyDispatchContext();
+  await bindShopifyDispatchSource(dispatchContext);
   let total = 0;
   for await (const batch of iteratePages<ShopifyOrder>('orders.json', {
     limit: 250,
     status: 'any',
   })) {
     if (batch.length === 0) continue;
+
+    // Validate identifiers/relationships before any original-order rows are changed.
+    for (const order of batch) {
+      assertShopifySourceId(order.id, 'order ID');
+      for (const line of order.line_items ?? []) assertShopifySourceId(line.id, 'order line ID');
+      for (const fulfillment of order.fulfillments ?? []) {
+        assertShopifySourceId(fulfillment.id, 'fulfillment ID');
+        if (fulfillment.order_id != null && String(fulfillment.order_id) !== String(order.id)) {
+          throw new Error('embedded Shopify fulfillment belongs to a different order');
+        }
+      }
+    }
 
     const orderRows = batch.map((o) => ({
       org_id: orgId(),
@@ -153,7 +168,7 @@ export async function syncOrders(): Promise<number> {
       financial_status: o.financial_status ?? null,
       fulfillment_status: o.fulfillment_status ?? null,
       tags: tagsArray(o.tags),
-      raw: o as unknown as Json,
+      raw: o as unknown as NonNullable<Json>,
       placed_at: o.created_at ?? null,
       updated_at_source: o.updated_at ?? null,
       synced_at: new Date().toISOString(),
@@ -198,9 +213,6 @@ export async function syncOrders(): Promise<number> {
     let fulfillmentCount = 0;
     for (const order of batch) {
       for (const fulfillment of order.fulfillments ?? []) {
-        if (fulfillment.order_id != null && String(fulfillment.order_id) !== String(order.id)) {
-          throw new Error('embedded Shopify fulfillment belongs to a different order');
-        }
         await projectShopifyDispatch(dispatchContext, { ...fulfillment, order_id: order.id });
         fulfillmentCount++;
       }

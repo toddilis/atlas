@@ -29,7 +29,7 @@ export async function appendEvent(input: EventInput): Promise<AppendResult> {
     agent_name: input.agentName ?? null,
     subject_type: input.subjectType ?? null,
     subject_id: input.subjectId ?? null,
-    payload: input.payload as unknown as Json,
+    payload: input.payload as unknown as NonNullable<Json>,
     occurred_at: (input.occurredAt ?? new Date()).toISOString(),
     idempotency_key: input.idempotencyKey ?? null,
   };

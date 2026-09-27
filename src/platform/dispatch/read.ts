@@ -10,13 +10,11 @@ export interface DispatchContext { orgId: string; sourceId: string }
  */
 export async function readDispatch(context: DispatchContext, dispatchId: string) {
   const sb = supabase();
-  const { data: dispatch, error } = await sb.from('dispatches').select('*')
-    .eq('org_id', context.orgId).eq('source_id', context.sourceId).eq('id', dispatchId).maybeSingle();
+  // One database statement gives header and lines the same revision snapshot. The
+  // composite FK scopes the embedded lines to this header's business and source.
+  const { data: dispatch, error } = await sb.from('dispatches').select('*, lines:dispatch_lines(*)')
+    .eq('org_id', context.orgId).eq('source_id', context.sourceId).eq('id', dispatchId)
+    .eq('lines.active', true).order('source_line_key', { referencedTable: 'lines' }).maybeSingle();
   if (error) throw error;
-  if (!dispatch) return null;
-  const { data: lines, error: lineError } = await sb.from('dispatch_lines').select('*')
-    .eq('org_id', context.orgId).eq('source_id', context.sourceId).eq('dispatch_id', dispatchId)
-    .eq('active', true).order('source_line_key');
-  if (lineError) throw lineError;
-  return { ...dispatch, lines: lines ?? [] };
+  return dispatch;
 }

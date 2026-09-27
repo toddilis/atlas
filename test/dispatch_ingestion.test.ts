@@ -25,6 +25,7 @@ let requests: Array<{ method: string; path: string; query: URLSearchParams; body
 let events: Row[] = [];
 let states = new Map<string, Row>();
 let projectionError: string | null = null;
+let bindingError = false;
 let orders: Row[] = [];
 let baseUrl: string;
 const actualFetch = globalThis.fetch;
@@ -62,6 +63,9 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/rest/v1/rpc/project_shopify_dispatch') {
     return projectionError ? send({ code: 'P0001', message: projectionError }, 400) : send(dispatch);
   }
+  if (url.pathname === '/rest/v1/rpc/bind_shopify_dispatch_source') {
+    return bindingError ? send({ code: 'P0001', message: 'Shopify connection binding mismatch' }, 400) : send(source);
+  }
   if (url.pathname === '/rest/v1/shopify_orders' && req.method === 'POST') {
     return send(body.map((row: Row) => ({ id: '40000000-0000-4000-8000-000000000001', shopify_order_id: row.shopify_order_id })));
   }
@@ -72,7 +76,7 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/rest/v1/shopify_fulfillments') return send([{ dispatch_id: dispatch }]);
   if (url.pathname === '/rest/v1/dispatches') {
     return send(url.searchParams.get('org_id') === `eq.${orgA}` && url.searchParams.get('source_id') === `eq.${source}`
-      ? [{ id: dispatch, org_id: orgA, source_id: source, state: 'eligible' }] : []);
+      ? [{ id: dispatch, org_id: orgA, source_id: source, state: 'eligible', lines: [{ id: 'line', quantity: 40 }] }] : []);
   }
   if (url.pathname === '/rest/v1/dispatch_lines') return send([{ id: 'line', quantity: 40 }]);
   return send({ message: 'unexpected fixture endpoint' }, 404);
@@ -96,7 +100,7 @@ before(async () => {
 });
 beforeEach(() => {
   process.env.ATLAS_ORG_ID = orgA; process.env.SHOPIFY_SHOP_DOMAIN = 'fixture-a.myshopify.com';
-  requests = []; events = []; states = new Map(); projectionError = null; orders = [];
+  requests = []; events = []; states = new Map(); projectionError = null; bindingError = false; orders = [];
 });
 after(async () => {
   globalThis.fetch = actualFetch;
@@ -197,11 +201,20 @@ test('embedded fulfillment cannot borrow another order identity', async () => {
   orders = [{ id: 900, currency: 'NZD', fulfillments: [{ ...payload, order_id: 999 }] }];
   await assert.rejects(syncOrders(), /different order/);
   assert.equal(rpcBodies().length, 0);
+  assert.equal(requests.some((r) => r.path === '/rest/v1/shopify_orders'), false);
+});
+test('a changed shop binding blocks sync before any canonical source writes', async () => {
+  bindingError = true;
+  await assert.rejects(syncOrders(), { message: 'Shopify connection binding mismatch' });
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]!.path, '/rest/v1/rpc/bind_shopify_dispatch_source');
 });
 test('generic read scopes both header and lines and hides another business/source', async () => {
   assert.equal((await readDispatch({ orgId: orgA, sourceId: source }, dispatch))?.lines[0]?.quantity, 40);
-  const lineRead = requests.find((r) => r.path === '/rest/v1/dispatch_lines')!;
+  assert.equal(requests.length, 1, 'one consistent header/lines read');
+  const lineRead = requests[0]!;
   assert.equal(lineRead.query.get('org_id'), `eq.${orgA}`); assert.equal(lineRead.query.get('source_id'), `eq.${source}`);
+  assert.equal(lineRead.query.get('lines.active'), 'eq.true');
   assert.equal(await readDispatch({ orgId: orgB, sourceId: source }, dispatch), null);
   assert.equal(await readDispatch({ orgId: orgA, sourceId: 'different' }, dispatch), null);
 });

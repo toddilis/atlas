@@ -35,7 +35,7 @@ declare
   a uuid := '10000000-0000-4000-8000-000000000001';
   b uuid := '10000000-0000-4000-8000-000000000002';
   s uuid; sb uuid; alt uuid; d1 uuid; d2 uuid; d3 uuid; other uuid; p1 uuid; p2 uuid;
-  line_id uuid; oid uuid; original_id uuid; payload jsonb; status text; qty int; i int := 0;
+  line_id uuid; oid uuid; original_id uuid; event_id uuid; payload jsonb; status text; qty int; i int := 0;
   rev timestamptz := '2026-09-01T00:00:00Z';
 begin
   d1 := project_shopify_dispatch(a, 'fixture-a.myshopify.com', pg_temp.fulfillment('1001', 40));
@@ -144,6 +144,19 @@ begin
   perform pg_temp.assert_ok(not exists(select 1 from dispatches where source_id=s and source_dispatch_key='6001'), 'rollback is atomic');
   other := project_shopify_dispatch(a, 'fixture-a.myshopify.com', pg_temp.fulfillment('6001',5,'999'));
   perform claim_dispatch(a,s,other,rev,'rollback');
+
+  -- Historical invoices are not silently made available for a second allocation.
+  other := project_shopify_dispatch(a, 'fixture-a.myshopify.com', pg_temp.fulfillment('8001',5,'999'));
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,route,occurred_at)
+    select a,id,shopify_order_id,'wholesale',rev from shopify_fulfillments where dispatch_id=other
+    returning id into event_id;
+  insert into invoices(org_id,invoice_number,state,currency,subtotal_cents,total_cents,fulfillment_event_id)
+    values(a,'SYNTHETIC-LEGACY','issued','NZD',0,0,event_id);
+  perform project_shopify_dispatch(a, 'fixture-a.myshopify.com',
+    pg_temp.fulfillment('8001',5,'999','success','2026-09-02T00:00:00Z'));
+  perform pg_temp.assert_ok((select reason='legacy_invoice_requires_reconciliation' from dispatches where id=other),
+    'legacy invoice creates a reconciliation block');
+  perform pg_temp.must_fail(format('select claim_dispatch(%L,%L,%L,%L,%L)', a,s,other,'2026-09-02T00:00:00Z','legacy'), '%not eligible%');
 
   -- Another provider uses the same Atlas contract without any Shopify rows or fake IDs.
   insert into dispatch_sources(org_id, provider, connection_key) values (b,'warehouse','fixture-warehouse') returning id into alt;
