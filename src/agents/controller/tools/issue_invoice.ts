@@ -16,7 +16,7 @@ import { supabase, orgId } from '../../../data/supabase.js';
 import { appendEvent } from '../../../platform/events/eventLog.js';
 import type { ToolContext } from '../../../platform/tools/registry.js';
 import type { PolicyInput } from '../../../platform/policy/types.js';
-import { invoiceApprovalSnapshot } from '../../../platform/control-plane/bound-actions.js';
+import { invoiceApprovalSnapshot, KnownNoEffectError } from '../../../platform/control-plane/bound-actions.js';
 
 export interface IssueInvoiceInput {
   invoiceId: string;
@@ -78,7 +78,14 @@ export async function execute(
     p_invoice_id: input.invoiceId,
     p_outbox_idempotency: outboxIdempotencyKey,
   });
-  if (error) throw error;
+  if (error) {
+    // Explicit SQL rejection rolls back the complete RPC transaction. Network and
+    // unclassified failures still carry unknown effect status and require reconciliation.
+    if (ctx.actionId && ctx.executionId && error.code === 'P0001') {
+      throw new KnownNoEffectError(error.message, { source: 'issue_bound_invoice', sqlstate: error.code, reason: error.message });
+    }
+    throw error;
+  }
   const row = (Array.isArray(data) ? data[0] : data) as {
     invoice_id: string; issued_at: string; outbox_id: string; ledger_transaction_id: string | null;
   } | null;

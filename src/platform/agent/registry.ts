@@ -32,6 +32,14 @@ export async function registerAgent(def: AgentDefinition): Promise<void> {
   for (const trigger of def.triggers) {
     registerProjector(trigger, async (event) => {
       try {
+        const { data: agent, error: agentError } = await sb.from('agents').select('enabled')
+          .eq('org_id', orgId()).eq('name', def.name).maybeSingle();
+        if (agentError) throw agentError;
+        const { data: controls, error: controlError } = await sb.from('action_controls').select('paused')
+          .eq('org_id', orgId()).maybeSingle();
+        if (controlError) throw controlError;
+        // Throw so durable event recovery keeps this work outstanding while paused.
+        if (!agent?.enabled || controls?.paused) throw new Error(`agent ${def.name} is disabled or business actions are paused`);
         await def.onEvent(event);
       } catch (e) {
         log.error('agent.handler_failed', {
