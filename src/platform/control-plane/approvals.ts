@@ -56,7 +56,7 @@ export async function decideApproval(
 ): Promise<void> {
   const { error } = await supabase().rpc('decide_bound_approval', {
     p_org_id: orgId(), p_approval_id: id, p_disposition: decision,
-    p_actor: decidedBy, p_reason: reason ?? null,
+    p_actor: decidedBy, p_reason: reason,
   });
   if (error) throw error;
 }
