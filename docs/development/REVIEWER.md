@@ -75,6 +75,14 @@ or reviewer code does not bypass an unresolved reservation for the same candidat
 Changing the candidate/base/reviewer revision invalidates the earlier eligibility.
 Reviews of a new repaired candidate consume another reservation within the same cap.
 
+An unresolved reservation holds the **global single-review concurrency slot**, even
+after its GitHub workflow exits. A new candidate, different PR, policy change or
+reviewer revision cannot bypass it. Workflow serialization alone cannot establish
+that a timed-out remote request has stopped. A complete negative review releases
+the slot but retains its spending charge. A missing/malformed/uncertain result
+requires explicit reconciliation before any further paid review; do not delete the
+ledger entry or turn it into `completed` without authoritative outcome evidence.
+
 If publishing stops after storing a complete receipt, rerunning the publisher (or
 dispatching the same candidate) republishes it without a model call. If it stops after
 reservation or provider submission but before storing a usable response, the candidate
@@ -168,3 +176,6 @@ Candidate-specific checks and remaining findings belong in this PR and its final
 verification receipt. BUILD-02 remains open for the live builder/provider, scheduler,
 durable task-store integration and real chat-end/interruption acceptance. Product
 queue priorities and all business execution authority remain unchanged.
+
+The [1–7 October handoff and activation checklist](AUTOMATION_OCTOBER_2026.md)
+records the separate reviewer/runner deliverables and the fixture-only follow-up.

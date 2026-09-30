@@ -62,6 +62,11 @@ export function reserve(ledger, p, subject, workflowRunId, contextHash, trustedS
   }, 0);
   requireThat(ledger.entries.length < p.maxReviews && spent + ceiling(p) <= p.maxTotalMicroUsd,
     'Review budget exhausted');
+  // Workflow concurrency ends when a job exits; a timed-out provider request may
+  // still be executing. Retain the one global slot until its outcome is known.
+  // A new PR, head or policy cannot turn uncertainty into free concurrency.
+  requireThat(!ledger.entries.some(e => e.status !== 'completed'),
+    'Unresolved review holds the global concurrency slot; reconcile before dispatch');
   const entry = { key, subject, policyHash: hash(p), contextHash, trustedSha,
     workflowRunId, reservedMicroUsd: ceiling(p), status: 'reserved' };
   ledger.entries.push(entry); // Persist with CAS BEFORE returning dispatch permission.
@@ -72,7 +77,8 @@ export function validateCI(run, jobs, pr, p) {
   requireThat(pr.state === 'open' && pr.head.repo?.full_name === p.repository &&
     pr.base.repo?.full_name === p.repository && p.baseBranches.includes(pr.base.ref),
   'Closed, foreign or unsupported PR');
-  requireThat(sha(pr.head.sha) && sha(pr.base.sha) && run.head_sha === pr.head.sha &&
+  requireThat(integer(run.id, 1, Number.MAX_SAFE_INTEGER) && integer(run.run_attempt, 1, Number.MAX_SAFE_INTEGER) &&
+    sha(pr.head.sha) && sha(pr.base.sha) && run.head_sha === pr.head.sha &&
     run.repository?.full_name === p.repository && run.head_repository?.full_name === p.repository &&
     run.event === 'pull_request' && run.path === CI_PATH && run.status === 'completed' &&
     run.conclusion === 'success' && run.pull_requests.some(x => x.number === pr.number &&

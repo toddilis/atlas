@@ -84,6 +84,10 @@ for (const [name, mutate] of [
   ['skipped required job', (pr, run, jobs) => { jobs[0].conclusion = 'skipped'; }],
   ['missing required job', (pr, run, jobs) => { jobs.pop(); }],
   ['duplicate required job', (pr, run, jobs) => { jobs.push(jobs[0]); }],
+  ['failed run', (pr, run) => { run.conclusion = 'failure'; }],
+  ['unfinished run', (pr, run) => { run.status = 'in_progress'; }],
+  ['missing run attempt', (pr, run) => { delete run.run_attempt; }],
+  ['invalid run identity', (pr, run) => { run.id = -1; }],
 ]) test(`CI rejects ${name}`, () => {
   const pr = fixturePR(), run = fixtureRun(), jobs = fixtureJobs();
   mutate(pr, run, jobs); assert.throws(() => validateCI(run, jobs, pr, config()));
@@ -211,6 +215,47 @@ test('concurrent prepare uses CAS so only one wake-up gets dispatch authority', 
     { ...env(), GITHUB_RUN_ID: String(id) }, { inputs: { pull_request: '25', ci_run_id: '100' } })));
   assert.equal(outcomes.filter(x => x.status === 'fulfilled' && x.value.dispatch).length, 1);
   assert.equal(gh.value.entries.length, 1);
+});
+
+test('uncertain review keeps the global slot across candidate, PR, policy and runner changes', () => {
+  for (const status of ['reserved', 'blocked']) {
+    const p = config(), ledger = freshLedger();
+    reserve(ledger, p, subject(), 200, hash(context()), T).entry.status = status;
+    for (const next of [{ ...subject(), head: B }, { ...subject(), pr: 26 },
+      { ...subject(), head: B, reviewerSha: H }]) {
+      // Rehydrate durable state as a restarted workflow would; no in-memory lock.
+      const restarted = JSON.parse(JSON.stringify(ledger));
+      assert.throws(() => reserve(restarted, { ...p, maxReviews: 4 }, next, 201, 'new-context', H),
+        /global concurrency slot/);
+      assert.equal(restarted.entries.length, 1);
+      assert.equal(restarted.entries[0].reservedMicroUsd, ceiling(p));
+    }
+  }
+});
+
+test('completed review releases concurrency but never refunds spending or review count', () => {
+  const p = config(), ledger = freshLedger();
+  const first = reserve(ledger, p, subject(), 200, hash(context()), T).entry;
+  first.status = 'completed'; first.review = { ok: false }; // Definitive rejection permits other work.
+  assert.equal(reserve(ledger, p, { ...subject(), head: B }, 201, 'next-context', T).created, true);
+  ledger.entries[1].status = 'completed';
+  assert.throws(() => reserve(ledger, { ...p, maxReviews: 2 }, { ...subject(), head: T }, 202, 'third', T), /budget/);
+  assert.throws(() => reserve(ledger, { ...p, maxTotalMicroUsd: 2 * ceiling(p) },
+    { ...subject(), head: T }, 202, 'third', T), /budget/);
+  assert.equal(ledger.entries.reduce((n, e) => n + e.reservedMicroUsd, 0), 2 * ceiling(p));
+});
+
+test('fresh gate rejects subsequently failed, incomplete, missing-job and rerun CI', async () => {
+  for (const mode of ['failed', 'incomplete', 'missing-job', 'rerun']) {
+    const gh = new FakeGitHub();
+    const bundle = await prepare(gh, gh.p, env(), { inputs: { pull_request: '25', ci_run_id: '100' } });
+    await publish(gh, gh.p, env(), bundle, response());
+    if (mode === 'failed') gh.run.conclusion = 'failure';
+    if (mode === 'incomplete') gh.run.status = 'in_progress';
+    if (mode === 'missing-job') gh.jobs.pop();
+    if (mode === 'rerun') gh.run.run_attempt++;
+    await assert.rejects(gate(gh, gh.p, 25), /CI|Required/);
+  }
 });
 
 test('unresolved reservations and workflow reruns cannot buy another review', async () => {
