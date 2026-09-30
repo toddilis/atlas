@@ -95,6 +95,23 @@ shared contracts allow concurrent implementation, with the integrated journey ve
 after all are available. This does not make the evidence track depend on completed FLOW-01.
 DATA-01 and PRICING-01 retain their existing acceptance and business prerequisites.
 
+## Active implementation wave — 1 October 2026
+
+The user authorized this parallel wave with "Do it". Shared starting main is
+`cbcb2e7620e73f1406bc8e31edb5b91687c866fb`, including merged architecture PR #24.
+Contracts remain Controller v1. Track branches are isolated; no deployment is implied.
+
+| Task / owner | Branch and review | Scope and merge constraint | Current verification / next boundary |
+| --- | --- | --- | --- |
+| AUTHZ-02 / Authorization | `codex/authz-02-bound-actions`, PR #25 | Migration 0022, stored tool intent, trusted admin API, attempts and guarded outbox | `b6f7778` passed CI run `36781060063`; additional draft-grant/outbox fixes are in candidate `d56c764`, requiring fresh CI and independent review |
+| AUTH-01 / Authentication | Existing PR #19, `claude/lucid-gauss-p1mjpy` | Reuse console authentication; verified operator helper and permitted/denied/expired browser journey | Implementation/acceptance in progress; pricing editor depends on this |
+| PRICING-01 / Pricing | `codex/pricing-01` | Migration 0024, versioned configuration, calculation snapshots and protected editor | Implementation in progress; depends on AUTH-01 and AUTHZ-02 activation contract |
+| EVENT-01 + EVIDENCE-01 / Event and evidence | `codex/event-evidence-01` | Migration 0023, atomic canonical events/receipts and immutable evidence; integrated action bridge follows AUTHZ-02 | Candidate and real DB checks in progress; independent review requires outcome linkage and restricted writes |
+
+Keep BILL-01 and FLOW-01 as the next business consumers of these contracts. Their live
+pricing, numbering, bank-source and operator-recovery gates remain in force. Runtime
+implementation is not equivalent to production or live provider acceptance.
+
 Each claimed item must add: named owner, branch/PR, starting commit, accepted contract
 commit/version, expected files, dependency commit(s), status, merge dependency, candidate
 commit, verification result and next eligible task. A new candidate invalidates affected
