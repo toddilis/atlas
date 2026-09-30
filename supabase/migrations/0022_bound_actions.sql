@@ -211,11 +211,17 @@ begin
  insert into audit_log(org_id,agent_name,action,risk,outcome,detail) values(p_org_id,p_actor,'actions.pause','approve_required','blocked',jsonb_build_object('paused',p_paused,'reason',p_reason));
 end $$;
 
--- Lock the parent before changing invoice lines so the approved snapshot cannot race
--- the atomic issuance check. Existing settled-invoice immutability still applies.
+-- Lock the parent before changing lines so a draft edit cannot race issuance.
+-- Moving a line to another parent would evade the old parent's lock and is forbidden.
 create function lock_invoice_for_line_change() returns trigger language plpgsql set search_path=pg_catalog,public as $$
+declare v_invoice invoices%rowtype;
 begin
- perform 1 from invoices where id=coalesce(new.invoice_id,old.invoice_id) for update;
+ if tg_op='UPDATE' and row(new.invoice_id,new.org_id) is distinct from row(old.invoice_id,old.org_id)
+ then raise exception 'invoice line ownership is immutable'; end if;
+ select * into v_invoice from invoices where id=coalesce(new.invoice_id,old.invoice_id)
+   and org_id=coalesce(new.org_id,old.org_id) for update;
+ if not found then raise exception 'invoice line parent is missing or belongs to another business'; end if;
+ if v_invoice.state not in ('draft','pending_approval') then raise exception 'issued invoice lines require an explicit correction'; end if;
  if tg_op='DELETE' then return old; end if; return new;
 end $$;
 create trigger invoice_lines_action_lock before insert or update or delete on invoice_lines for each row execute function lock_invoice_for_line_change();
