@@ -68,7 +68,7 @@ export async function prepareBoundApproval(intent: StoredActionIntent, summary?:
   if (!Number.isSafeInteger(ttl) || ttl <= 0 || ttl > 86400) throw new Error('approval TTL must be 1..86400 seconds');
   const { data, error } = await supabase().rpc('create_bound_approval', {
     p_org_id: intent.org_id, p_intent: intent as unknown as Json,
-    p_expires_at: new Date(Date.now() + ttl * 1000).toISOString(), p_summary: summary ?? null,
+    p_expires_at: new Date(Date.now() + ttl * 1000).toISOString(), p_summary: summary,
   });
   if (error) throw error;
   return z.string().uuid().parse(data);
@@ -99,7 +99,7 @@ export async function finishBoundAction(actionId: string, executionId: string, s
   result: unknown, evidence: Record<string, unknown> | null, errorMessage?: string) {
   const { error } = await supabase().rpc('finish_bound_action', {
     p_org_id: orgId(), p_action_id: actionId, p_execution_id: executionId, p_state: state,
-    p_result: encodeActionValue(result), p_evidence: evidence === null ? null : encodeActionValue(evidence), p_error: errorMessage ?? null,
+    p_result: encodeActionValue(result), p_evidence: evidence === null ? null : encodeActionValue(evidence), p_error: errorMessage,
   });
   if (error) throw error;
 }

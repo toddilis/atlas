@@ -24,7 +24,8 @@ export async function registerAgent(def: AgentDefinition): Promise<void> {
         description: def.description ?? null,
         enabled: true,
       },
-      { onConflict: 'org_id,name' },
+      // Boot seeds missing agents; persisted operator disablement survives restart.
+      { onConflict: 'org_id,name', ignoreDuplicates: true },
     );
   if (error) throw error;
 

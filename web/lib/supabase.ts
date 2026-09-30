@@ -9,10 +9,13 @@
 
 import 'server-only';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { requireOperator } from './require-operator';
 
 let cached: SupabaseClient | null = null;
 
-export function supabaseServer(): SupabaseClient {
+export async function supabaseServer(): Promise<SupabaseClient> {
+  // Do not put this behind the cached client: every request needs fresh authority.
+  await requireOperator();
   if (cached) return cached;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
