@@ -23,7 +23,7 @@ export interface ApprovalRecord {
   executedAt: string | null;
 }
 
-/** Request an approval. Returns the row id. */
+/** Legacy informational proposal only; execution requires a newly prepared bound action. */
 export async function requestApproval(req: ApprovalRequest): Promise<string> {
   const sb = supabase();
   const { data, error } = await sb
@@ -46,9 +46,7 @@ export async function requestApproval(req: ApprovalRequest): Promise<string> {
 }
 
 /**
- * Decide a pending approval. Enforces expiry (an expired row is marked and refused) and
- * reports rather than swallows a no-op: deciding an already-decided/expired approval
- * throws with the row's actual state instead of silently succeeding (PR-L).
+ * Decide a pending bound approval under a database lock, checking expiry and authority.
  */
 export async function decideApproval(
   id: string,
@@ -56,73 +54,18 @@ export async function decideApproval(
   decidedBy: string,
   reason?: string,
 ): Promise<void> {
-  const sb = supabase();
-  const now = new Date().toISOString();
-
-  // Lazily expire first: expires_at was previously decorative.
-  await sb
-    .from('approvals')
-    .update({ state: 'expired' })
-    .eq('id', id)
-    .eq('org_id', orgId())
-    .eq('state', 'pending')
-    .not('expires_at', 'is', null)
-    .lte('expires_at', now);
-
-  const { data, error } = await sb
-    .from('approvals')
-    .update({
-      state: decision,
-      decided_by: decidedBy,
-      decided_at: now,
-      reason: reason ?? null,
-    })
-    .eq('id', id)
-    .eq('org_id', orgId())
-    .eq('state', 'pending')                               // can only decide pending rows
-    .select('id');
+  const { error } = await supabase().rpc('decide_bound_approval', {
+    p_org_id: orgId(), p_approval_id: id, p_disposition: decision,
+    p_actor: decidedBy, p_reason: reason ?? null,
+  });
   if (error) throw error;
-  if (!data || data.length === 0) {
-    const current = await getApproval(id);
-    throw new Error(
-      current
-        ? `approval ${id} is not pending (state: ${current.state})`
-        : `approval not found: ${id}`,
-    );
-  }
 }
 
 /**
- * Consume an approved approval for execution — the single-use guard. Compare-and-swap on
- * executed_at: exactly one caller wins; re-use, expiry, and undecided/rejected states all
- * throw with the precise reason. Consumption happens BEFORE the tool runs, deliberately:
- * an execution that fails midway may have partial external side-effects, and retrying it
- * must cost a fresh operator decision, not a free replay.
+ * @deprecated Unbound consumption cannot authorize business execution.
  */
 export async function consumeApproval(id: string): Promise<void> {
-  const sb = supabase();
-  const now = new Date().toISOString();
-  const { data, error } = await sb
-    .from('approvals')
-    .update({ executed_at: now })
-    .eq('id', id)
-    .eq('org_id', orgId())
-    .eq('state', 'approved')
-    .is('executed_at', null)
-    .or(`expires_at.is.null,expires_at.gt.${now}`)
-    .select('id');
-  if (error) throw error;
-  if (data && data.length > 0) return;
-
-  const current = await getApproval(id);
-  if (!current) throw new Error(`approval not found: ${id}`);
-  if (current.executedAt) {
-    throw new Error(`approval ${id} already executed at ${current.executedAt} (single-use)`);
-  }
-  if (current.state !== 'approved') {
-    throw new Error(`approval ${id} is not approved (state: ${current.state})`);
-  }
-  throw new Error(`approval ${id} expired at ${current.expiresAt}`);
+  throw new Error(`unbound consumption disabled for ${id}; execute stored intent through executeApproved`);
 }
 
 export async function getApproval(id: string): Promise<ApprovalRecord | null> {
@@ -131,6 +74,7 @@ export async function getApproval(id: string): Promise<ApprovalRecord | null> {
     .from('approvals')
     .select('id, state, decided_by, decided_at, reason, expires_at, executed_at')
     .eq('id', id)
+    .eq('org_id', orgId())
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;

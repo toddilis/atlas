@@ -2,7 +2,7 @@
 // src/api/server.ts can call a single bootstrap per domain.
 
 import { registerTool } from '../../../platform/tools/registry.js';
-import { buildPolicyInput, execute as executeIssueInvoice } from './issue_invoice.js';
+import { buildPolicyInput, approvalSnapshot, execute as executeIssueInvoice } from './issue_invoice.js';
 import { execute as executeDraftInvoice } from './draft_invoice.js';
 import { execute as executeGenerateStatement } from './generate_statement.js';
 
@@ -16,6 +16,9 @@ export function registerControllerTools(): void {
     defaultRisk: 'approve_required',
     mutating: true,
     policyInput: buildPolicyInput,
+    approvalSnapshot,
+    confirmation: (result) => ({ effect: 'local_invoice_issued', invoice_id: result.invoiceId, outbox_id: result.outboxId,
+      issued_at: result.issuedAt, delivery: 'not_confirmed' }),
     execute: executeIssueInvoice,
   });
 

@@ -2,6 +2,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import { log } from '../log.js';
 import type { AppendedEvent, EventType } from './types.js';
 import { EVENT_COLUMNS, toAppendedEvent } from './row.js';
+import { withProjectionReplay } from './context.js';
 
 export type Projector = (event: AppendedEvent) => Promise<void>;
 
@@ -195,7 +196,11 @@ export async function replay(opts: { limit?: number; fromSeq?: number } = {}): P
 
   for (const row of rows) {
     summary.scanned += 1;
-    const outcome = await dispatchTracked(toAppendedEvent(row.event), row.attempts);
+    // Historical rebuilds must never dispatch agents or business effects. Ordinary
+    // recovery retains the live path and existing action identities.
+    const outcome = opts.fromSeq != null
+      ? await withProjectionReplay(() => dispatchTracked(toAppendedEvent(row.event), row.attempts))
+      : await dispatchTracked(toAppendedEvent(row.event), row.attempts);
     if (outcome.projected) {
       summary.projected += 1;
     } else if (row.attempts + 1 >= MAX_PROJECTION_ATTEMPTS) {

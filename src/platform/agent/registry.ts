@@ -2,6 +2,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import { registerProjector } from '../events/projector.js';
 import { log } from '../log.js';
 import type { AgentDefinition } from './types.js';
+import { isProjectionReplay } from '../events/context.js';
 
 const registered: Map<string, AgentDefinition> = new Map();
 
@@ -30,6 +31,9 @@ export async function registerAgent(def: AgentDefinition): Promise<void> {
 
   for (const trigger of def.triggers) {
     registerProjector(trigger, async (event) => {
+      // Agents can call legacy domain handlers directly; skip the whole agent in
+      // rebuilds while allowing canonical read projectors to run.
+      if (isProjectionReplay()) return;
       try {
         await def.onEvent(event);
       } catch (e) {
