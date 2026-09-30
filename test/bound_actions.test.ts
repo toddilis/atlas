@@ -10,6 +10,7 @@ import { parseConfig } from '../src/platform/policy/config.js';
 import Fastify from 'fastify';
 import { registerAdminAuth } from '../src/api/auth.js';
 import { registerApprovalRoutes } from '../src/api/approval-routes.js';
+import { enqueue } from '../src/platform/tools/outbox.js';
 
 const org = '20000000-0000-4000-8000-000000000001';
 const approval = '20000000-0000-4000-8000-000000000002';
@@ -26,6 +27,7 @@ let seenInput: unknown, seenContext: unknown;
 let finish: Record<string, unknown> | null;
 let mode: 'ok' | 'unknown' | 'no-effect' | 'no-proof';
 let calls: string[];
+let outboxConflict: boolean;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://127.0.0.1');
@@ -34,6 +36,14 @@ const server = createServer(async (req, res) => {
   let text = ''; for await (const chunk of req) text += chunk;
   const body = text ? JSON.parse(text) : {};
   const reply = (value: unknown, status = 200) => { res.statusCode = status; res.end(JSON.stringify(value)); };
+  if (url.pathname === '/rest/v1/outbox') {
+    if (req.method === 'POST') {
+      assert.equal(body.related_subject_id, subject); assert.equal(body.related_subject_type, 'fixture');
+      assert.deepEqual(body.payload, { approval_id: approval, company_id: org });
+      return outboxConflict ? reply({ code: '23505', message: 'duplicate' }, 409) : reply({ id: 'queued-id' });
+    }
+    return reply({ id: 'unrelated-row', payload: { approval_id: 'other', company_id: org }, tool_name: 'fixture.bound', related_subject_id: subject, related_subject_type: 'fixture' });
+  }
   if (url.pathname === '/rest/v1/approved_actions') {
     assert.equal(url.searchParams.get('org_id'), `eq.${org}`);
     assert.equal(url.searchParams.get('approval_id'), `eq.${approval}`);
@@ -78,6 +88,7 @@ beforeEach(() => {
   grant = true; paused = claimed = expired = revoked = false;
   snapshot = { revision: 1, destination: 'fixture' }; mode = 'ok'; currentPolicy = null;
   seenInput = seenContext = undefined; finish = null; calls = [];
+  outboxConflict = false;
   stored = { schema_version: 1, org_id: org, agent_name: 'fixture-agent', tool_name: 'fixture.bound',
     subject_type: 'fixture', subject_id: subject, input: encodeActionValue({ amount: 9007199254740993n }),
     subject_snapshot: { ...snapshot }, policy_snapshot: null };
@@ -165,4 +176,11 @@ test('live admin route refuses missing authentication and caller-selected input 
     delete process.env.ATLAS_API_TOKEN;
     assert.equal((await app.inject({ method: 'POST', url, payload: {} })).statusCode, 503);
   } finally { await app.close(); }
+});
+test('outbox stores the approved binding and rejects conflicting idempotency identity', async () => {
+  const input = { toolName: 'fixture.bound', action: 'fixture.bound', payload: { forged: 'ignored' }, approvalId: approval, idempotencyKey: 'stable' };
+  assert.equal(await enqueue(input), 'queued-id');
+  outboxConflict = true;
+  await assert.rejects(enqueue(input), /conflicts with another action/);
+  await assert.rejects(enqueue({ ...input, relatedSubjectId: 'other' }), /subject differs/);
 });

@@ -37,6 +37,9 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
   if (!input.approvalId) throw new Error('outbox enqueue requires a bound provider action approval');
   const action = await loadBoundAction(input.approvalId);
   if (action.intent.tool_name !== input.toolName) throw new Error('outbox tool differs from approved action');
+  if ((input.relatedSubjectId !== undefined && input.relatedSubjectId !== action.intent.subject_id) ||
+      (input.relatedSubjectType !== undefined && input.relatedSubjectType !== action.intent.subject_type))
+    throw new Error('outbox subject differs from approved action');
   const sb = supabase();
   const idempotencyKey = `${orgId()}:${input.idempotencyKey ?? randomUUID()}`;
   const { data, error } = await sb
@@ -47,22 +50,26 @@ export async function enqueue(input: OutboxEnqueueInput): Promise<string> {
       action: input.action,
       payload: { approval_id: input.approvalId, company_id: orgId() },
       idempotency_key: idempotencyKey,
-      related_subject_type: input.relatedSubjectType ?? null,
-      related_subject_id: input.relatedSubjectId ?? null,
+      related_subject_type: action.intent.subject_type,
+      related_subject_id: action.intent.subject_id,
     })
     .select('id')
     .single();
 
   if (error) {
     if (error.code === '23505') {
-      // Idempotency key conflict — return the existing row id, treat as no-op.
+      // Reuse only the exact same binding. A key collision cannot adopt another action.
       const prior = await sb
         .from('outbox')
-        .select('id')
+        .select('id, payload, tool_name, related_subject_id, related_subject_type')
         .eq('org_id', orgId())
         .eq('idempotency_key', idempotencyKey)
         .single();
       if (prior.error || !prior.data) throw error;
+      const payload = prior.data.payload as Record<string, unknown>;
+      if (payload.approval_id !== input.approvalId || payload.company_id !== orgId() ||
+          prior.data.tool_name !== input.toolName || prior.data.related_subject_id !== action.intent.subject_id ||
+          prior.data.related_subject_type !== action.intent.subject_type) throw new Error('outbox idempotency key conflicts with another action');
       return prior.data.id as string;
     }
     throw error;
@@ -143,7 +150,8 @@ export async function drain(limit = 25): Promise<number> {
 
     try {
       const stored = await loadBoundAction(payload.approval_id);
-      if (stored.intent.tool_name !== row.tool_name || stored.intent.subject_id !== row.related_subject_id)
+      if (stored.intent.tool_name !== row.tool_name || stored.intent.subject_id !== row.related_subject_id ||
+          stored.intent.subject_type !== row.related_subject_type)
         throw new Error('outbox binding differs from stored action');
       const result = await executeApproved(payload.approval_id, { companyId: orgId(), actorId: 'trusted-outbox-worker' });
       const { error: saveError } = await sb
