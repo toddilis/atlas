@@ -145,12 +145,25 @@ export const EventEnvelopeV1 = z.object({
   payload: z.record(z.unknown()),
 }).strict();
 
+// Additive reader for BILL-01. The legacy versionless invoice event remains a
+// separate adapter contract; it must never be silently read as this payload.
+export const InvoiceDraftedV1 = z.object({
+  company_id: id, invoice_id: id, invoice_revision: revision, dispatch_id: id, part_id: id,
+  calculation_snapshot_ref: ref, document_snapshot_ref: ref, total: MoneyV1,
+}).strict().superRefine((value, ctx) => {
+  for (const [reference, type] of [[value.calculation_snapshot_ref, 'InvoiceCalculationSnapshot'], [value.document_snapshot_ref, 'InvoiceDocumentSnapshot']] as const) {
+    if (reference.company_id !== value.company_id || reference.revision !== value.invoice_revision || reference.type !== type)
+      ctx.addIssue({ code: 'custom', message: 'Invoice snapshot must match business, type and revision' });
+  }
+});
+
 /** Registry validates payloads as well as the envelope; unknown event types fail closed. */
 export const controllerEventPayloads = {
   'controller.decision.proposed': DecisionV1,
   'controller.action.prepared': ActionV1,
   'controller.action.execution_recorded': ExecutionV1,
   'controller.outcome.recorded': OutcomeV1,
+  'controller.invoice.drafted': InvoiceDraftedV1,
 } as const;
 export const ControllerEventV1 = EventEnvelopeV1.superRefine((event, ctx) => {
   if (!Object.hasOwn(controllerEventPayloads, event.event_type)) {
@@ -174,6 +187,7 @@ export const ControllerEventV1 = EventEnvelopeV1.superRefine((event, ctx) => {
     'controller.action.prepared': ['Action', 'action_id', 'revision'],
     'controller.action.execution_recorded': ['Execution', 'execution_id', null],
     'controller.outcome.recorded': ['Outcome', 'outcome_id', null],
+    'controller.invoice.drafted': ['Invoice', 'invoice_id', 'invoice_revision'],
   };
   const [type, key, versionKey] = subjects[event.event_type]!;
   if (event.subject_type !== type || event.subject_id !== event.payload[key] ||
