@@ -1,5 +1,14 @@
 # Atlas — development plan
 
+For 1–7 October 2026, the accepted weekly target is a **synthetic test-environment**
+dispatch → configured pricing → correct invoice parts → exact-action owner approval →
+printable-output journey, including traceable outcomes and recovery. The sole live
+[build queue](docs/development/BUILD_QUEUE.md#active-coordination-17-october-2026)
+records named owners, exact candidates, file/migration leases and integration order.
+Bank reconciliation and complete exception-resolution UI are stretch for this week;
+the wider receivables requirements below remain in force. Merge, deployment and live
+activation require separately established authority.
+
 The [segmented build plan](docs/development/SEGMENTED_ROADMAP.md) gives the current
 delivery sequence, dependencies and acceptance gates across Controller, inventory,
 Quartermaster and the later modules. Its segment numbers do not replace the
@@ -120,6 +129,7 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D10 | 2026-09-25 | Owner clarified the product requirement: Atlas must provide adaptable product and shipping pricing. The uploaded Excel workbook is an initial data/layout reference; it does not define an immutable pricing policy. Operators must manage prices, retailer agreements, discounts and freight rules in Atlas, preview their effect and approve invoice-specific exceptions. Versioned calculations preserve agreed historical invoice amounts. [PRICING-01](docs/development/tasks/PRICING-01.md) defines the implementation and acceptance scope; actual rates and commercial policies remain operator configuration. |
 | D11 | 2026-09-25 | Publish an entire segmented delivery plan at the owner's request. Preserve the module order and make inventory source/balance reconciliation an explicit foundation before Quartermaster planning, purchasing and receiving. DATA-01 is the next independent coding slice; pricing configuration is the next new operator-facing feature. Later modules remain trigger-based, and development automation runs as a separate track. See [SEGMENTED_ROADMAP.md](docs/development/SEGMENTED_ROADMAP.md). |
 | D12 | 2026-09-25 | Owner reaffirmed that Atlas must be a product usable by many different types of businesses. VICE is the first configuration/reference customer, not the product boundary. Reusable modules, provider adapters, versioned business setup and explicit business context apply now. This supersedes deferring those design boundaries to v2; isolation must be verified before a second real business shares an environment. Prove portability early with contrasting synthetic profiles, then a scoped second-customer pilot. See [PLATFORM_PRODUCT.md](docs/product/PLATFORM_PRODUCT.md). |
+| D13 | 2026-10-01 | Owner set the 1–7 October test-environment Controller target through approved printable output, with traceable outcomes and recovery. Bank reconciliation and complete exception UI are stretch, not prerequisites for that narrower demonstration. This does not declare FLOW-01/CLOSE-01 complete or authorize release/live activity. Current assignments and commit-bound evidence live only in BUILD_QUEUE.md. |
 
 ---
 
