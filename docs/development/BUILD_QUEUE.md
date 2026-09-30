@@ -52,6 +52,16 @@ The [owner-confirmed receivables contract](../product/VICE_RECEIVABLES.md) and P
 
 ## BUILD-02 acceptance
 
+`BUILD-02-REVIEW` is the user-requested bounded reviewer track. Owner: Verification /
+build infrastructure; branch `codex/reviewer-integration`; starting and architecture
+dependency `cbcb2e7620e73f1406bc8e31edb5b91687c866fb` (ARCH-01 v0.2). Scope is
+`scripts/reviewer`, reviewer tests/workflow, CI coverage and its [runbook](REVIEWER.md).
+Business contracts and migrations are unchanged. It is independent of the still-open
+fixture coordinator PR #21. Merge requires candidate CI and independent review;
+paid activation requires protected credentials, writer identity and an approved
+spending policy. The runbook records activation/recovery acceptance and the release
+consumer contract. This does not reorder the product queue or complete BUILD-02.
+
 - Use a harmless fixture task to prove claim → implementation → verification → review/release eligibility → durable result → next task.
 - Stop the dispatcher at a handoff and restart it. It resumes or reconciles the same work identity.
 - Deliver the same completion event twice. At most one successor task is leased.
