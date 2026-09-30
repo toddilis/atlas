@@ -100,7 +100,7 @@ jobs:
       - run: npx tsx scripts/sql-ts-parity.ts
 
   web:
-    name: console typecheck + build
+    name: console auth tests + typecheck + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -117,5 +117,7 @@ jobs:
       - run: npm ci
 
       - run: npm run typecheck
+
+      - run: npm test
 
       - run: npm run build

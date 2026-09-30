@@ -7,6 +7,7 @@
 // console runs through server components (the default in App Router) so the service
 // role key never ships to the browser.
 
+import 'server-only';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let cached: SupabaseClient | null = null;
