@@ -2,7 +2,7 @@
 // Newest issued first; drafts sorted by created_at when not yet issued.
 
 import Link from 'next/link';
-import { supabaseServer, orgId } from '@/lib/supabase';
+import { requireOperator } from '@/lib/auth-server';
 import { formatCents, formatDate } from '@/lib/format';
 import { Badge, invoiceStateTone } from '@/components/Badge';
 
@@ -25,13 +25,13 @@ interface InvoiceRow {
 }
 
 async function loadInvoices(state: InvoiceStateFilter): Promise<InvoiceRow[]> {
-  const sb = supabaseServer();
+  const { supabase: sb, orgId: org } = await requireOperator();
   let q = sb
     .from('invoices')
     .select(
       'id, invoice_number, state, channel, currency, total_cents, issued_at, paid_at, created_at, account:accounts(name)',
     )
-    .eq('org_id', orgId())
+    .eq('org_id', org)
     .order('issued_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .limit(200);

@@ -2,7 +2,7 @@
 // row here whenever invokeTool returns 'escalate'. Operators triage by reading the
 // payload + reasons; approve/deny actions arrive in a later PR alongside auth.
 
-import { supabaseServer, orgId } from '@/lib/supabase';
+import { requireOperator } from '@/lib/auth-server';
 
 // Server-side rendered with no client-side hydration of the query result. Re-fetch by
 // reloading the page. Auto-refresh / polling arrives in the realtime PR.
@@ -22,13 +22,13 @@ interface ApprovalRow {
 }
 
 async function loadPendingApprovals(): Promise<ApprovalRow[]> {
-  const sb = supabaseServer();
+  const { supabase: sb, orgId: org } = await requireOperator();
   const { data, error } = await sb
     .from('approvals')
     .select(
       'id, agent_name, action, subject_type, subject_id, payload, proposed_summary, risk, created_at, expires_at',
     )
-    .eq('org_id', orgId())
+    .eq('org_id', org)
     .eq('state', 'pending')
     .order('created_at', { ascending: false });
   if (error) throw error;

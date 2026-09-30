@@ -9,6 +9,7 @@
 
 import 'server-only';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 
 let cached: SupabaseClient | null = null;
 
@@ -22,6 +23,7 @@ export function supabaseServer(): SupabaseClient {
     );
   }
   cached = createClient(url, key, {
+    realtime: { transport: WebSocket },
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: 'public' },
   });

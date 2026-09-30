@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { supabaseServer, orgId } from '@/lib/supabase';
+import { requireOperator } from '@/lib/auth-server';
 import { formatCents, formatDate, formatDateTime } from '@/lib/format';
 import { Badge, invoiceStateTone } from '@/components/Badge';
 
@@ -67,8 +67,8 @@ async function loadInvoice(id: string): Promise<{
   payments: PaymentRow[];
   ledgerTxns: LedgerTxnRow[];
 } | null> {
-  const sb = supabaseServer();
-  const org = orgId();
+  const { supabase: sb, orgId: org } = await requireOperator();
+
 
   const { data: invoice, error: invErr } = await sb
     .from('invoices')

@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { supabaseServer, orgId } from '@/lib/supabase';
+import { requireOperator } from '@/lib/auth-server';
 import { formatCents, formatDate } from '@/lib/format';
 import { Badge, statementStateTone } from '@/components/Badge';
 
@@ -49,8 +49,8 @@ async function loadStatement(id: string): Promise<{
   statement: StatementDetail;
   lines: StatementLine[];
 } | null> {
-  const sb = supabaseServer();
-  const org = orgId();
+  const { supabase: sb, orgId: org } = await requireOperator();
+
 
   const { data: statement, error: stErr } = await sb
     .from('statements')

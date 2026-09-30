@@ -1,7 +1,7 @@
 // Statement list — newest as_of_at first. Drill into any row for the preview.
 
 import Link from 'next/link';
-import { supabaseServer, orgId } from '@/lib/supabase';
+import { requireOperator } from '@/lib/auth-server';
 import { formatCents, formatDate } from '@/lib/format';
 import { Badge, statementStateTone } from '@/components/Badge';
 
@@ -19,13 +19,13 @@ interface StatementRow {
 }
 
 async function loadStatements(): Promise<StatementRow[]> {
-  const sb = supabaseServer();
+  const { supabase: sb, orgId: org } = await requireOperator();
   const { data, error } = await sb
     .from('statements')
     .select(
       'id, state, currency, period_start_at, as_of_at, closing_balance_cents, generated_at, account:accounts(name)',
     )
-    .eq('org_id', orgId())
+    .eq('org_id', org)
     .order('as_of_at', { ascending: false })
     .limit(200);
   if (error) throw error;
