@@ -88,6 +88,9 @@ begin
  then raise exception 'local issuance evidence missing'; end if;
  if (select state from outbox where id=(issued->>'outbox_id')::uuid)<>'failed'
  then raise exception 'provider delivery not held'; end if;
+ denied:=false; begin insert into invoice_lines(org_id,invoice_id,description,quantity,unit_price_cents,total_cents)
+ values(o,i,'unauthorized post-issue edit',1,1,1); exception when others then denied:=true; end;
+ if not denied then raise exception 'issued line snapshot mutated'; end if;
  denied:=false; begin perform issue_bound_invoice(o,act,(claim->>'execution_id')::uuid); exception when others then denied:=true; end;
  if not denied then raise exception 'invoice issued twice'; end if;
  perform finish_bound_action(o,act,(claim->>'execution_id')::uuid,'CONFIRMED',issued,jsonb_build_object('invoice',i,'delivery','not_confirmed'));
