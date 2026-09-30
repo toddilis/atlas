@@ -6,6 +6,11 @@ import { executeApproved, registerTool } from '../src/platform/tools/registry.js
 import { encodeActionValue, decodeActionValue, KnownNoEffectError } from '../src/platform/control-plane/bound-actions.js';
 import { withProjectionReplay } from '../src/platform/events/context.js';
 import type { Json } from '../src/data/database.types.js';
+import { parseConfig } from '../src/platform/policy/config.js';
+import Fastify from 'fastify';
+import { registerAdminAuth } from '../src/api/auth.js';
+import { registerApprovalRoutes } from '../src/api/approval-routes.js';
+import { enqueue } from '../src/platform/tools/outbox.js';
 
 const org = '20000000-0000-4000-8000-000000000001';
 const approval = '20000000-0000-4000-8000-000000000002';
@@ -22,6 +27,7 @@ let seenInput: unknown, seenContext: unknown;
 let finish: Record<string, unknown> | null;
 let mode: 'ok' | 'unknown' | 'no-effect' | 'no-proof';
 let calls: string[];
+let outboxConflict: boolean;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://127.0.0.1');
@@ -30,6 +36,14 @@ const server = createServer(async (req, res) => {
   let text = ''; for await (const chunk of req) text += chunk;
   const body = text ? JSON.parse(text) : {};
   const reply = (value: unknown, status = 200) => { res.statusCode = status; res.end(JSON.stringify(value)); };
+  if (url.pathname === '/rest/v1/outbox') {
+    if (req.method === 'POST') {
+      assert.equal(body.related_subject_id, subject); assert.equal(body.related_subject_type, 'fixture');
+      assert.deepEqual(body.payload, { approval_id: approval, company_id: org });
+      return outboxConflict ? reply({ code: '23505', message: 'duplicate' }, 409) : reply({ id: 'queued-id' });
+    }
+    return reply({ id: 'unrelated-row', payload: { approval_id: 'other', company_id: org }, tool_name: 'fixture.bound', related_subject_id: subject, related_subject_type: 'fixture' });
+  }
   if (url.pathname === '/rest/v1/approved_actions') {
     assert.equal(url.searchParams.get('org_id'), `eq.${org}`);
     assert.equal(url.searchParams.get('approval_id'), `eq.${approval}`);
@@ -47,7 +61,7 @@ const server = createServer(async (req, res) => {
   if (url.pathname === '/rest/v1/rpc/finish_bound_action') { finish = body; return reply(null); }
   return reply({ message: 'unexpected boundary endpoint' }, 400);
 });
-const keys = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATLAS_ORG_ID'];
+const keys = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'ATLAS_ORG_ID', 'ATLAS_API_TOKEN', 'ATLAS_ADMIN_ACTOR_ID'];
 const saved = Object.fromEntries(keys.map(key => [key, process.env[key]]));
 before(async () => {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -74,6 +88,7 @@ beforeEach(() => {
   grant = true; paused = claimed = expired = revoked = false;
   snapshot = { revision: 1, destination: 'fixture' }; mode = 'ok'; currentPolicy = null;
   seenInput = seenContext = undefined; finish = null; calls = [];
+  outboxConflict = false;
   stored = { schema_version: 1, org_id: org, agent_name: 'fixture-agent', tool_name: 'fixture.bound',
     subject_type: 'fixture', subject_id: subject, input: encodeActionValue({ amount: 9007199254740993n }),
     subject_snapshot: { ...snapshot }, policy_snapshot: null };
@@ -139,4 +154,33 @@ test('codec rejects ambiguous tagged objects and unsafe numeric amounts', () => 
   assert.throws(() => encodeActionValue({ amount: { $atlas_bigint: '10' } }), /reserved/);
   assert.deepEqual(decodeActionValue(encodeActionValue({ values: [1n, '1', 1] })), { values: [1n, '1', 1] });
   assert.throws(() => decodeActionValue({ $atlas_bigint: 'bad' } as Json), /invalid persisted/);
+});
+test('policy limits preserve decimal strings and reject rounded/fractional numeric input', () => {
+  assert.equal(parseConfig({ approvalThreshold: { amount: '9007199254740993' } }).approvalThreshold?.amount, 9007199254740993n);
+  for (const amount of [Number.MAX_SAFE_INTEGER + 1, 1.1, Infinity, NaN, '1.1', '']) {
+    assert.throws(() => parseConfig({ approvalThreshold: { amount } }), /policy money/);
+  }
+});
+test('live admin route refuses missing authentication and caller-selected input before database access', async () => {
+  const app = Fastify(); registerAdminAuth(app); registerApprovalRoutes(app);
+  process.env.ATLAS_API_TOKEN = 'fixture-admin'; process.env.ATLAS_ADMIN_ACTOR_ID = actor.actorId;
+  try {
+    const url = `/admin/approvals/${approval}/execute`;
+    assert.equal((await app.inject({ method: 'POST', url, payload: {} })).statusCode, 401);
+    assert.equal((await app.inject({ method: 'POST', url, headers: { authorization: 'Bearer wrong' }, payload: {} })).statusCode, 401);
+    const forged = await app.inject({ method: 'POST', url, headers: { authorization: 'Bearer fixture-admin' },
+      payload: { tool: 'other-tool', input: { amount: '1' }, companyId: org, actorId: 'forged' } });
+    assert.equal(forged.statusCode, 409); assert.equal(calls.length, 0);
+    const valid = await app.inject({ method: 'POST', url, headers: { authorization: 'Bearer fixture-admin' }, payload: {} });
+    assert.equal(valid.statusCode, 200); assert.equal(valid.json().status, 'CONFIRMED');
+    delete process.env.ATLAS_API_TOKEN;
+    assert.equal((await app.inject({ method: 'POST', url, payload: {} })).statusCode, 503);
+  } finally { await app.close(); }
+});
+test('outbox stores the approved binding and rejects conflicting idempotency identity', async () => {
+  const input = { toolName: 'fixture.bound', action: 'fixture.bound', payload: { forged: 'ignored' }, approvalId: approval, idempotencyKey: 'stable' };
+  assert.equal(await enqueue(input), 'queued-id');
+  outboxConflict = true;
+  await assert.rejects(enqueue(input), /conflicts with another action/);
+  await assert.rejects(enqueue({ ...input, relatedSubjectId: 'other' }), /subject differs/);
 });
