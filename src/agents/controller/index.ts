@@ -22,7 +22,8 @@ import { recordObservation } from '../../platform/memory/observations.js';
 import { appendEvent } from '../../platform/events/eventLog.js';
 import { log } from '../../platform/log.js';
 import { decideRoute } from './routing.js';
-import { execute as draftInvoice } from './tools/draft_invoice.js';
+import type { DraftInvoiceInput, DraftInvoiceOutput } from './tools/draft_invoice.js';
+import { invokeTool } from '../../platform/tools/registry.js';
 
 async function onShopifyFulfillmentCreated(event: {
   id: string;
@@ -121,10 +122,16 @@ async function onShopifyFulfillmentCreated(event: {
   // don't produce invoices in this PR.
   if (decision.route === 'wholesale') {
     try {
-      const draft = await draftInvoice(
+      const invocation = await invokeTool<DraftInvoiceInput, DraftInvoiceOutput>(
+        'controller.draft_invoice',
         { fulfillmentEventId },
-        { agentName: 'controller', subjectType: 'fulfillment_event', subjectId: fulfillmentEventId },
+        { companyId: orgId(), agentName: 'controller', subjectType: 'fulfillment_event', subjectId: fulfillmentEventId },
       );
+      if (invocation.status !== 'executed') {
+        log.info('controller.invoice.draft_held', { fulfillment_event_id: fulfillmentEventId, status: invocation.status });
+        return;
+      }
+      const draft = invocation.result;
       log.info('controller.invoice.drafted', {
         invoice_id: draft.invoiceId,
         invoice_number: draft.invoiceNumber,
