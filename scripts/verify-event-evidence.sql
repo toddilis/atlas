@@ -79,7 +79,8 @@ begin
  update event_receipts set attempts=9 where org_id=o and consumer='bounded';
  c:=claim_event_receipt(o,'bounded');
  update event_receipts set lease_until=clock_timestamp()-interval '1 second' where org_id=o and consumer='bounded';
- if claim_event_receipt(o,'bounded') is not null or (select state from event_receipts where org_id=o and consumer='bounded')<>'quarantined'
+ c:=claim_event_receipt(o,'bounded');
+ if c is not null or (select state from event_receipts where org_id=o and consumer='bounded')<>'quarantined'
  then raise exception 'final crashed lease not quarantined'; end if;
  select count(*) into n from approved_actions where org_id=o;
  perform enqueue_event_replay(o,'ordered','rebuild-1',array['one','two','three']);
@@ -92,16 +93,34 @@ begin
 end $$;
 
 do $$
-declare o uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); subject uuid:=gen_random_uuid(); obs jsonb; d jsonb; intent jsonb; a uuid; action uuid; claim jsonb; view jsonb; denied boolean; n integer; outcome jsonb;
+declare o uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); subject uuid:=gen_random_uuid(); obs jsonb; d jsonb; intent jsonb; a uuid; action uuid; claim jsonb; view jsonb; denied boolean; n integer; outcome jsonb; k text; bad jsonb;
 begin
  insert into orgs(id,slug,display_name) values(o,'evidence-'||o,'Wholesale'),(b,'evidence-'||b,'Non-stock service');
- obs:=jsonb_build_object('contract_version',1,'company_id',o,'observation_id','obs','subject',jsonb_build_object('company_id',o,'type','Invoice','id',subject),'quality','verified');
+ obs:=jsonb_build_object('contract_version',1,'company_id',o,'observation_id','obs','subject',jsonb_build_object('company_id',o,'type','Invoice','id',subject),'quality','verified',
+ 'created_at','2026-10-01T00:00:00Z','source','fixture','connection_id',null,'occurred_at','2026-10-01T00:00:00Z','observed_at','2026-10-01T00:00:00Z',
+ 'evidence_refs',jsonb_build_array(jsonb_build_object('company_id',o,'type','SourceRecord','id','fixture-source')));
+ for k in select jsonb_object_keys(obs) loop
+   denied:=false; begin perform record_evidence_observation(o,obs-k,'{}'); exception when others then denied:=true; end;
+   if not denied then raise exception 'incomplete observation accepted: %',k; end if;
+ end loop;
  perform record_evidence_observation(o,obs,'{"quantity":"40","amount_minor":"9007199254740993"}');
  d:=jsonb_build_object('contract_version',1,'company_id',o,'decision_id','decision','revision',1,
  'state_snapshot_ref',jsonb_build_object('company_id',o,'type','Snapshot','id','snapshot'),
  'trigger_refs',jsonb_build_array(jsonb_build_object('company_id',o,'type','Observation','id','obs')),
- 'subject_refs',jsonb_build_array(jsonb_build_object('company_id',o,'type','Invoice','id',subject)));
- perform record_evidence_decision(o,d,'{"quantity":"40","price_version":"synthetic-v1","amount_minor":"9007199254740993"}');
+ 'subject_refs',jsonb_build_array(jsonb_build_object('company_id',o,'type','Invoice','id',subject,'revision',1)),
+ 'created_at','2026-10-01T00:00:00Z','decision_type','controller.invoice_delivery','options_considered',jsonb_build_array('print','hold'),'recommended_option','print',
+ 'expected_outcomes',jsonb_build_array('available for packing'),'rationale','Synthetic fixture','assumptions','[]'::jsonb,'uncertainties',jsonb_build_array('packing unobserved'),
+ 'risk_class','B','policy_refs',jsonb_build_array(jsonb_build_object('company_id',o,'type','Policy','id','fixture-policy','revision',1)),
+ 'model_or_rule_provenance','fixture-rule-v1','expires_at','2026-10-07T00:00:00Z');
+ for k in select jsonb_object_keys(d) loop
+   denied:=false; begin perform record_evidence_decision(o,d-k,'{"subject_snapshot":{"revision":1}}'); exception when others then denied:=true; end;
+   if not denied then raise exception 'incomplete decision accepted: %',k; end if;
+ end loop;
+ denied:=false; begin perform record_evidence_decision(o,jsonb_set(d,'{options_considered}','[1]'),'{}'); exception when others then denied:=true; end;
+ if not denied then raise exception 'wrong decision array member accepted'; end if;
+ denied:=false; begin perform record_evidence_decision(o,d||'{"unexpected":true}','{}'); exception when others then denied:=true; end;
+ if not denied then raise exception 'unknown decision field accepted'; end if;
+ perform record_evidence_decision(o,d,'{"subject_snapshot":{"revision":1},"quantity":"40","price_version":"synthetic-v1","amount_minor":"9007199254740993"}');
  denied:=false; begin perform record_evidence_decision(o,d,'{"quantity":"60"}'); exception when others then denied:=true; end;
  if not denied then raise exception 'decision evidence changed'; end if;
  denied:=false; begin update evidence_decisions set state_snapshot='{}' where org_id=o; exception when others then denied:=true; end;
@@ -117,6 +136,14 @@ begin
  if not denied or (select count(*) from approvals where org_id=o)<>n or (select count(*) from approved_actions where org_id=o)<>1
  then raise exception 'publication failure did not roll back authority mutation'; end if;
  select id into action from approved_actions where approval_id=a;
+ bad:=jsonb_set(jsonb_set(jsonb_set(d,'{decision_id}','"wrong-revision"'),'{state_snapshot_ref,id}','"wrong-revision-snapshot"'),'{subject_refs,0,revision}','2');
+ perform record_evidence_decision(o,bad,'{"subject_snapshot":{"revision":1}}');
+ denied:=false; begin perform link_decision_action(o,'wrong-revision',1,action); exception when others then denied:=true; end;
+ if not denied then raise exception 'substituted subject revision linked'; end if;
+ bad:=jsonb_set(jsonb_set(d,'{decision_id}','"wrong-material"'),'{state_snapshot_ref,id}','"wrong-material-snapshot"');
+ perform record_evidence_decision(o,bad,'{"subject_snapshot":{"revision":1,"amount_minor":"1"}}');
+ denied:=false; begin perform link_decision_action(o,'wrong-material',1,action); exception when others then denied:=true; end;
+ if not denied then raise exception 'changed material snapshot linked'; end if;
  perform link_decision_action(o,'decision',1,action);
  view:=read_decision_evidence(o,'decision',1);
  if view#>>'{actions,0,execution_status}'<>'pending' or view->>'outcome_status'<>'unknown' then raise exception 'missing state fabricated'; end if;
@@ -138,7 +165,15 @@ begin
  update approved_actions set updated_at=clock_timestamp() where id=action;
  if (select count(*) from evidence_history where org_id=o)<>n then raise exception 'no-op created history'; end if;
  outcome:=jsonb_build_object('contract_version',1,'company_id',o,'outcome_id','unknown-result','decision_id','decision','action_ids',jsonb_build_array(action),
- 'status','unknown','unknown_reason','Cash collection unobserved','evaluation','unavailable','metrics_after','[]'::jsonb,'observed_outcomes','[]'::jsonb,'measured_at',null);
+ 'status','unknown','unknown_reason','Cash collection unobserved','evaluation','unavailable','metrics_after','[]'::jsonb,'observed_outcomes','[]'::jsonb,'measured_at',null,
+ 'created_at','2026-10-01T00:00:00Z','measurement_window',jsonb_build_object('start','2026-10-01T00:00:00Z','end','2026-10-07T00:00:00Z'),
+ 'metrics_before','[]'::jsonb,'expected_outcomes',jsonb_build_array('available for packing'),'confounders','[]'::jsonb,'evidence_refs','[]'::jsonb);
+ for k in select jsonb_object_keys(outcome) loop
+   denied:=false; begin perform record_evidence_outcome(o,1,outcome-k); exception when others then denied:=true; end;
+   if not denied then raise exception 'incomplete outcome accepted: %',k; end if;
+ end loop;
+ denied:=false; begin perform record_evidence_outcome(o,1,jsonb_set(outcome,'{measurement_window,end}','"2026-09-30T00:00:00Z"')); exception when others then denied:=true; end;
+ if not denied then raise exception 'reversed outcome window accepted'; end if;
  perform record_evidence_outcome(o,1,outcome);
  denied:=false; begin perform record_evidence_outcome(o,1,jsonb_set(outcome,'{metrics_after}','[{"name":"cash","value":"100","unit":"NZD"}]')); exception when others then denied:=true; end;
  if not denied then raise exception 'unknown outcome fabricated metrics'; end if;

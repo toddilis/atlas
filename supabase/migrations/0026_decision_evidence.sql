@@ -46,10 +46,89 @@ begin
 end $$;
 create trigger platform_native_evidence_validation before insert on platform_events for each row execute function validate_native_evidence_event();
 
+-- The SQL seam is also used inside domain transactions, so validation cannot be
+-- delegated solely to TS wrappers. Mirrors the accepted strict Controller v1
+-- observation/decision/outcome subset; it grants no authority.
+create function assert_evidence_record_v1(p_org_id uuid,p_kind text,p_record jsonb) returns void
+language plpgsql immutable set search_path=pg_catalog,public as $$
+declare keys text[]; texts text[]:='{}'; arrays text[]:='{}'; times text[]:='{}'; refs text[]:='{}';
+ k text; item jsonb; n numeric; v text;
+begin
+ if jsonb_typeof(p_record) is distinct from 'object' then raise exception 'invalid % object',p_kind; end if;
+ case p_kind
+ when 'reference' then keys:=array['company_id','type','id']; texts:=keys;
+ when 'metric' then keys:=array['name','value','unit']; texts:=keys;
+ when 'window' then keys:=array['start','end']; times:=keys;
+ when 'observation' then
+   keys:=array['contract_version','company_id','created_at','observation_id','subject','source','connection_id','occurred_at','observed_at','evidence_refs','quality'];
+   texts:=array['company_id','observation_id','source','quality']; times:=array['created_at','occurred_at','observed_at']; arrays:=array['evidence_refs']; refs:=array['subject'];
+ when 'decision' then
+   keys:=array['contract_version','company_id','created_at','decision_id','revision','decision_type','subject_refs','trigger_refs','state_snapshot_ref','options_considered',
+     'recommended_option','expected_outcomes','rationale','assumptions','uncertainties','risk_class','policy_refs','model_or_rule_provenance','expires_at'];
+   texts:=array['company_id','decision_id','decision_type','recommended_option','rationale','risk_class','model_or_rule_provenance'];
+   times:=array['created_at','expires_at']; refs:=array['state_snapshot_ref'];
+   arrays:=array['subject_refs','trigger_refs','options_considered','expected_outcomes','assumptions','uncertainties','policy_refs'];
+ when 'outcome' then
+   keys:=array['contract_version','company_id','created_at','outcome_id','decision_id','action_ids','measurement_window','status','metrics_before','metrics_after',
+     'expected_outcomes','observed_outcomes','confounders','evaluation','evidence_refs','measured_at','unknown_reason'];
+   texts:=array['company_id','outcome_id','decision_id','status','evaluation']; times:=array['created_at','measured_at'];
+   arrays:=array['action_ids','metrics_before','metrics_after','expected_outcomes','observed_outcomes','confounders','evidence_refs'];
+ else raise exception 'unsupported evidence contract'; end case;
+ if not (p_record ?& keys) or exists(select 1 from jsonb_object_keys(p_record) x where not (x=any(keys) or (p_kind='reference' and x='revision')))
+ then raise exception 'missing or unknown % fields',p_kind; end if;
+ foreach k in array texts loop
+   if jsonb_typeof(p_record->k) is distinct from 'string' or length(p_record->>k)=0 then raise exception 'invalid % text %',p_kind,k; end if;
+ end loop;
+ foreach k in array times loop
+   if p_kind='outcome' and k='measured_at' and p_record->k='null'::jsonb then continue; end if;
+   if jsonb_typeof(p_record->k) is distinct from 'string' or (p_record->>k)!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
+   then raise exception 'invalid evidence timestamp %',k; end if;
+   perform (p_record->>k)::timestamptz;
+ end loop;
+ if p_record ? 'company_id' and p_record->>'company_id' is distinct from p_org_id::text then raise exception 'cross-company contract'; end if;
+ if p_kind in ('observation','decision','outcome') and p_record->'contract_version' is distinct from '1'::jsonb then raise exception 'unsupported evidence contract version'; end if;
+ if p_record ? 'revision' then
+   if jsonb_typeof(p_record->'revision') is distinct from 'number' then raise exception 'numeric revision required'; end if;
+   n:=(p_record->>'revision')::numeric;
+   if n<1 or n>9007199254740991 or trunc(n)<>n then raise exception 'invalid evidence revision'; end if;
+ end if;
+ foreach k in array refs loop perform assert_evidence_record_v1(p_org_id,'reference',p_record->k); end loop;
+ foreach k in array arrays loop
+   if jsonb_typeof(p_record->k) is distinct from 'array' then raise exception 'invalid evidence array %',k; end if;
+   if k in ('subject_refs','trigger_refs','options_considered','expected_outcomes','policy_refs','action_ids') or (p_kind='observation' and k='evidence_refs') then
+     if jsonb_array_length(p_record->k)=0 then raise exception 'empty evidence array %',k; end if;
+   end if;
+   for item in select value from jsonb_array_elements(p_record->k) loop
+     if k like '%_refs' then perform assert_evidence_record_v1(p_org_id,'reference',item);
+     elsif k in ('metrics_before','metrics_after') then perform assert_evidence_record_v1(p_org_id,'metric',item);
+     elsif jsonb_typeof(item) is distinct from 'string' or length(item#>>'{}')=0 then raise exception 'invalid evidence array member %',k;
+     end if;
+   end loop;
+ end loop;
+ if p_kind='metric' and (p_record->>'value')!~'^-?(0|[1-9][0-9]*)([.][0-9]+)?$' then raise exception 'invalid metric decimal'; end if;
+ if p_kind='window' and (p_record->>'end')::timestamptz<=(p_record->>'start')::timestamptz then raise exception 'invalid outcome window'; end if;
+ if p_kind='observation' then
+   if p_record->>'quality' not in ('verified','unverified','stale','conflicting') or
+     (p_record->'connection_id'<>'null'::jsonb and (jsonb_typeof(p_record->'connection_id') is distinct from 'string' or length(p_record->>'connection_id')=0))
+   then raise exception 'invalid observation quality/connection'; end if;
+ elsif p_kind='decision' then
+   if p_record->>'decision_type'<>'controller.invoice_delivery' or p_record->>'risk_class' not in ('A','B','C')
+   or not (p_record->'options_considered' @> jsonb_build_array(p_record->>'recommended_option'))
+   or (p_record->>'expires_at')::timestamptz<=(p_record->>'created_at')::timestamptz then raise exception 'invalid decision semantics'; end if;
+ elsif p_kind='outcome' then
+   perform assert_evidence_record_v1(p_org_id,'window',p_record->'measurement_window');
+   if p_record->>'status' not in ('known','unknown') or p_record->>'evaluation' not in ('improved','worsened','unchanged','inconclusive','unavailable')
+   or (p_record->'unknown_reason'<>'null'::jsonb and (jsonb_typeof(p_record->'unknown_reason') is distinct from 'string' or length(p_record->>'unknown_reason')=0))
+   then raise exception 'invalid outcome semantics'; end if;
+ end if;
+end $$;
+revoke all on function assert_evidence_record_v1(uuid,text,jsonb) from public,anon,authenticated,service_role;
+
 create function record_evidence_observation(p_org_id uuid,p_record jsonb,p_facts jsonb) returns text
 language plpgsql security definer set search_path=pg_catalog,public as $$
 declare prior evidence_observations%rowtype; v_id text:=p_record->>'observation_id';
 begin
+ perform assert_evidence_record_v1(p_org_id,'observation',p_record);
  perform assert_evidence_company(p_org_id,p_record); perform assert_evidence_company(p_org_id,p_facts);
  if octet_length(p_record::text)+octet_length(p_facts::text)>262144 then raise exception 'observation exceeds 256 KiB'; end if;
  if p_record->>'company_id' is distinct from p_org_id::text or p_record->>'contract_version' is distinct from '1'
@@ -67,6 +146,7 @@ create function record_evidence_decision(p_org_id uuid,p_record jsonb,p_state_sn
 language plpgsql security definer set search_path=pg_catalog,public as $$
 declare prior evidence_decisions%rowtype; ref jsonb; v_id text:=p_record->>'decision_id'; v_revision integer;
 begin
+ perform assert_evidence_record_v1(p_org_id,'decision',p_record);
  perform assert_evidence_company(p_org_id,p_record); perform assert_evidence_company(p_org_id,p_state_snapshot);
  if octet_length(p_record::text)+octet_length(p_state_snapshot::text)>262144 then raise exception 'decision exceeds 256 KiB'; end if;
  if p_record->>'company_id' is distinct from p_org_id::text or p_record->>'contract_version' is distinct from '1'
@@ -96,8 +176,10 @@ begin
  select * into a from approved_actions where org_id=p_org_id and id=p_action_id;
  if not found then raise exception 'action not found'; end if;
  if not exists(select 1 from jsonb_array_elements(d.record->'subject_refs') r
-   where r->>'id'=a.intent->>'subject_id' and lower(r->>'type')=lower(a.intent->>'subject_type'))
+   where r->>'id'=a.intent->>'subject_id' and lower(r->>'type')=lower(a.intent->>'subject_type')
+   and (not (r ? 'revision') or r->'revision'=a.intent#>'{subject_snapshot,revision}'))
  then raise exception 'decision/action subject mismatch'; end if;
+ if d.state_snapshot->'subject_snapshot' is distinct from a.intent->'subject_snapshot' then raise exception 'decision/action material snapshot mismatch'; end if;
  insert into evidence_action_links(org_id,decision_id,decision_revision,action_id) values(p_org_id,p_decision_id,p_revision,p_action_id) on conflict do nothing;
  select * into prior from evidence_action_links where org_id=p_org_id and action_id=p_action_id;
  if prior.decision_id<>p_decision_id or prior.decision_revision<>p_revision then raise exception 'action already linked to another decision'; end if;
@@ -107,6 +189,7 @@ create function record_evidence_outcome(p_org_id uuid,p_decision_revision intege
 language plpgsql security definer set search_path=pg_catalog,public as $$
 declare v_id text:=p_record->>'outcome_id'; a text; prior jsonb;
 begin
+ perform assert_evidence_record_v1(p_org_id,'outcome',p_record);
  perform assert_evidence_company(p_org_id,p_record);
  if octet_length(p_record::text)>262144 then raise exception 'outcome exceeds 256 KiB'; end if;
  if p_record->>'company_id' is distinct from p_org_id::text or p_record->>'contract_version' is distinct from '1'
