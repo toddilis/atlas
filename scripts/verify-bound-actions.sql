@@ -3,7 +3,7 @@ begin;
 do $$
 declare
  o uuid:=gen_random_uuid(); other_org uuid:=gen_random_uuid(); subject uuid:=gen_random_uuid();
- a uuid; act uuid; claim jsonb; intent jsonb; i uuid; snap jsonb; denied boolean;
+ a uuid; act uuid; claim jsonb; intent jsonb; i uuid; snap jsonb; issued jsonb; denied boolean;
 begin
  insert into orgs(id,slug,display_name) values(o,'bound-'||o,'Bound fixture'),(other_org,'bound-'||other_org,'Other fixture');
  insert into tool_grants(org_id,agent_name,tool_name,risk) values(o,'fixture','fixture.action','approve_required'),(o,'controller','controller.issue_invoice','approve_required');
@@ -72,6 +72,28 @@ begin
  update invoices set total_cents=100 where id=i;
  denied:=false; begin perform claim_bound_action(o,a,'worker','null',snap); exception when others then denied:=true; end;
  if not denied then raise exception 'stale invoice claim allowed'; end if;
+
+ -- The exact stored invoice executes once, with local ledger evidence and held delivery.
+ perform seed_chart_of_accounts(o);
+ insert into invoices(org_id,invoice_number,currency,subtotal_cents,total_cents,state,channel)
+ values(o,'bound-issuance','NZD',1000,1000,'draft','wholesale') returning id into i;
+ snap:=invoice_action_snapshot(o,i);
+ intent:=jsonb_set(jsonb_set(intent,'{subject_id}',to_jsonb(i)),'{subject_snapshot}',snap);
+ a:=create_bound_approval(o,intent,now()+interval '1 hour');
+ perform decide_bound_approval(o,a,'approved','operator');
+ claim:=claim_bound_action(o,a,'worker','null',snap);
+ act:=(claim->>'action_id')::uuid;
+ issued:=issue_bound_invoice(o,act,(claim->>'execution_id')::uuid);
+ if (select state from invoices where id=i)<>'issued' or issued->>'ledger_transaction_id' is null
+ then raise exception 'local issuance evidence missing'; end if;
+ if (select state from outbox where id=(issued->>'outbox_id')::uuid)<>'failed'
+ then raise exception 'provider delivery not held'; end if;
+ denied:=false; begin insert into invoice_lines(org_id,invoice_id,description,quantity,unit_price_cents,total_cents)
+ values(o,i,'unauthorized post-issue edit',1,1,1); exception when others then denied:=true; end;
+ if not denied then raise exception 'issued line snapshot mutated'; end if;
+ denied:=false; begin perform issue_bound_invoice(o,act,(claim->>'execution_id')::uuid); exception when others then denied:=true; end;
+ if not denied then raise exception 'invoice issued twice'; end if;
+ perform finish_bound_action(o,act,(claim->>'execution_id')::uuid,'CONFIRMED',issued,jsonb_build_object('invoice',i,'delivery','not_confirmed'));
 
  if has_function_privilege('authenticated','claim_bound_action(uuid,uuid,text,jsonb,jsonb)','execute')
  or has_function_privilege('anon','create_bound_approval(uuid,jsonb,timestamp with time zone,text)','execute')

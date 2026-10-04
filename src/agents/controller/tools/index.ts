@@ -23,9 +23,8 @@ export function registerControllerTools(): void {
   });
 
   // draft_invoice is the deterministic projection of a wholesale fulfillment into an
-  // invoice row + lines. No money moves; no policy gate. The controller's onEvent calls
-  // execute() directly (same precedent as the outbox drainer); the registry registration
-  // is for a future LLM-loop entry point.
+  // invoice row + lines. The event handler goes through the same entitlement boundary
+  // as interactive tool use, so revocation and pause apply to automatic drafting too.
   registerTool({
     name: 'controller.draft_invoice',
     defaultRisk: 'auto',

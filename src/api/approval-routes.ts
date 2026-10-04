@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { orgId, supabase } from '../data/supabase.js';
-import { decideApproval } from '../platform/control-plane/approvals.js';
+import { decideApproval, getApproval } from '../platform/control-plane/approvals.js';
 import { encodeActionValue, loadBoundAction } from '../platform/control-plane/bound-actions.js';
 import { executeApproved } from '../platform/tools/registry.js';
 
@@ -29,7 +29,7 @@ export function registerApprovalRoutes(app: FastifyInstance): void {
       const action = await loadBoundAction(id);
       const { data, error } = await supabase().from('action_attempts').select('*').eq('org_id', orgId()).eq('action_id', action.id).order('attempt_number');
       if (error) throw error;
-      return { action, attempts: data };
+      return { approval: await getApproval(id), action, attempts: data };
     } catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) }); }
   });
   app.post('/admin/approvals/:id/decision', async (request, reply) => {
