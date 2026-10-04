@@ -135,7 +135,7 @@ begin
     anchor:=(case when i#>>'{terms,anchor}'='dispatch' then i->>'dispatchAt' when i#>>'{terms,anchor}'='invoice' then i#>>'{terms,invoiceAt}' else null end)::timestamptz;
     due:=(date_trunc('month',anchor at time zone (c->>'timezone'))+interval '1 month')::date+((i#>>'{terms,day}')::integer-1);
   else raise exception 'terms missing or unsupported'; end if;
-  if due is null or s#>>'{terms,dueDate}' is distinct from due::text or (s->'terms'-'dueDate') is distinct from (i->'terms'-'dueDate') then raise exception 'terms snapshot mismatch'; end if;
+  if due is null or s#>>'{terms,dueDate}' is distinct from due::text or ((s->'terms')-'dueDate') is distinct from ((i->'terms')-'dueDate') then raise exception 'terms snapshot mismatch'; end if;
 end $$;
 
 create function draft_dispatch_invoice(p_org_id uuid,p_source_id uuid,p_dispatch_id uuid,p_source_revision timestamptz,
