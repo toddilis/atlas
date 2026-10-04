@@ -16,6 +16,7 @@ import { supabase, orgId } from '../../../data/supabase.js';
 import { appendEvent } from '../../../platform/events/eventLog.js';
 import type { ToolContext } from '../../../platform/tools/registry.js';
 import type { PolicyInput } from '../../../platform/policy/types.js';
+import { invoiceApprovalSnapshot, KnownNoEffectError } from '../../../platform/control-plane/bound-actions.js';
 
 export interface IssueInvoiceInput {
   invoiceId: string;
@@ -49,9 +50,20 @@ export function buildPolicyInput(
   };
 }
 
+export async function approvalSnapshot(input: IssueInvoiceInput, ctx: ToolContext): Promise<Record<string, unknown>> {
+  if (ctx.subjectType !== 'invoice' || ctx.subjectId !== input.invoiceId) throw new Error('invoice approval subject mismatch');
+  const snapshot = await invoiceApprovalSnapshot(input.invoiceId);
+  const invoice = snapshot.invoice as Record<string, unknown>;
+  if (invoice.state !== 'draft' || String(invoice.total_cents) !== input.amount.toString() ||
+      invoice.currency !== input.currency || invoice.account_id !== input.accountId ||
+      invoice.fulfillment_event_id !== input.fulfillmentEventId)
+    throw new Error('invoice amount, currency, account, fulfillment or state differs from proposal');
+  return snapshot;
+}
+
 export async function execute(
   input: IssueInvoiceInput,
-  _ctx: ToolContext,
+  ctx: ToolContext,
 ): Promise<IssueInvoiceOutput> {
   const sb = supabase();
 
@@ -59,13 +71,24 @@ export async function execute(
   // invoice in a recovery scenario gets dedup'd at the outbox layer.
   const outboxIdempotencyKey = `stripe.create_invoice:${input.invoiceId}`;
 
-  const { data, error } = await sb.rpc('issue_invoice_atomic', {
+  const { data, error } = ctx.actionId && ctx.executionId ? await sb.rpc('issue_bound_invoice', {
+    p_org_id: orgId(), p_action_id: ctx.actionId, p_execution_id: ctx.executionId,
+  }) : await sb.rpc('issue_invoice_atomic', {
     p_org_id: orgId(),
     p_invoice_id: input.invoiceId,
     p_outbox_idempotency: outboxIdempotencyKey,
   });
-  if (error) throw error;
-  const row = Array.isArray(data) ? data[0] : data;
+  if (error) {
+    // Explicit SQL rejection rolls back the complete RPC transaction. Network and
+    // unclassified failures still carry unknown effect status and require reconciliation.
+    if (ctx.actionId && ctx.executionId && error.code === 'P0001') {
+      throw new KnownNoEffectError(error.message, { source: 'issue_bound_invoice', sqlstate: error.code, reason: error.message });
+    }
+    throw error;
+  }
+  const row = (Array.isArray(data) ? data[0] : data) as {
+    invoice_id: string; issued_at: string; outbox_id: string; ledger_transaction_id: string | null;
+  } | null;
   if (!row) {
     throw new Error(
       `issue_invoice: rpc returned no rows for invoice ${input.invoiceId}`,
@@ -84,7 +107,7 @@ export async function execute(
       outbox_id: row.outbox_id,
       ledger_transaction_id: row.ledger_transaction_id,
       account_id: input.accountId,
-      amount_cents: Number(input.amount),
+      amount_cents: input.amount.toString(),
       currency: input.currency,
     },
     idempotencyKey: `controller.invoice.issued:${row.invoice_id}`,
