@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { authEnv, operatorAllowed } from './lib/auth';
 import { redirectWithCookies } from './lib/auth-response';
 import WebSocket from 'ws';
+import type { RealtimeClientOptions } from '@supabase/supabase-js';
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -23,7 +24,7 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(env.url, env.anonKey, {
-    realtime: { transport: WebSocket },
+    realtime: { transport: WebSocket as unknown as RealtimeClientOptions['transport'] },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {

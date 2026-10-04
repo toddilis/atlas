@@ -12,6 +12,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { OperatorAuthError, requireOperator } from './auth-server';
 import { redirect } from 'next/navigation';
 import WebSocket from 'ws';
+import type { RealtimeClientOptions } from '@supabase/supabase-js';
 
 let cached: SupabaseClient | null = null;
 
@@ -31,7 +32,7 @@ export async function supabaseServer(): Promise<SupabaseClient> {
     );
   }
   cached = createClient(url, key, {
-    realtime: { transport: WebSocket },
+    realtime: { transport: WebSocket as unknown as RealtimeClientOptions['transport'] },
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: 'public' },
   });

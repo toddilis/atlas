@@ -14,8 +14,13 @@ Browser-supplied actor, tool, input and business substitutions are refused.
 
 ## Disposable browser environment gate
 
-No disposable configuration was present in this task. Never fill this gap with the
-deployed business's credentials. The precise setup required is:
+No disposable configuration was present in the local task environment. The coordinator
+subsequently located original commit `abd36ceff4a86eb4bd1ae819a4d69599781145ed` with a
+reusable GoTrue/Playwright harness; this continuation includes it and adds migrated
+PostgREST business reads. `.github/workflows/auth-browser.yml` provisions the following
+setup entirely from synthetic values. Execution is a separate gate; do not infer a
+pass from the harness being present. Never substitute deployed business credentials.
+The precise setup required is:
 
 - A dedicated disposable Supabase project or local Supabase stack with Auth and
   PostgREST, migrated Atlas schema, and a synthetic org plus synthetic data.
@@ -54,6 +59,12 @@ web auth, approval routes/control plane, grants/registry and migration 0027 in a
 to the inherited 0022. EVENT/EVIDENCE owns replay adoption and 0025/26. BILL 0028 owns
 atomic invoice domain publication and stored document/terms integration. Keep migration
 numbers even when this isolated candidate does not contain other tracks' migrations.
+
+Migration 0027 supports atomic invoice per-transaction, rolling and velocity limits.
+Configured conditional source requirements remain explicitly blocked until the domain
+adapter can verify their source/amount contract in the effect transaction. They are
+never silently treated as satisfied. Other consequential tools need their own atomic
+domain guards; the generic stored-action checks do not reserve a provider's capacity.
 
 `supabaseServer()` is now async. New console callers must await it. Do not expose its
 service credential or the API token to the browser. API/job company identity remains

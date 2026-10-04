@@ -2588,6 +2588,10 @@ export type Database = {
         Args: { p_org_id: string; p_value: Json }
         Returns: undefined
       }
+      assert_evidence_record_v1: {
+        Args: { p_kind: string; p_org_id: string; p_record: Json }
+        Returns: undefined
+      }
       bind_shopify_dispatch_source: {
         Args: { p_connection_key: string; p_org_id: string }
         Returns: string
