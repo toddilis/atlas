@@ -10,6 +10,7 @@ import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
 import { registerAdminAuth } from './auth.js';
 import { registerApprovalRoutes } from './approval-routes.js';
+import { registerEvidenceRoutes } from './evidence-routes.js';
 
 async function main() {
   await bootPlatform();
@@ -35,6 +36,7 @@ async function main() {
 
   // Liveness: process is up. Readiness (below) is what deploy health checks should use.
   registerApprovalRoutes(app);
+  registerEvidenceRoutes(app);
   app.get('/healthz', async () => ({ ok: true }));
 
   // Readiness: config present AND the database answers. Fly's http check points here
