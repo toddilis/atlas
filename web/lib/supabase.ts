@@ -9,13 +9,19 @@
 
 import 'server-only';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { requireOperator } from './require-operator';
+import { OperatorAuthError, requireOperator } from './auth-server';
+import { redirect } from 'next/navigation';
+import WebSocket from 'ws';
 
 let cached: SupabaseClient | null = null;
 
 export async function supabaseServer(): Promise<SupabaseClient> {
   // Do not put this behind the cached client: every request needs fresh authority.
-  await requireOperator();
+  try { await requireOperator(); }
+  catch (error) {
+    if (!(error instanceof OperatorAuthError)) throw error;
+    redirect(error.status === 503 ? '/login?unconfigured=1' : error.status === 403 ? '/login?denied=1' : '/login');
+  }
   if (cached) return cached;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,6 +31,7 @@ export async function supabaseServer(): Promise<SupabaseClient> {
     );
   }
   cached = createClient(url, key, {
+    realtime: { transport: WebSocket },
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: 'public' },
   });

@@ -7,19 +7,23 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { authEnv, operatorAllowed } from './lib/auth';
 import { redirectWithCookies } from './lib/auth-response';
+import WebSocket from 'ws';
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isLogin = path === '/login' || path.startsWith('/login/');
+  const isApi = path.startsWith('/api/');
 
   const env = authEnv();
   if (!env) {
+    if (isApi) return NextResponse.json({ error: 'Operator access is not configured.' }, { status: 503 });
     if (isLogin) return NextResponse.next({ request });
     return NextResponse.redirect(new URL('/login?unconfigured=1', request.url));
   }
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(env.url, env.anonKey, {
+    realtime: { transport: WebSocket },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {
@@ -37,12 +41,22 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
+    if (isApi) {
+      const denied = NextResponse.json({ error: 'Sign in required.' }, { status: 401 });
+      for (const cookie of response.cookies.getAll()) denied.cookies.set(cookie);
+      return denied;
+    }
     if (isLogin) return response;
     return redirectWithCookies(new URL('/login', request.url), response);
   }
 
   if (!operatorAllowed(user.email)) {
     await supabase.auth.signOut();
+    if (isApi) {
+      const denied = NextResponse.json({ error: 'Operator access denied.' }, { status: 403 });
+      for (const cookie of response.cookies.getAll()) denied.cookies.set(cookie);
+      return denied;
+    }
     return redirectWithCookies(new URL('/login?denied=1', request.url), response);
   }
 

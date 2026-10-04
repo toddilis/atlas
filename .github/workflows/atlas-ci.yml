@@ -86,6 +86,8 @@ jobs:
 
       - run: bash scripts/verify-bound-action-concurrency.sh
 
+      - run: bash scripts/verify-bound-policy-concurrency.sh
+
       - run: GEN_TYPES_DATABASE_URL="$DATABASE_URL" ./scripts/gen-types.sh
 
       - uses: actions/upload-artifact@v4

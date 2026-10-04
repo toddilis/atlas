@@ -30,3 +30,5 @@ coverage/
 # supabase
 supabase/.branches
 supabase/.temp
+web/playwright-report/
+web/test-results/
