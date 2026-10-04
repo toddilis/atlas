@@ -61,10 +61,10 @@ directory; existing September worktrees were inspected without modification.
 | Task / named owner | Branch / PR and starting commit | Dependencies / owned surfaces | Current candidate and next acceptance |
 | --- | --- | --- | --- |
 | Integration / `01a0f427-d5c8-7833-9232-4e60c8bce138` | `codex/integration-2026-10-01`, starts M; [planning #29](https://github.com/toddilis/atlas/pull/29) | Queue, PLAN/roadmap reconciliation, shared contract decisions, composition/evidence | Published initial docs `233d51cb1756888540e90745921b00fa0f13a6d4`; subsequent queue refresh follows. No accepted combined product candidate. Claims/order and reversible merge-tree checks recorded. |
-| AUTH-01 + AUTHZ-02 / `01a0f428-1f15-70f1-9ab4-1298b60b078c` | `codex/auth-oct01-completion`, starts #25 `f09d0a505c45d8b0cb7a9a44d7be3ee40c736d7b`; reuses #19, latest #25 ffa1200 and older auth abd36ce below; continuation PR pending | C + entitlement in M. control-plane approvals/bound-actions, tools grants/registry/outbox, events/context, agent/registry, approval-routes, web auth and auth-browser workflow; 0022/0027 | Current remote substrate ffa1200 is green; combined auth head not yet handed off. Reuse prior guard/real-auth harness, fix restart/current-policy concurrency, test distinct actions and protected business reads. Browser acceptance still pending. |
+| AUTH-01 + AUTHZ-02 / `01a0f428-1f15-70f1-9ab4-1298b60b078c` | `codex/auth-oct01-completion`, starts #25 f09d0a5; preserves #19, #25 ffa1200 and older auth abd36ce ancestry; [draft #31](https://github.com/toddilis/atlas/pull/31) | C + entitlement in M. control-plane approvals/bound-actions, tools grants/registry/outbox, events/context, agent/registry, approval-routes, web auth and auth-browser workflow; 0022/0027 | `2179d8c8f4bb6662a68a0f8d9dc78e78725f1a99`: [37186551868](https://github.com/toddilis/atlas/actions/runs/37186551868) root/DB passed, web typecheck failed (F10); [browser37186551883](https://github.com/toddilis/atlas/actions/runs/37186551883) failed GoTrue initialization (F11), browser cases did not run. No complete AUTH or browser acceptance. |
 | PRICING-01A/B, BILL-01, weekly FLOW-01A/UI subset / `01a0f428-d1c6-7553-8b9c-b1c23f18b78b` | `codex/pricing-billing-oct01`, starts M; [draft #28](https://github.com/toddilis/atlas/pull/28) | C + DATA-01; protected editor waits AUTH acceptance; approval/print consumes AUTHZ/EVENT/EVIDENCE. platform/pricing, Controller draft/billing/print, pricing/invoice console/tests; 0023/0028 | `6d54900c618de9f69e80d7eea184ba3bd4372dda`: [36787235528](https://github.com/toddilis/atlas/actions/runs/36787235528) app/web passed, DB job failed generated-type drift. No accepted DB/browser BILL journey. F7 trusted calculation/terms gap; EVENT helper dependency and approved print integration remain. Reuse older editor/tests, one canonical calculator/store. |
 | EVENT-01 + EVIDENCE-01 / `01a0f429-1266-71d3-bc08-0f8784cd425c` | `codex/event-evidence-oct01`, starts M, consumes #25 f09d0a5; [draft #30](https://github.com/toddilis/atlas/pull/30) | C, DATA-01, AUTH action/attempt API. New event publication/receipts/replay/evidence/read routes, narrow legacy projector/agent replay guards; 0025/0026 | `07e578f07d0aaa58d6a339fe607764862bc8f143`: [36788419655](https://github.com/toddilis/atlas/actions/runs/36788419655) root typecheck and DB generated-types drift failed; web passed. Owner reports 5 focused tests incl legacy replay. Update AUTH dependency, compare original44c59bc, then rerun real DB/independent gates. |
-| BUILD-02 fixture + reviewer / `01a0f429-4e9c-7b61-93a6-71b7777164f0` | `codex/build-02-october-fixture-hardening`, starts #26 cd002654, preserves #21 ancestry; [draft #27](https://github.com/toddilis/atlas/pull/27) | Independent of product critical path. scripts/reviewer, scripts/build-loop, automation tests/runbooks/workflow; final CI/package wiring | `8c4732fcb1a58d5c7eac971ce74384d6dc36f8ea`, tree `b01f1533a8ab6ab5b16219d3120a48c04ebc9d64`; fresh [36783120094](https://github.com/toddilis/atlas/actions/runs/36783120094) success. Owner reports 155 app/runner +39 reviewer tests and real DB checks; independent bounded review in progress. Production provider/store/scheduler still absent; no activation. |
+| BUILD-02 fixture + reviewer / `01a0f429-4e9c-7b61-93a6-71b7777164f0` | `codex/build-02-october-fixture-hardening`, starts #26 cd002654, preserves #21 ancestry; [draft #27](https://github.com/toddilis/atlas/pull/27) | Independent of product critical path. scripts/reviewer, scripts/build-loop, automation tests/runbooks/workflow; final CI/package wiring | `8c4732fcb1a58d5c7eac971ce74384d6dc36f8ea`, tree `b01f1533a8ab6ab5b16219d3120a48c04ebc9d64`; [36783120094](https://github.com/toddilis/atlas/actions/runs/36783120094) success. Verifier confirmed actual CI 155 app/runner +39 reviewer, tree equivalence and fresh39/39; bounded delta review found no new issue. Production provider/store/scheduler and trusted installation/live gates remain absent; no activation. |
 | VERIFY-ARCH-01 / `01a0f429-7a47-7a32-bbbd-d1165e6fc18b` | Detached `atlas-review` at M, `auth-review` at #19 and `authz-review` at #25 under own task; no implementation PR | Exact candidate + C + dependency manifest; local reports/reproductions only | No combined verdict yet. Local Postgres/pgvector/Docker and disposable auth unavailable. Independent DB/API/browser gates pending; #25 aggregate-policy race routed to AUTH. Findings go to implementation owners, never self-fixed by verifier. |
 
 Each owner must hand off the full starting and candidate SHAs, dependency SHAs, branch/PR,
@@ -198,6 +198,17 @@ regression cases; it must not install the older second pricing store. EVENT must
 similarly compare/reuse stronger original receipts/security/linkage behavior. Preserve
 both source histories and explicit decisions; do not delete unpublished work.
 
+Original owner preserved a portable handoff at
+`2026-09-27/unzip-and-review-this-folder-it/WEEKLY_HANDOFF_2026-10-04.md`
+(SHA-256 `91b687d8c2c6458952c80f865b108ecd803de86517ff1b83a345398905bd3928`),
+with `handoff-2026-10-04/candidates.bundle`
+(`7f2938599e25b6fddbe64f80abd60dba47e26795086c2aada0361941c0e82254`) and
+byte-preserved uncommitted auth/pricing overlays plus manifest
+(`f36269db30291c0e442dd89d81f5546d34fc47df9789bba18dc4e3ae58ef7054`).
+These hashes were supplied by the original owner; no coordinator mutation of those
+worktrees. EVENT selected weekly0025/26 after comparison, porting original strict
+subject mapping, gap exhaustion and context tests rather than the older second store.
+
 Independent verifier report was inspected at SHA-256
 `451C5ED69F675463B39EAA8E968511BB3C0DABAA8C71BC4874A134FC8DF7787D`, path recorded in
 the observation receipt. Verdict: **NOT READY**; no accepted combined candidate.
@@ -206,11 +217,15 @@ the observation receipt. Verdict: **NOT READY**; no accepted combined candidate.
 | --- | --- | --- |
 | F1 P1 generated schema | f09d0a5 / AUTH; resolved on independently reviewed b6f7778, newer ffa1200 CI green | Preserve exact generated types on next combined candidate; do not retroactively pass f09. |
 | F2 P1 restart restores enabled | f09/b6, agent/registry.ts / AUTH | Persist disable+revoked grant, restart API/worker, no effect and unchanged settings. |
-| F3 P1 replay executes tools | Reproduced at f09, unchanged b6 / EVENT | Actual replay entry with Controller and mutating sentinel produces zero effects, projections rebuild; reassess #30 exact fix. |
+| F3 P1 replay executes tools | Reproduced at f09, unchanged b6 / EVENT; bounded closure at #30 07e578f | Verifier independently reran5/5 and actual replay produced0 effects on07e. This closes that wiring finding only, not F8 or all replay guarantees. New failed-rebuild/live-receipt interaction is being repaired; verify it cannot enqueue later effects. |
 | F4 P1 domain publication gap | f09/b6 issue/draft RPC followed by separate event / Controller+EVENT+AUTH | Crash around commit/publication converges to one invoice/allocation/posting and original durable event/evidence identity. |
 | F5 P1 grant bypass/P2 swallowed failure | f09/b6 Controller direct draft / Controller+AUTH | Latest ffa1200 includes a fix to reuse; verify actual event path with denied grant/pause/missing pricing, persisted blocked reason and recoverable operator state. |
 | F6 P1 aggregate-policy race | f09/b6 static finding / AUTH0027 | Two distinct concurrent actions cannot exceed rolling/velocity allowance; DB race, current policy/grant changes, legacy-path refusal and durable loser result. |
 | F7 P1 trusted pricing save gap | #28 6d54900 static finding / Controller | Authoritative calculation/save boundary rejects forged price/freight/effective date/terms, including NULL due date, before allocation; DB tamper/concurrency/retry tests. |
+| F8 P1 EVENT schema/build | #30 07e578f / EVENT | Regenerated full schema, root build/tests/type drift/parity on new SHA; passing SQL/concurrency substeps do not close failed CI. |
+| F9 P1 expiry during lock wait | AUTH proposal6873cd273080db29402bede76488075e24e421cf / AUTH | Final expiry recheck proposed in2179d8c; real held-invoice/authority-row test must prove zero effect after approval expires while blocked. Static fix alone not closure. |
+| F10 P1 web typing | #31 2179d8c / AUTH | Fix WebSocket transport constructor compatibility; rerun web tests/typecheck/build on replacement SHA. |
+| F11 P1 browser harness | #31 2179d8c / AUTH | Fix missing auth schema at GoTrue initialization; actual permitted/denied/expired/direct business-read browser cases must run and pass. |
 
 Do not close findings from builder summaries. Revised candidate and affected independent
 checks are required. Pure arithmetic for #28 agrees with expected 37260/55890 minor-unit
@@ -223,6 +238,14 @@ Current reversible merge-tree probes: ffa1200 + #30 clean textual tree
 `8f5d41cacf84f7ca7d4fed863541dedc4eb55ca2`; M + #27 clean
 `b01f1533a8ab6ab5b16219d3120a48c04ebc9d64`. Textual compatibility is not semantic
 acceptance; auth continuation and generated schema remain outstanding.
+
+New #31 + #30 probe conflicts in atlas-ci.yml; automation owns exact conflict
+reconciliation. server.ts and agent/registry.ts auto-merge, requiring semantic review
+of retained auth pause and EVENT replay guards. #31 + #28 is textually clean, tree
+`126539abff31513c1b7b69c790179ba8636748ae`; it is not an accepted composed candidate.
+AUTH2179d8c uses earlier real harness and synthetic GoTrue2.196.0, pgvector pg16,
+PostgREST12.2.3, nginx1.27 and Chromium; their version/config and current failures
+remain part of the browser evidence, not a claim that a configured journey passed.
 
 Temporary narrow leases: each schema owner may append its named SQL probe for its
 standalone CI, returning the exact diff. AUTH owns auth-browser.yml; EVENT owns only
