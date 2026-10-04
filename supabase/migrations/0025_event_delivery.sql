@@ -85,7 +85,7 @@ begin
    if p_envelope#>>'{payload,company_id}' is distinct from p_org_id::text or p_envelope#>>'{payload,contract_version}' is distinct from '1'
    or p_envelope->>'subject_type' is distinct from v_kind or p_envelope->>'subject_id' is distinct from p_envelope->'payload'->>v_key
    or p_envelope->>'subject_version' is distinct from v_revision
-   or p_envelope->>'event_class' is distinct from case when v_kind='Decision' then 'proposal' else 'fact' end
+   or p_envelope->>'event_class' is distinct from (case when v_kind='Decision' then 'proposal' else 'fact' end)
    then raise exception 'Controller event subject/payload mismatch'; end if;
  end if;
  v_id:=p_envelope->>'event_id';
