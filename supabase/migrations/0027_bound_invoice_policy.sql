@@ -68,6 +68,8 @@ begin
  -- after those waits, immediately before the already-locked invoice transition.
  if a.expires_at<=clock_timestamp() then raise exception 'approval expired before invoice effect'; end if;
  perform assert_action_authority(p_org_id,a.agent_name,a.action);
+ -- A previously absent policy row could have been inserted during the invoice wait.
+ if current_action_policy(p_org_id,a.action) is distinct from v.intent->'policy_snapshot' then raise exception 'policy changed before invoice effect'; end if;
  select * into r from issue_invoice_atomic(p_org_id,a.subject_id,v.idempotency_key);
  update outbox set state='failed',last_error='provider action requires separate bound authorization' where id=r.outbox_id and org_id=p_org_id;
  return to_jsonb(r);

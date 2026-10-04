@@ -60,6 +60,12 @@ to the inherited 0022. EVENT/EVIDENCE owns replay adoption and 0025/26. BILL 002
 atomic invoice domain publication and stored document/terms integration. Keep migration
 numbers even when this isolated candidate does not contain other tracks' migrations.
 
+Migration 0027 supports atomic invoice per-transaction, rolling and velocity limits.
+Configured conditional source requirements remain explicitly blocked until the domain
+adapter can verify their source/amount contract in the effect transaction. They are
+never silently treated as satisfied. Other consequential tools need their own atomic
+domain guards; the generic stored-action checks do not reserve a provider's capacity.
+
 `supabaseServer()` is now async. New console callers must await it. Do not expose its
 service credential or the API token to the browser. API/job company identity remains
 deployment-bound; this is not acceptance of multiple real businesses in one environment.
