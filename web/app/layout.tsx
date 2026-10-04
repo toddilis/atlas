@@ -28,6 +28,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Statements
                 </Link>
               </nav>
+              <form action="/auth/signout" method="post" className="ml-auto">
+                <button
+                  type="submit"
+                  className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                >
+                  Sign out
+                </button>
+              </form>
             </div>
           </header>
           <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">{children}</main>

@@ -79,6 +79,8 @@ begin
  values(o,'bound-issuance','NZD',1000,1000,'draft','wholesale') returning id into i;
  snap:=invoice_action_snapshot(o,i);
  intent:=jsonb_set(jsonb_set(intent,'{subject_id}',to_jsonb(i)),'{subject_snapshot}',snap);
+ intent:=jsonb_set(intent,'{input}',jsonb_build_object('invoiceId',i,'amount',jsonb_build_object('$atlas_bigint','1000'),
+   'currency','NZD','accountId',null,'fulfillmentEventId',null));
  a:=create_bound_approval(o,intent,now()+interval '1 hour');
  perform decide_bound_approval(o,a,'approved','operator');
  claim:=claim_bound_action(o,a,'worker','null',snap);

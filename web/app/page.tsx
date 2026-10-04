@@ -6,8 +6,7 @@ export default function HomePage() {
       <div>
         <h1 className="text-2xl font-semibold">Atlas operator console</h1>
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">
-          Phase 2 — single operator, read-only for now. Authentication, write actions,
-          and the conversational assistant arrive in later PRs.
+          Review approvals, invoices and statements for your business.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

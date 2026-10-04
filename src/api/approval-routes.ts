@@ -4,9 +4,21 @@ import { orgId, supabase } from '../data/supabase.js';
 import { decideApproval, getApproval } from '../platform/control-plane/approvals.js';
 import { encodeActionValue, loadBoundAction } from '../platform/control-plane/bound-actions.js';
 import { executeApproved } from '../platform/tools/registry.js';
+import { bearerAuthState } from './auth.js';
 
-/** Registered only under /admin, behind server.ts's fail-closed bearer gate. */
+/** Encapsulated gate protects reads and actions even when mounted independently. */
 export function registerApprovalRoutes(app: FastifyInstance): void {
+  app.register(async (protectedApp) => {
+    protectedApp.addHook('onRequest', async (request, reply) => {
+      const state = bearerAuthState(request.headers.authorization, process.env.ATLAS_API_TOKEN);
+      if (state !== 'ok') return reply.code(state === 'unconfigured' ? 503 : 401)
+        .send({ error: state === 'unconfigured' ? 'ATLAS_API_TOKEN not configured' : 'unauthorized' });
+    });
+    registerProtectedApprovalRoutes(protectedApp);
+  });
+}
+
+function registerProtectedApprovalRoutes(app: FastifyInstance): void {
   function actor(): string {
     const value = process.env.ATLAS_ADMIN_ACTOR_ID;
     if (!value?.trim()) throw new Error('ATLAS_ADMIN_ACTOR_ID must identify the trusted token owner');

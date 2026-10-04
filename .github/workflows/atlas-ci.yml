@@ -86,6 +86,8 @@ jobs:
 
       - run: bash scripts/verify-bound-action-concurrency.sh
 
+      - run: bash scripts/verify-bound-policy-concurrency.sh
+
       - run: bash scripts/verify-event-concurrency.sh
 
       - run: GEN_TYPES_DATABASE_URL="$DATABASE_URL" ./scripts/gen-types.sh
@@ -102,7 +104,7 @@ jobs:
       - run: npx tsx scripts/sql-ts-parity.ts
 
   web:
-    name: console typecheck + build
+    name: console auth tests + typecheck + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -119,5 +121,7 @@ jobs:
       - run: npm ci
 
       - run: npm run typecheck
+
+      - run: npm test
 
       - run: npm run build
