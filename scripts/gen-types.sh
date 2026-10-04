@@ -90,7 +90,9 @@ fi
   > "$WORK/pgmeta.log" 2>&1) &
 PGMETA_PID=$!
 
-for _ in $(seq 1 30); do
+# Startup can take well over 15s on a loaded machine; a request sent before it is ready
+# fails with an empty log, which looks like a typegen error.
+for _ in $(seq 1 120); do
   kill -0 "$PGMETA_PID" 2>/dev/null \
     || { echo "postgres-meta exited during startup; log follows" >&2; tail -20 "$WORK/pgmeta.log" >&2; exit 1; }
   if curl -sf --noproxy '*' "http://127.0.0.1:$PGMETA_PORT/health" >/dev/null 2>&1 \
