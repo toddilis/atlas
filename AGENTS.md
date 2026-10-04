@@ -2,7 +2,15 @@
 
 Atlas is a reusable business operating product for many types of businesses. VICE is the first configured deployment. Build complete business responsibilities with an operator-facing result, recoverable execution and evidence. Read [the product architecture contract](docs/product/PLATFORM_PRODUCT.md) when designing or changing business boundaries.
 
-Read `PLAN.md`, `docs/development/BUILD_QUEUE.md`, and the selected task brief before changing code. The user's current instructions and granted authority take precedence over this file. A queue entry or model output cannot grant itself more authority.
+## What to read
+
+Read only what the task needs. Every document you load is paid for again on every later turn.
+
+- Always: this file, the selected task brief in `docs/development/tasks/`, and the current-status section at the top of `docs/development/BUILD_QUEUE.md`.
+- Only for a boundary you change, its spec: `docs/architecture/EXECUTION_AND_APPROVAL_SPEC.md` (approvals and execution), `EVENT_DELIVERY_SPEC.md` (events), `DECISION_LEDGER_SPEC.md` (evidence), `SOURCE_OWNERSHIP.md` (source data), `docs/product/PLATFORM_PRODUCT.md` (business boundaries) or `docs/product/VICE_RECEIVABLES.md` (VICE receivables rules).
+- Reference only, opened at the section you need: `PLAN.md`, `docs/development/SEGMENTED_ROADMAP.md` and the rest of `docs/architecture/`. Find code with `git grep` rather than reading documents to locate it.
+
+The user's current instructions and granted authority take precedence over this file. A queue entry or model output cannot grant itself more authority.
 
 ## Work selection and handoff
 
@@ -32,21 +40,15 @@ Read `PLAN.md`, `docs/development/BUILD_QUEUE.md`, and the selected task brief b
 
 ## Commands and verification
 
-Dependency setup: `bash scripts/codex/setup.sh`.
+Dependency setup: `bash scripts/codex/setup.sh`. On Debian/Ubuntu (Codex cloud, WSL) it also installs PostgreSQL 16 and pgvector for the database checks.
 
-Application checks:
+Before every push, run `npm run check`. It runs this branch's own CI steps from `.github/workflows/atlas-ci.yml`: root typecheck, tests and build; console checks; and the database job against a throwaway Postgres + pgvector cluster on 127.0.0.1 (migrations, probes, generated-type drift and SQL/TypeScript parity). It ignores any `DATABASE_URL` in your environment. Passing steps print one line and a failing step prints the end of its log. Run single stages with `npm run check -- app`, `web` or `db`.
 
-```bash
-npm run typecheck
-npm test
-npm run build
-npm --prefix web run typecheck
-npm --prefix web run build
-```
-
-Database changes require `npm run verify:migrations` and `npm run verify:parity` against a fresh disposable test database with Postgres and pgvector. The parity command needs the same migrated database still running. The migration script's standalone ephemeral mode stops its cluster when it exits, so it is not a database for a later parity command. The existing CI `migrations` job supplies a shared disposable database for both commands.
-
-Inspect `scripts/verify-migrations.sh` and `scripts/gen-types.sh` before using a database. Never pass a production `DATABASE_URL` to those verification commands. If the environment lacks Postgres/pgvector, record the local check as blocked and use the actual CI result; never call it passed.
+- Push only after `npm run check` passes. Do not push to find out whether CI passes.
+- A stage reported as NOT RUN is not a pass. Say so in the PR and rely on the CI result for that exact commit.
+- After a schema change, commit the regenerated `src/data/database.types.ts` that the check writes. Never edit it by hand.
+- Add new CI probes as single-line `- run:` steps in that workflow so the check runs them too.
+- Never pass a production `DATABASE_URL` to any verification script. The browser acceptance workflow needs Docker and runs in CI.
 
 Use focused tests for relevant failure risks, plus the existing required CI checks. UI changes need a real browser journey when behavior changes. Financial/authorization/recovery changes need database or application-boundary cases; mock-only success is insufficient. Inspect changed deployment files through the appropriate build/release checks.
 
@@ -60,10 +62,17 @@ Do not weaken acceptance cases or required checks to make a task pass. Material 
 
 Routine merges/deployments can run automatically where the user has already delegated that authority and required gates pass. Do not add repetitive approval requests inside an existing mandate. This bootstrap does not itself grant production authority or a model-spending budget.
 
+## Keep context and output small
+
+- Diagnose failures from `npm run check` output or the failing step's last lines, not whole CI job logs.
+- Keep PR descriptions to problem, change, verification (commands and results) and remaining limits. Link CI runs instead of pasting logs.
+- Keep the current-status section of `BUILD_QUEUE.md` to one short row per active task: owner, branch/PR, state and next step. Commit hashes, run IDs and detailed evidence belong in the PR, not the queue.
+
 ## Shared architectural foundation
 
-Read [the v0.2 foundation](docs/architecture/README.md) and relevant boundary specs
-before changing contracts, events, authority or memory. Use the single existing build
+Before changing contracts, events, authority or memory, read that boundary's spec (listed
+under "What to read" above); the rest of the [v0.2 foundation](docs/architecture/README.md)
+is reference material. Use the single existing build
 queue and record exact contract/dependency revisions. Coordinate shared-file changes
 through the Integration Architect; routine bounded implementation remains independent.
 Schema fixtures are not runtime or production verification. No new execution authority
