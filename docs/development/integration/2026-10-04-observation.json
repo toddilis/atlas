@@ -1,0 +1,276 @@
+{
+  "observedAt": "2026-10-04T07:30:22Z",
+  "scope": "Read-only GitHub snapshot; not a second queue or acceptance verdict",
+  "main": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+  "pullRequests": [
+    {
+      "number": 30,
+      "url": "https://github.com/toddilis/atlas/pull/30",
+      "head": "07e578f07d0aaa58d6a339fe607764862bc8f143",
+      "branch": "codex/event-evidence-oct01",
+      "base": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "draft": true,
+      "updated": "2026-09-30T22:56:36Z"
+    },
+    {
+      "number": 29,
+      "url": "https://github.com/toddilis/atlas/pull/29",
+      "head": "233d51cb1756888540e90745921b00fa0f13a6d4",
+      "branch": "codex/integration-2026-10-01",
+      "base": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "draft": true,
+      "updated": "2026-09-30T22:54:00Z"
+    },
+    {
+      "number": 28,
+      "url": "https://github.com/toddilis/atlas/pull/28",
+      "head": "6d54900c618de9f69e80d7eea184ba3bd4372dda",
+      "branch": "codex/pricing-billing-oct01",
+      "base": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "draft": true,
+      "updated": "2026-09-30T22:43:50Z"
+    },
+    {
+      "number": 27,
+      "url": "https://github.com/toddilis/atlas/pull/27",
+      "head": "8c4732fcb1a58d5c7eac971ce74384d6dc36f8ea",
+      "branch": "codex/build-02-october-fixture-hardening",
+      "base": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "draft": true,
+      "updated": "2026-09-30T22:45:06Z"
+    },
+    {
+      "number": 26,
+      "url": "https://github.com/toddilis/atlas/pull/26",
+      "head": "cd002654ba56b28f4dacbec629e2d10371eb126f",
+      "branch": "codex/reviewer-integration",
+      "base": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "draft": true,
+      "updated": "2026-09-27T21:56:52Z"
+    },
+    {
+      "number": 25,
+      "url": "https://github.com/toddilis/atlas/pull/25",
+      "head": "ffa12001ea107794719c6301976a3dd6766a6443",
+      "branch": "codex/authz-02-bound-actions",
+      "base": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "draft": true,
+      "updated": "2026-09-30T22:57:11Z"
+    },
+    {
+      "number": 21,
+      "url": "https://github.com/toddilis/atlas/pull/21",
+      "head": "e56cdc50075931b8145a5a0edcb1d7a1bd3693d6",
+      "branch": "codex/build-02-fixture-coordinator",
+      "base": "d7020433040cb4a5d93aaa14b9f3a38ddd9b814c",
+      "draft": true,
+      "updated": "2026-09-25T06:00:00Z"
+    },
+    {
+      "number": 19,
+      "url": "https://github.com/toddilis/atlas/pull/19",
+      "head": "2d6544d027bcafc47afe98927ba9691f7b85f17e",
+      "branch": "claude/lucid-gauss-p1mjpy",
+      "base": "210e3e59d7366ac80b8fdd72b52acf733f9feaa2",
+      "draft": true,
+      "updated": "2026-08-24T22:29:23Z"
+    },
+    {
+      "number": 2,
+      "url": "https://github.com/toddilis/atlas/pull/2",
+      "head": "b9a875e11a1aad8d1250decabef3af5dbb8cc389",
+      "branch": "claude/policy-agent-subpath",
+      "base": "0e5ebd97d4d8d364ea8523fdd67069b5f62f5bc7",
+      "draft": true,
+      "updated": "2026-06-16T11:00:34Z"
+    }
+  ],
+  "runs": [
+    {
+      "id": 36788419655,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36788419655",
+      "sha": "07e578f07d0aaa58d6a339fe607764862bc8f143",
+      "branch": "codex/event-evidence-oct01",
+      "status": "completed",
+      "conclusion": "failure",
+      "attempt": 1
+    },
+    {
+      "id": 36787383531,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36787383531",
+      "sha": "ffa12001ea107794719c6301976a3dd6766a6443",
+      "branch": "codex/authz-02-bound-actions",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36787235528,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36787235528",
+      "sha": "6d54900c618de9f69e80d7eea184ba3bd4372dda",
+      "branch": "codex/pricing-billing-oct01",
+      "status": "completed",
+      "conclusion": "failure",
+      "attempt": 1
+    },
+    {
+      "id": 36783402419,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36783402419",
+      "sha": "61f9315adfb8d2a0160c790be0c31b0d38599de0",
+      "branch": "codex/authz-02-bound-actions",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36783246980,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36783246980",
+      "sha": "d56c764127d4ad5c89ad6c2a48effd6b6cbd86d7",
+      "branch": "codex/authz-02-bound-actions",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36783120094,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36783120094",
+      "sha": "8c4732fcb1a58d5c7eac971ce74384d6dc36f8ea",
+      "branch": "codex/build-02-october-fixture-hardening",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36781060063,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36781060063",
+      "sha": "b6f7778dba3733cb1e7dcfc16ab6b38a0f0def57",
+      "branch": "codex/authz-02-bound-actions",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36780978434,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36780978434",
+      "sha": "0ab2acb1734b3ccc36fef30ad3e98bba454b5774",
+      "branch": "codex/authz-02-bound-actions",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36313734586,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36313734586",
+      "sha": "cd002654ba56b28f4dacbec629e2d10371eb126f",
+      "branch": "codex/reviewer-integration",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36309406695,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36309406695",
+      "sha": "f09d0a505c45d8b0cb7a9a44d7be3ee40c736d7b",
+      "branch": "codex/authz-02-bound-actions",
+      "status": "completed",
+      "conclusion": "failure",
+      "attempt": 1
+    },
+    {
+      "id": 36306722411,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306722411",
+      "sha": "cbcb2e7620e73f1406bc8e31edb5b91687c866fb",
+      "branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36306660169,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306660169",
+      "sha": "c816ac212c666f5e4e2f6799701e7bc9da963b20",
+      "branch": "codex/architecture-foundation-v02",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36306553820,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306553820",
+      "sha": "901dc91de0a0ce734e9cf7f70770f1f9f331cc6a",
+      "branch": "codex/architecture-foundation-v02",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36306440702,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306440702",
+      "sha": "b0cec87c2294aba0e2923ec7db8383b90732688b",
+      "branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36306379182,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306379182",
+      "sha": "b7074fe3b7301231902008323fc3b4faaaecd6bb",
+      "branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36306375136,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306375136",
+      "sha": "3ad3834db4226a564d1b3a13f3de68a6cc1f3c9d",
+      "branch": "main",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36306182729,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36306182729",
+      "sha": "96bfa4e382326c2a580ead3a2d4fa72b5f1dc86d",
+      "branch": "codex/data-01-dispatch-lines",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36305976723,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36305976723",
+      "sha": "fadf255c4ee0d2dfdd81387cabe786b4a4714b70",
+      "branch": "codex/data-01-dispatch-lines",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    },
+    {
+      "id": 36289391342,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36289391342",
+      "sha": "93cfb5d90efa8d3de390929791c95c2817b8d5a6",
+      "branch": "codex/data-01-dispatch-lines",
+      "status": "completed",
+      "conclusion": "failure",
+      "attempt": 1
+    },
+    {
+      "id": 36118720076,
+      "url": "https://github.com/toddilis/atlas/actions/runs/36118720076",
+      "sha": "3d0e3f6195ce2304ccb75baf091f181ab1d89cd4",
+      "branch": "codex/atlas-autonomous-build-bootstrap",
+      "status": "completed",
+      "conclusion": "success",
+      "attempt": 1
+    }
+  ],
+  "verifierReport": {
+    "path": "C:/Users/toddl/Documents/Codex/2026-10-01/act-as-atlas-s-independent-verifier/evidence/READINESS-2026-10-01.md",
+    "sha256": "451C5ED69F675463B39EAA8E968511BB3C0DABAA8C71BC4874A134FC8DF7787D",
+    "decision": "NOT READY",
+    "note": "Mutable owner report; hash identifies inspected snapshot. Summary/findings maintained in canonical BUILD_QUEUE."
+  }
+}

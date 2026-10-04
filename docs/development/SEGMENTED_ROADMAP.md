@@ -13,10 +13,17 @@ with isolation verified before shared-business use. Portability is not deferred 
 
 ## What happens next
 
-The next independent coding slice is [DATA-01](tasks/DATA-01.md): preserve actual
-dispatched lines and quantities, so shipments of 40 and 60 cannot each invoice the
-original 100-unit order. It is ready for synthetic implementation after BUILD-01;
-final invoice numbering is a later configuration dependency.
+As rechecked on 1 October 2026, DATA-01, AUTHZ-01 and ARCH-01 are merged in main
+`cbcb2e7620e73f1406bc8e31edb5b91687c866fb`. The sole live
+[build queue](BUILD_QUEUE.md#active-coordination-17-october-2026) records the current
+candidate commits, named owners, acceptance gaps and integration order. Authentication
+and exact-action approvals reuse PRs #19/#25; pricing/BILL and event/evidence work
+proceed in their isolated tracks. Development automation reuses #21/#26 separately.
+
+The 1–7 October target is a verified synthetic test-environment journey through
+configured pricing, correct 40/60 invoice parts, exact owner approval and printable
+output with evidence and recovery. Bank reconciliation and the full exception UI are
+stretch for this week. The wider first-business milestone below remains unchanged.
 
 DATA-01 also establishes its part of PLAT-01: business-scoped canonical records and
 source mappings, with Shopify-specific interpretation in an adapter. PRICING-01 must
@@ -33,7 +40,10 @@ priced invoice, Todd approves it, the printable/selected email outcome is record
 and a Wise/ASB bank receipt reconciles or becomes a visible exception. This includes
 the operator screen and recovery after interruption.
 
-## Verified starting position
+## Historical starting position — 25 September 2026
+
+This table is historical. Current readiness and merged state are recorded only in
+BUILD_QUEUE.md; the old heads/checks below cannot certify a changed candidate.
 
 At the start of this update, these PRs were open, draft and unmerged, with no submitted
 GitHub reviews. Their inspected workflow runs passed. CI success does not establish
