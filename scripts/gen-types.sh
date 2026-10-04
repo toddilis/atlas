@@ -37,7 +37,10 @@ pg_user_exec() {
 }
 
 cleanup() {
-  [[ -n "$PGMETA_PID" ]] && kill "$PGMETA_PID" >/dev/null 2>&1 || true
+  if [[ -n "$PGMETA_PID" ]]; then
+    kill "$PGMETA_PID" >/dev/null 2>&1 || true
+    wait "$PGMETA_PID" 2>/dev/null || true
+  fi
   if [[ -d "$WORK/data" ]]; then
     pg_user_exec "pg_ctl -D '$WORK/data' -m immediate stop" >/dev/null 2>&1 || true
   fi
@@ -71,21 +74,35 @@ mkdir -p "$WORK/pgmeta"
   && npm install --no-audit --no-fund @supabase/postgres-meta@0.99.0 >/dev/null 2>&1)
 (cd "$WORK/pgmeta" && npm list --depth=0 @supabase/postgres-meta)
 
+# Whatever already answers on this port (e.g. a server left by an interrupted run) would
+# generate types from some other database, so refuse rather than silently use it.
+if curl -s --noproxy '*' -o /dev/null "http://127.0.0.1:$PGMETA_PORT/" 2>/dev/null; then
+  echo "port $PGMETA_PORT is already in use; stop that process or set GEN_TYPES_PGMETA_PORT" >&2
+  exit 1
+fi
+
+# `exec` makes $! the server's own PID, so cleanup stops the server itself (killing only
+# the wrapper subshell left it running after every run). Loopback only: postgres-meta
+# runs SQL against DB_URL for anyone who can reach it.
 (cd "$WORK/pgmeta" && \
-  PG_META_DB_URL="$DB_URL" PG_META_PORT="$PGMETA_PORT" \
-  node node_modules/@supabase/postgres-meta/dist/server/server.js \
+  PG_META_DB_URL="$DB_URL" PG_META_HOST=127.0.0.1 PG_META_PORT="$PGMETA_PORT" \
+  exec node node_modules/@supabase/postgres-meta/dist/server/server.js \
   > "$WORK/pgmeta.log" 2>&1) &
 PGMETA_PID=$!
 
-for _ in $(seq 1 30); do
-  if curl -sf "http://127.0.0.1:$PGMETA_PORT/health" >/dev/null 2>&1 \
-     || curl -sf "http://127.0.0.1:$PGMETA_PORT/generators/typescript?included_schemas=public" -o /dev/null 2>/dev/null; then
+# Startup can take well over 15s on a loaded machine; a request sent before it is ready
+# fails with an empty log, which looks like a typegen error.
+for _ in $(seq 1 120); do
+  kill -0 "$PGMETA_PID" 2>/dev/null \
+    || { echo "postgres-meta exited during startup; log follows" >&2; tail -20 "$WORK/pgmeta.log" >&2; exit 1; }
+  if curl -sf --noproxy '*' "http://127.0.0.1:$PGMETA_PORT/health" >/dev/null 2>&1 \
+     || curl -sf --noproxy '*' "http://127.0.0.1:$PGMETA_PORT/generators/typescript?included_schemas=public" -o /dev/null 2>/dev/null; then
     break
   fi
   sleep 0.5
 done
 
-curl -sf "http://127.0.0.1:$PGMETA_PORT/generators/typescript?included_schemas=public" \
+curl -sf --noproxy '*' "http://127.0.0.1:$PGMETA_PORT/generators/typescript?included_schemas=public" \
   -o "$WORK/types.ts" \
   || { echo "typegen request failed; postgres-meta log follows" >&2; tail -20 "$WORK/pgmeta.log" >&2; exit 1; }
 

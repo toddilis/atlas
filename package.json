@@ -16,7 +16,8 @@
     "gen:types": "./scripts/gen-types.sh",
     "verify:migrations": "./scripts/verify-migrations.sh",
     "verify:parity": "tsx scripts/sql-ts-parity.ts",
-    "verify:architecture": "node --test --import tsx test/architecture_contracts.test.ts"
+    "verify:architecture": "node --test --import tsx test/architecture_contracts.test.ts",
+    "check": "bash scripts/check.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.0",
