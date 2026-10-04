@@ -29,6 +29,115 @@ declare v integer := p_index; s text := ''; begin
   while v > 0 loop v:=v-1; s:=chr(65+v%26)||s; v:=v/26; end loop; return s;
 end $$;
 
+-- Independent storage-boundary calculation verification. Never trust a caller's
+-- internally consistent total as evidence that configured rules were followed.
+create function assert_pricing_snapshot(c jsonb,s jsonb) returns void
+language plpgsql set search_path=pg_catalog,public as $$
+declare
+  i jsonb:=s->'input'; b jsonb; l jsonb; r jsonb; selected jsonb; tier jsonb; negotiated jsonb; rules jsonb;
+  k text; chosen text; unit numeric; base numeric; reduction numeric; freight numeric:=0; subtotal numeric:=0;
+  undiscounted numeric:=0; value numeric; expected_tax numeric; n integer; highest integer; basis integer;
+  carrier jsonb:=nullif(i->'carrier','null'); shipping jsonb; threshold jsonb; due date; anchor timestamptz;
+begin
+  if s->>'schemaVersion' is distinct from '1' or s->>'scale' is distinct from c->>'scale'
+    or s->>'taxBasis' is distinct from 'exclusive' or c->>'taxBasis' is distinct from 'exclusive'
+    or s->>'pricingDateBasis' is distinct from c->>'pricingDateBasis'
+    or s->>'rounding' is distinct from 'floor_minor_unit_per_discount_then_invoice_tax'
+    or (s->>'pricingAt')::timestamptz is distinct from
+      (case when c->>'pricingDateBasis'='order' then i->>'orderAt' else i->>'dispatchAt' end)::timestamptz
+    then raise exception 'snapshot calculation contract mismatch'; end if;
+  select x into r from jsonb_array_elements(c->'bindings') x where x->>'accountId'=i->>'accountId';
+  if found then select x into b from jsonb_array_elements(c->'books') x where x->>'id'=r->>'bookId';
+  elsif c->>'fallback'='default_book' then select x into b from jsonb_array_elements(c->'books') x where (x->>'isDefault')::boolean; end if;
+  if b is null then raise exception 'snapshot retailer binding missing'; end if;
+  for l in select x from jsonb_array_elements(s->'lines') x loop
+    if not exists(select 1 from jsonb_array_elements(i->'lines') x where x->>'lineId'=l->>'lineId'
+      and x->>'productId'=l->>'productId' and x->>'ordered'=l->>'ordered' and x->>'dispatched'=l->>'dispatched'
+      and x->>'description'=l->>'description' and x->'override' is not distinct from l->'override') then raise exception 'snapshot/input line mismatch'; end if;
+    select x into selected from jsonb_array_elements(b->'entries') x where x->>'productId'=l->>'productId';
+    if not found then raise exception 'configured product price missing'; end if;
+    base:=(selected->>'unitPrice')::numeric;
+    select count(*),jsonb_agg(x) into n,rules from jsonb_array_elements(c->'negotiated') x
+      where x->>'productId'=l->>'productId' and (x->>'accountId' is null or x->>'accountId'=i->>'accountId');
+    if n>1 then raise exception 'conflicting negotiated prices'; end if; negotiated:=rules->0;
+    basis:=(case when c->>'tierQuantityBasis'='ordered' then l->>'ordered' else l->>'dispatched' end)::integer;
+    select max((x->>'minimum')::integer) into highest from jsonb_array_elements(c->'tiers') x
+      where x->>'productId'=l->>'productId' and (x->>'accountId' is null or x->>'accountId'=i->>'accountId') and (x->>'minimum')::integer<=basis;
+    select count(*),jsonb_agg(x) into n,rules from jsonb_array_elements(c->'tiers') x
+      where x->>'productId'=l->>'productId' and (x->>'accountId' is null or x->>'accountId'=i->>'accountId') and (x->>'minimum')::integer=highest;
+    if n>1 then raise exception 'conflicting quantity tiers'; end if; tier:=rules->0;
+    chosen:=null;
+    for k in select jsonb_array_elements_text(c->'pricePrecedence') loop
+      if k='negotiated' and negotiated is not null then selected:=negotiated;chosen:=k;exit;
+      elsif k='tier' and tier is not null then selected:=tier;chosen:=k;exit;
+      elsif k='book' then selected:=jsonb_build_object('id',b->>'id','unitPrice',base::text);chosen:=k;exit; end if;
+    end loop;
+    if chosen is null then raise exception 'configured price precedence missing'; end if;
+    unit:=(selected->>'unitPrice')::numeric;
+    if l->>'bookId' is distinct from b->>'id' or l->>'selectedRule' is distinct from selected->>'id'
+      or l->>'selectedKind' is distinct from chosen or (l->>'baseUnitPrice')::numeric is distinct from base
+      or (l->>'beforeDiscountUnitPrice')::numeric is distinct from unit then raise exception 'configured price selection mismatch'; end if;
+    undiscounted:=undiscounted+unit*(l->>'dispatched')::integer;
+    select coalesce(jsonb_agg(x order by (x->>'order')::integer),'[]') into rules from jsonb_array_elements(c->'discounts') x
+      where x->>'productId'=l->>'productId' and (x->>'accountId' is null or x->>'accountId'=i->>'accountId');
+    if jsonb_array_length(rules)>1 and (c->>'discountCombination'='single' or
+      (select count(distinct x->>'order') from jsonb_array_elements(rules) x)<>jsonb_array_length(rules)) then raise exception 'conflicting discounts'; end if;
+    if chosen<>'book' and not (c->>'discountOnSpecialPrice')::boolean then rules:='[]'; end if;
+    if l->'discountRules' is distinct from (select coalesce(jsonb_agg(x->>'id'),'[]') from jsonb_array_elements(rules) x) then raise exception 'discount explanation mismatch'; end if;
+    for r in select x from jsonb_array_elements(rules) x loop
+      reduction:=case when r#>>'{discount,kind}'='fixed' then (r#>>'{discount,amount}')::numeric else floor(unit*(r#>>'{discount,bps}')::numeric/10000) end;
+      if reduction>unit or reduction<0 then raise exception 'invalid configured discount'; end if; unit:=unit-reduction;
+    end loop;
+    -- Persisted exceptions wait for the protected override action seam; preview can
+    -- explain them, but a raw service RPC cannot invent an authenticated actor.
+    if nullif(l->'override','null') is not null then raise exception 'persisted override requires protected exception service'; end if;
+    if (l->>'unitPrice')::numeric is distinct from unit then raise exception 'configured unit price mismatch'; end if;
+    subtotal:=subtotal+unit*(l->>'dispatched')::integer;
+  end loop;
+  if (c#>>'{shipping,enabled}')::boolean then
+    select max((x->>'priority')::integer) into highest from jsonb_array_elements(c#>'{shipping,rules}') x
+      where (x->>'accountId' is null or x->>'accountId'=i->>'accountId') and (x->>'destination' is null or x->>'destination'=i->>'destination');
+    select count(*),jsonb_agg(x) into n,rules from jsonb_array_elements(c#>'{shipping,rules}') x
+      where (x->>'accountId' is null or x->>'accountId'=i->>'accountId') and (x->>'destination' is null or x->>'destination'=i->>'destination') and (x->>'priority')::integer=highest;
+    if n<>1 then raise exception 'missing or conflicting shipping rules'; end if; shipping:=rules->0;
+    if s#>>'{freight,ruleId}' is distinct from shipping->>'id' or s#>>'{freight,basis}' is distinct from shipping->>'chargingBasis'
+      or s#>'{freight,carrier}' is distinct from i->'carrier' or s#>'{freight,schedule}' is distinct from i->'freightSchedule' then raise exception 'freight binding mismatch'; end if;
+    if carrier is not null and (carrier->>'businessId' is distinct from s->>'businessId' or carrier->>'shipmentKey' is distinct from i->>'dispatchKey'
+      or carrier->>'currency' is distinct from c->>'currency' or carrier->>'taxBasis' is distinct from 'exclusive'
+      or (carrier->>'observedAt')::timestamptz>clock_timestamp()) then raise exception 'carrier binding mismatch'; end if;
+    k:=shipping#>>'{mode,kind}';
+    if k in ('actual','adjusted') then
+      if carrier is null or (carrier->>'expiresAt')::timestamptz<=clock_timestamp() then raise exception 'carrier evidence missing or expired'; end if;
+      freight:=(carrier->>'cost')::numeric;
+      if k='adjusted' then freight:=freight+(shipping#>>'{mode,fixed}')::numeric+floor(freight*(shipping#>>'{mode,markupBps}')::numeric/10000); end if;
+    elsif k='fixed' then freight:=(shipping#>>'{mode,amount}')::numeric;
+    elsif k='free' then freight:=0;
+    else raise exception 'persisted manual freight requires protected exception service'; end if;
+    if nullif(i->'freightOverride','null') is not null then raise exception 'persisted freight override requires protected exception service'; end if;
+    threshold:=nullif(shipping->'freeThreshold','null');
+    if threshold is not null then
+      if threshold->>'valueBasis'='order' then raise exception 'order threshold requires authoritative whole-order preview'; end if;
+      value:=case when (threshold->>'afterDiscount')::boolean then subtotal else undiscounted end;
+      if (threshold->>'includesTax')::boolean then value:=value+floor(value*(c->>'taxRateBps')::numeric/10000); end if;
+      if value>=(threshold->>'amount')::numeric then freight:=0; end if;
+    end if;
+    if shipping->>'chargingBasis'='order_schedule' then
+      if (i#>>'{freightSchedule,total}')::numeric is distinct from freight then raise exception 'configured order freight mismatch'; end if;
+      select (x->>'amount')::numeric into freight from jsonb_array_elements(i#>'{freightSchedule,allocations}') x where x->>'dispatchKey'=i->>'dispatchKey';
+    elsif nullif(i->'freightSchedule','null') is not null then raise exception 'unexpected order freight schedule'; end if;
+  elsif s#>>'{freight,basis}' is distinct from 'disabled' or carrier is not null or nullif(i->'freightOverride','null') is not null or nullif(i->'freightSchedule','null') is not null then raise exception 'shipping disabled'; end if;
+  if (s#>>'{freight,amount}')::numeric is distinct from freight then raise exception 'configured freight amount mismatch'; end if;
+  if i#>>'{terms,kind}'='explicit' then
+    if nullif(btrim(i#>>'{terms,actor}'),'') is null or nullif(btrim(i#>>'{terms,reason}'),'') is null then raise exception 'explicit terms actor and reason required'; end if;
+    due:=(i#>>'{terms,dueDate}')::date;
+  elsif i#>>'{terms,kind}'='following_month_day' then
+    if (i#>>'{terms,day}')::integer not between 1 and 28 then raise exception 'unsupported calendar term'; end if;
+    anchor:=(case when i#>>'{terms,anchor}'='dispatch' then i->>'dispatchAt' when i#>>'{terms,anchor}'='invoice' then i#>>'{terms,invoiceAt}' else null end)::timestamptz;
+    due:=(date_trunc('month',anchor at time zone (c->>'timezone'))+interval '1 month')::date+((i#>>'{terms,day}')::integer-1);
+  else raise exception 'terms missing or unsupported'; end if;
+  if due is null or s#>>'{terms,dueDate}' is distinct from due::text or (s->'terms'-'dueDate') is distinct from (i->'terms'-'dueDate') then raise exception 'terms snapshot mismatch'; end if;
+end $$;
+
 create function draft_dispatch_invoice(p_org_id uuid,p_source_id uuid,p_dispatch_id uuid,p_source_revision timestamptz,
   p_pricing_version_id uuid,p_snapshot jsonb,p_order_reference text)
 returns jsonb language plpgsql security definer set search_path=pg_catalog,public as $$
@@ -66,6 +175,11 @@ begin
   if c.config->>'currency' is distinct from p_snapshot->>'currency' or c.config->>'taxRateBps' is distinct from p_snapshot#>>'{tax,rateBps}'
     or c.config->>'freightTaxable' is distinct from p_snapshot#>>'{tax,freightTaxable}'
     or c.config->>'timezone' is distinct from p_snapshot->>'timezone' then raise exception 'snapshot configuration mismatch'; end if;
+  if d.source_occurred_at is null or (p_snapshot#>>'{input,dispatchAt}')::timestamptz is distinct from d.source_occurred_at then raise exception 'authoritative dispatch time required'; end if;
+  if c.config->>'pricingDateBasis'='order' and not exists(select 1 from shopify_orders o
+    join dispatch_sources ds on ds.id=d.source_id and ds.provider='shopify'
+    where o.org_id=p_org_id and o.id::text=d.order_key and o.placed_at=(p_snapshot#>>'{input,orderAt}')::timestamptz) then raise exception 'authoritative order time required'; end if;
+  perform assert_pricing_snapshot(c.config,p_snapshot);
   if jsonb_typeof(p_snapshot->'lines') is distinct from 'array' or jsonb_array_length(p_snapshot->'lines')=0 then raise exception 'snapshot lines required'; end if;
   if (select count(*) from dispatch_lines where dispatch_id=d.id and active) <> jsonb_array_length(p_snapshot->'lines')
     or (select count(distinct value->>'lineId') from jsonb_array_elements(p_snapshot->'lines')) <> jsonb_array_length(p_snapshot->'lines') then raise exception 'snapshot must include each dispatch line exactly once'; end if;
@@ -124,7 +238,7 @@ begin
       'dispatch_id',p_dispatch_id,'part_id',v_part,
       'calculation_snapshot_ref',jsonb_build_object('company_id',p_org_id,'type','InvoiceCalculationSnapshot','id',v_snapshot_id,'revision',1),
       'document_snapshot_ref',jsonb_build_object('company_id',p_org_id,'type','InvoiceDocumentSnapshot','id',v_snapshot_id,'revision',1),
-      'total',jsonb_build_object('amount_minor',v_total::text,'currency',p_snapshot->>'currency','scale',2)));
+      'total',jsonb_build_object('amount_minor',v_total::text,'currency',p_snapshot->>'currency','scale',(p_snapshot->>'scale')::integer)));
   perform publish_platform_event(p_org_id,v_event,'invoice-drafted:'||v_invoice,array['controller.invoice-drafts']);
   return jsonb_build_object('invoiceId',v_invoice,'snapshotId',v_snapshot_id,'reused',false);
 end $$;
@@ -152,7 +266,7 @@ do $$ declare t text;r text;f regprocedure; begin
       end if;
     end loop;
   end loop;
-  for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname in ('draft_dispatch_invoice','protect_billing_snapshot','billing_suffix') loop
+  for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname in ('draft_dispatch_invoice','protect_billing_snapshot','billing_suffix','assert_pricing_snapshot') loop
     execute format('revoke all on function %s from public',f);
     foreach r in array array['anon','authenticated','service_role'] loop
       if exists(select 1 from pg_roles where rolname=r) then execute format('revoke all on function %s from %I',f,r);
