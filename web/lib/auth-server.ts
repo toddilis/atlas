@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { authEnv, operatorAllowed } from './auth';
 import WebSocket from 'ws';
+import type { RealtimeClientOptions } from '@supabase/supabase-js';
 
 export class OperatorAuthError extends Error {
   constructor(public readonly status: 401 | 403 | 503, message: string) {
@@ -28,7 +29,7 @@ export async function requireOperator(request?: Request) {
   }
   const cookieStore = await cookies();
   const auth = createServerClient(env.url, env.anonKey, {
-    realtime: { transport: WebSocket },
+    realtime: { transport: WebSocket as unknown as RealtimeClientOptions['transport'] },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (updates) => {

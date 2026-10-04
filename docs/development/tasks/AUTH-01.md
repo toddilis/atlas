@@ -14,8 +14,13 @@ Browser-supplied actor, tool, input and business substitutions are refused.
 
 ## Disposable browser environment gate
 
-No disposable configuration was present in this task. Never fill this gap with the
-deployed business's credentials. The precise setup required is:
+No disposable configuration was present in the local task environment. The coordinator
+subsequently located original commit `abd36ceff4a86eb4bd1ae819a4d69599781145ed` with a
+reusable GoTrue/Playwright harness; this continuation includes it and adds migrated
+PostgREST business reads. `.github/workflows/auth-browser.yml` provisions the following
+setup entirely from synthetic values. Execution is a separate gate; do not infer a
+pass from the harness being present. Never substitute deployed business credentials.
+The precise setup required is:
 
 - A dedicated disposable Supabase project or local Supabase stack with Auth and
   PostgREST, migrated Atlas schema, and a synthetic org plus synthetic data.
