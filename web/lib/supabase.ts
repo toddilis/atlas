@@ -7,11 +7,21 @@
 // console runs through server components (the default in App Router) so the service
 // role key never ships to the browser.
 
+import 'server-only';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { OperatorAuthError, requireOperator } from './auth-server';
+import { redirect } from 'next/navigation';
+import WebSocket from 'ws';
 
 let cached: SupabaseClient | null = null;
 
-export function supabaseServer(): SupabaseClient {
+export async function supabaseServer(): Promise<SupabaseClient> {
+  // Do not put this behind the cached client: every request needs fresh authority.
+  try { await requireOperator(); }
+  catch (error) {
+    if (!(error instanceof OperatorAuthError)) throw error;
+    redirect(error.status === 503 ? '/login?unconfigured=1' : error.status === 403 ? '/login?denied=1' : '/login');
+  }
   if (cached) return cached;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -21,6 +31,7 @@ export function supabaseServer(): SupabaseClient {
     );
   }
   cached = createClient(url, key, {
+    realtime: { transport: WebSocket },
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: 'public' },
   });

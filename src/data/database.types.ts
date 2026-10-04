@@ -97,6 +97,92 @@ export type Database = {
           },
         ]
       }
+      action_attempts: {
+        Row: {
+          action_id: string
+          actor_id: string
+          attempt_number: number
+          error: string | null
+          evidence: Json | null
+          finished_at: string | null
+          id: string
+          org_id: string
+          result: Json | null
+          started_at: string
+          state: string
+        }
+        Insert: {
+          action_id: string
+          actor_id: string
+          attempt_number: number
+          error?: string | null
+          evidence?: Json | null
+          finished_at?: string | null
+          id?: string
+          org_id: string
+          result?: Json | null
+          started_at?: string
+          state: string
+        }
+        Update: {
+          action_id?: string
+          actor_id?: string
+          attempt_number?: number
+          error?: string | null
+          evidence?: Json | null
+          finished_at?: string | null
+          id?: string
+          org_id?: string
+          result?: Json | null
+          started_at?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_attempts_org_id_action_id_fkey"
+            columns: ["org_id", "action_id"]
+            referencedRelation: "approved_actions"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "action_attempts_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      action_controls: {
+        Row: {
+          changed_at: string
+          changed_by: string
+          org_id: string
+          paused: boolean
+          reason: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by: string
+          org_id: string
+          paused?: boolean
+          reason: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string
+          org_id?: string
+          paused?: boolean
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_controls_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_activity: {
         Row: {
           agent_name: string
@@ -250,6 +336,61 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "approvals_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approved_actions: {
+        Row: {
+          approval_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          intent: NonNullable<Json>
+          intent_hash: string
+          org_id: string
+          revision: number
+          revoked_at: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          approval_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          intent: NonNullable<Json>
+          intent_hash: string
+          org_id: string
+          revision?: number
+          revoked_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          approval_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          intent?: NonNullable<Json>
+          intent_hash?: string
+          org_id?: string
+          revision?: number
+          revoked_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approved_actions_approval_id_fkey"
+            columns: ["approval_id"]
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approved_actions_org_id_fkey"
             columns: ["org_id"]
             referencedRelation: "orgs"
             referencedColumns: ["id"]
@@ -823,6 +964,292 @@ export type Database = {
           },
         ]
       }
+      event_read_models: {
+        Row: {
+          connection_key: string
+          consumer: string
+          event_id: string
+          generation: string
+          org_id: string
+          payload: NonNullable<Json>
+          subject_id: string
+          subject_type: string
+          subject_version: number
+          updated_at: string
+        }
+        Insert: {
+          connection_key: string
+          consumer: string
+          event_id: string
+          generation: string
+          org_id: string
+          payload: NonNullable<Json>
+          subject_id: string
+          subject_type: string
+          subject_version: number
+          updated_at?: string
+        }
+        Update: {
+          connection_key?: string
+          consumer?: string
+          event_id?: string
+          generation?: string
+          org_id?: string
+          payload?: NonNullable<Json>
+          subject_id?: string
+          subject_type?: string
+          subject_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_read_models_org_id_event_id_fkey"
+            columns: ["org_id", "event_id"]
+            referencedRelation: "platform_events"
+            referencedColumns: ["org_id", "event_id"]
+          },
+        ]
+      }
+      event_receipts: {
+        Row: {
+          attempts: number
+          consumer: string
+          event_id: string
+          generation: string
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          org_id: string
+          owner: string
+          reason: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          consumer: string
+          event_id: string
+          generation?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          org_id: string
+          owner: string
+          reason?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          consumer?: string
+          event_id?: string
+          generation?: string
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          org_id?: string
+          owner?: string
+          reason?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_receipts_org_id_event_id_fkey"
+            columns: ["org_id", "event_id"]
+            referencedRelation: "platform_events"
+            referencedColumns: ["org_id", "event_id"]
+          },
+        ]
+      }
+      evidence_action_links: {
+        Row: {
+          action_id: string
+          decision_id: string
+          decision_revision: number
+          linked_at: string
+          org_id: string
+        }
+        Insert: {
+          action_id: string
+          decision_id: string
+          decision_revision: number
+          linked_at?: string
+          org_id: string
+        }
+        Update: {
+          action_id?: string
+          decision_id?: string
+          decision_revision?: number
+          linked_at?: string
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_action_links_org_id_action_id_fkey"
+            columns: ["org_id", "action_id"]
+            referencedRelation: "approved_actions"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "evidence_action_links_org_id_decision_id_decision_revision_fkey"
+            columns: ["org_id", "decision_id", "decision_revision"]
+            referencedRelation: "evidence_decisions"
+            referencedColumns: ["org_id", "decision_id", "revision"]
+          },
+        ]
+      }
+      evidence_decisions: {
+        Row: {
+          decision_id: string
+          org_id: string
+          record: NonNullable<Json>
+          recorded_at: string
+          revision: number
+          snapshot_hash: string
+          snapshot_id: string
+          state_snapshot: NonNullable<Json>
+        }
+        Insert: {
+          decision_id: string
+          org_id: string
+          record: NonNullable<Json>
+          recorded_at?: string
+          revision: number
+          snapshot_hash: string
+          snapshot_id: string
+          state_snapshot: NonNullable<Json>
+        }
+        Update: {
+          decision_id?: string
+          org_id?: string
+          record?: NonNullable<Json>
+          recorded_at?: string
+          revision?: number
+          snapshot_hash?: string
+          snapshot_id?: string
+          state_snapshot?: NonNullable<Json>
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_decisions_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evidence_history: {
+        Row: {
+          action_id: string
+          capture_kind: string
+          id: string
+          org_id: string
+          record: NonNullable<Json>
+          record_id: string
+          record_kind: string
+          recorded_at: string
+        }
+        Insert: {
+          action_id: string
+          capture_kind?: string
+          id?: string
+          org_id: string
+          record: NonNullable<Json>
+          record_id: string
+          record_kind: string
+          recorded_at?: string
+        }
+        Update: {
+          action_id?: string
+          capture_kind?: string
+          id?: string
+          org_id?: string
+          record?: NonNullable<Json>
+          record_id?: string
+          record_kind?: string
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_history_org_id_action_id_fkey"
+            columns: ["org_id", "action_id"]
+            referencedRelation: "approved_actions"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "evidence_history_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evidence_observations: {
+        Row: {
+          facts: NonNullable<Json>
+          observation_id: string
+          org_id: string
+          record: NonNullable<Json>
+          recorded_at: string
+        }
+        Insert: {
+          facts: NonNullable<Json>
+          observation_id: string
+          org_id: string
+          record: NonNullable<Json>
+          recorded_at?: string
+        }
+        Update: {
+          facts?: NonNullable<Json>
+          observation_id?: string
+          org_id?: string
+          record?: NonNullable<Json>
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_observations_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evidence_outcomes: {
+        Row: {
+          decision_id: string
+          decision_revision: number
+          org_id: string
+          outcome_id: string
+          record: NonNullable<Json>
+          recorded_at: string
+        }
+        Insert: {
+          decision_id: string
+          decision_revision: number
+          org_id: string
+          outcome_id: string
+          record: NonNullable<Json>
+          recorded_at?: string
+        }
+        Update: {
+          decision_id?: string
+          decision_revision?: number
+          org_id?: string
+          outcome_id?: string
+          record?: NonNullable<Json>
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_outcomes_org_id_decision_id_decision_revision_fkey"
+            columns: ["org_id", "decision_id", "decision_revision"]
+            referencedRelation: "evidence_decisions"
+            referencedColumns: ["org_id", "decision_id", "revision"]
+          },
+        ]
+      }
       fulfillment_events: {
         Row: {
           account_id: string | null
@@ -1382,6 +1809,49 @@ export type Database = {
           },
           {
             foreignKeyName: "payments_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_events: {
+        Row: {
+          connection_key: string
+          envelope: NonNullable<Json>
+          event_id: string
+          event_type: string
+          log_id: string
+          org_id: string
+          source_key: string
+        }
+        Insert: {
+          connection_key: string
+          envelope: NonNullable<Json>
+          event_id: string
+          event_type: string
+          log_id: string
+          org_id: string
+          source_key: string
+        }
+        Update: {
+          connection_key?: string
+          envelope?: NonNullable<Json>
+          event_id?: string
+          event_type?: string
+          log_id?: string
+          org_id?: string
+          source_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_events_log_id_fkey"
+            columns: ["log_id"]
+            referencedRelation: "event_log"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_events_org_id_fkey"
             columns: ["org_id"]
             referencedRelation: "orgs"
             referencedColumns: ["id"]
@@ -2100,9 +2570,37 @@ export type Database = {
     }
     Functions: {
       age_bucket: { Args: { p_overdue_days: number }; Returns: string }
+      apply_event_projection: {
+        Args: {
+          p_consumer: string
+          p_event_id: string
+          p_generation: string
+          p_lease_token: string
+          p_org_id: string
+        }
+        Returns: string
+      }
+      assert_action_authority: {
+        Args: { p_agent: string; p_org_id: string; p_tool: string }
+        Returns: undefined
+      }
+      assert_evidence_company: {
+        Args: { p_org_id: string; p_value: Json }
+        Returns: undefined
+      }
       bind_shopify_dispatch_source: {
         Args: { p_connection_key: string; p_org_id: string }
         Returns: string
+      }
+      claim_bound_action: {
+        Args: {
+          p_actor: string
+          p_approval_id: string
+          p_org_id: string
+          p_policy_snapshot: Json
+          p_subject_snapshot: Json
+        }
+        Returns: Json
       }
       claim_dispatch: {
         Args: {
@@ -2114,11 +2612,38 @@ export type Database = {
         }
         Returns: string
       }
+      claim_event_receipt: {
+        Args: { p_consumer: string; p_generation?: string; p_org_id: string }
+        Returns: Json
+      }
       compute_gst_cents: {
         Args: { p_rate_bps: number; p_subtotal_cents: number }
         Returns: number
       }
+      create_bound_approval: {
+        Args: {
+          p_expires_at: string
+          p_intent: Json
+          p_org_id: string
+          p_summary?: string
+        }
+        Returns: string
+      }
+      current_action_policy: {
+        Args: { p_org_id: string; p_tool: string }
+        Returns: Json
+      }
       dearmor: { Args: { "": string }; Returns: string }
+      decide_bound_approval: {
+        Args: {
+          p_actor: string
+          p_approval_id: string
+          p_disposition: string
+          p_org_id: string
+          p_reason?: string
+        }
+        Returns: undefined
+      }
       draft_invoice_atomic: {
         Args: {
           p_account_id: string
@@ -2134,6 +2659,27 @@ export type Database = {
           total_cents: number
           was_existing: boolean
         }[]
+      }
+      enqueue_event_replay: {
+        Args: {
+          p_consumer: string
+          p_event_ids: string[]
+          p_generation: string
+          p_org_id: string
+        }
+        Returns: number
+      }
+      finish_bound_action: {
+        Args: {
+          p_action_id: string
+          p_error?: string
+          p_evidence: Json
+          p_execution_id: string
+          p_org_id: string
+          p_result: Json
+          p_state: string
+        }
+        Returns: undefined
       }
       gen_random_uuid: { Args: Record<PropertyKey, never>; Returns: string }
       gen_salt: { Args: { "": string }; Returns: string }
@@ -2152,6 +2698,14 @@ export type Database = {
           statement_id: string
         }[]
       }
+      invoice_action_snapshot: {
+        Args: { p_invoice_id: string; p_org_id: string }
+        Returns: Json
+      }
+      issue_bound_invoice: {
+        Args: { p_action_id: string; p_execution_id: string; p_org_id: string }
+        Returns: Json
+      }
       issue_invoice_atomic: {
         Args: {
           p_invoice_id: string
@@ -2164,6 +2718,15 @@ export type Database = {
           ledger_transaction_id: string
           outbox_id: string
         }[]
+      }
+      link_decision_action: {
+        Args: {
+          p_action_id: string
+          p_decision_id: string
+          p_org_id: string
+          p_revision: number
+        }
+        Returns: undefined
       }
       next_invoice_number: { Args: { p_org_id: string }; Returns: string }
       overdue_days: {
@@ -2202,6 +2765,45 @@ export type Database = {
         Args: { p_connection_key: string; p_org_id: string; p_payload: Json }
         Returns: string
       }
+      publish_platform_event: {
+        Args: {
+          p_consumers?: string[]
+          p_envelope: Json
+          p_org_id: string
+          p_source_key: string
+        }
+        Returns: string
+      }
+      read_decision_evidence: {
+        Args: { p_decision_id: string; p_org_id: string; p_revision: number }
+        Returns: Json
+      }
+      read_event_delivery: {
+        Args: { p_event_id: string; p_org_id: string }
+        Returns: Json
+      }
+      reconcile_bound_action: {
+        Args: {
+          p_action_id: string
+          p_actor: string
+          p_evidence: Json
+          p_org_id: string
+          p_state: string
+        }
+        Returns: undefined
+      }
+      record_evidence_decision: {
+        Args: { p_org_id: string; p_record: Json; p_state_snapshot: Json }
+        Returns: string
+      }
+      record_evidence_observation: {
+        Args: { p_facts: Json; p_org_id: string; p_record: Json }
+        Returns: string
+      }
+      record_evidence_outcome: {
+        Args: { p_decision_revision: number; p_org_id: string; p_record: Json }
+        Returns: string
+      }
       record_stripe_payment: {
         Args: {
           p_amount_cents: number
@@ -2219,7 +2821,37 @@ export type Database = {
           rsp_was_existing: boolean
         }[]
       }
+      resume_event_receipt: {
+        Args: {
+          p_actor: string
+          p_consumer: string
+          p_event_id: string
+          p_generation: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      revoke_bound_action: {
+        Args: {
+          p_action_id: string
+          p_actor: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
       seed_chart_of_accounts: { Args: { p_org_id: string }; Returns: undefined }
+      set_action_pause: {
+        Args: {
+          p_actor: string
+          p_org_id: string
+          p_paused: boolean
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      supported_platform_event: { Args: { p_envelope: Json }; Returns: boolean }
     }
     Enums: {
       agent_kind: "worker" | "analytical" | "orchestrator"

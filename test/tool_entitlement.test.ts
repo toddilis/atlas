@@ -11,7 +11,7 @@ const organization = '00000000-0000-4000-8000-000000000001';
 const approvalId = '00000000-0000-4000-8000-000000000002';
 const tool = 'fixture.entitlement';
 const agent = 'fixture-agent';
-const context = { agentName: agent, subjectType: 'fixture', subjectId: 'subject-1' };
+const context = { agentName: agent, subjectType: 'fixture', subjectId: '00000000-0000-4000-8000-000000000003' };
 const input = { amount: 200 };
 let grant: { enabled: boolean; risk: RiskTier } | null;
 let config: Record<string, unknown> | null;
@@ -38,7 +38,14 @@ const server = createServer(async (request, response) => {
   }
   let body = '';
   for await (const chunk of request) body += chunk;
-  if (request.method === 'POST' && url.pathname === '/rest/v1/audit_log') {
+  if (request.method === 'POST' && url.pathname === '/rest/v1/rpc/assert_action_authority') {
+    response.end('null');
+  } else if (request.method === 'POST' && url.pathname === '/rest/v1/rpc/current_action_policy') {
+    response.end(JSON.stringify(config ? { id: '00000000-0000-4000-8000-000000000004', version: 1, config } : null));
+  } else if (request.method === 'POST' && url.pathname === '/rest/v1/rpc/create_bound_approval') {
+    approvals.push(JSON.parse(body).p_intent);
+    response.end(JSON.stringify(approvalId));
+  } else if (request.method === 'POST' && url.pathname === '/rest/v1/audit_log') {
     audits.push(JSON.parse(body));
     response.end('null');
   } else if (request.method === 'POST' && url.pathname === '/rest/v1/approvals') {
@@ -80,6 +87,7 @@ beforeEach(() => {
 function install(mutating = true, defaultRisk: RiskTier = 'notify', withExtractor = true) {
   registerTool<typeof input, string>({
     name: tool, mutating, defaultRisk,
+    approvalSnapshot: async () => ({ fixture_revision: 1 }),
     policyInput: withExtractor ? (value) => {
       extractions++;
       return { subjectType: 'fixture', subjectId: context.subjectId, amount: BigInt(value.amount),

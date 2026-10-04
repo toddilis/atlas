@@ -1,4 +1,15 @@
 import { timingSafeEqual } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
+
+/** Shared by the live server and application-boundary acceptance tests. */
+export function registerAdminAuth(app: FastifyInstance): void {
+  app.addHook('onRequest', async (req, reply) => {
+    if (!req.url.startsWith('/admin/')) return;
+    const state = bearerAuthState(req.headers.authorization, process.env.ATLAS_API_TOKEN);
+    if (state === 'unconfigured') return reply.code(503).send({ ok: false, error: 'ATLAS_API_TOKEN not configured' });
+    if (state === 'unauthorized') return reply.code(401).send({ ok: false, error: 'unauthorized' });
+  });
+}
 
 export type BearerAuthState = 'ok' | 'unauthorized' | 'unconfigured';
 
