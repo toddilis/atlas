@@ -2321,6 +2321,10 @@ export type Database = {
         Returns: string
       }
       age_bucket: { Args: { p_overdue_days: number }; Returns: string }
+      assert_pricing_snapshot: {
+        Args: { c: Json; s: Json }
+        Returns: undefined
+      }
       billing_suffix: { Args: { p_index: number }; Returns: string }
       bind_shopify_dispatch_source: {
         Args: { p_connection_key: string; p_org_id: string }

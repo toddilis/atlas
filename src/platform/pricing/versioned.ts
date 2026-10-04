@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Exact decimal strings at storage/action boundaries; bigint only during calculation.
 const money = z.string().regex(/^(0|[1-9][0-9]*)$/).refine(v => BigInt(v) <= 9223372036854775807n, 'money exceeds bigint');
-const id = z.string().min(1);
+const id = z.string().trim().min(1);
 const instant = z.string().datetime({ offset: true });
 const quantity = z.number().int().positive().max(2147483647);
 const scope = { accountId: id.nullable(), productId: id };
@@ -20,7 +20,7 @@ const shippingMode = z.discriminatedUnion('kind', [
 ]);
 export const PricingConfigSchema = z.object({
   schemaVersion: z.literal(1), businessId: id, version: id, name: id,
-  currency: z.string().regex(/^[A-Z]{3}$/), scale: z.literal(2), taxBasis: z.literal('exclusive'),
+  currency: z.enum(['NZD','AUD','USD','EUR','GBP','CAD']), scale: z.literal(2), taxBasis: z.literal('exclusive'),
   taxRateBps: z.number().int().min(0).max(10000), freightTaxable: z.boolean(),
   effectiveFrom: instant, effectiveUntil: instant.nullable(), timezone: id,
   pricingDateBasis: z.enum(['order', 'dispatch']), tierQuantityBasis: z.enum(['ordered', 'dispatched']),
@@ -117,9 +117,12 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
       if (reduction > unit) throw new Error('pricing: discount exceeds price');
       unit -= reduction;
     }
+    const beforeOverride = unit;
     if (line.override) unit = BigInt(line.override.amount);
     return { ...line, bookId: book.id, baseUnitPrice: entry.unitPrice, selectedRule: selected.id, selectedKind: kind,
-      beforeDiscountUnitPrice: selected.unitPrice, discountRules: applied.map(r => r.id), unitPrice: amount(unit),
+      beforeDiscountUnitPrice: selected.unitPrice, beforeOverrideUnitPrice: amount(beforeOverride),
+      discountPerUnit: amount(BigInt(selected.unitPrice)-beforeOverride), overrideDelta: (unit-beforeOverride).toString(),
+      discountRules: applied.map(r => r.id), unitPrice: amount(unit),
       lineAmount: amount(unit * BigInt(line.dispatched)), explanation: `${kind} ${selected.id}; tier basis ${config.tierQuantityBasis}; discounts ${applied.map(r => r.id).join(', ') || 'none'}${line.override ? '; reasoned override' : ''}` };
   });
   const subtotal = lines.reduce((n,l) => n + BigInt(l.lineAmount), 0n);

@@ -39,6 +39,11 @@ begin
   a:=jsonb_set(jsonb_set(a,'{lines,0,lineId}',to_jsonb(line_id::text)),'{input,lines,0,lineId}',to_jsonb(line_id::text));
   select id into line_id from dispatch_lines where dispatch_id=db;
   b:=jsonb_set(jsonb_set(b,'{lines,0,lineId}',to_jsonb(line_id::text)),'{input,lines,0,lineId}',to_jsonb(line_id::text));
+  execute 'set local role service_role';
+  perform pg_temp.pricing_reject(format('select draft_dispatch_invoice(%L,%L,%L,%L,%L,%L,%L)',company,source,da,revision,version_id,forged,'#synthetic-100'),'%%configured unit price mismatch%%');
+  perform pg_temp.pricing_reject(format('select draft_dispatch_invoice(%L,%L,%L,%L,%L,%L,%L)',company,source,da,revision,version_id,a #- '{terms,dueDate}','#synthetic-100'),'%%terms snapshot mismatch%%');
+  perform pg_temp.pricing_reject(format('select draft_dispatch_invoice(%L,%L,%L,%L,%L,%L,%L)',company,source,da,revision,version_id,jsonb_set(a,'{input,dispatchAt}','"2026-10-03T00:00:00Z"'),'#synthetic-100'),'%%authoritative dispatch time%%');
+  execute 'reset role';
   if to_regprocedure('publish_platform_event(uuid,jsonb,text,text[])') is null then
     perform pg_temp.pricing_reject(format('select draft_dispatch_invoice(%L,%L,%L,%L,%L,%L,%L)',company,source,da,revision,version_id,a,'#synthetic-100'),'%%publish_platform_event%%');
     perform pg_temp.pricing_assert(not exists(select 1 from dispatch_invoice_parts where dispatch_id=da),'missing shared service rolls back allocation');
