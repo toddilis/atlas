@@ -22,7 +22,7 @@ interface ApprovalRow {
 }
 
 async function loadPendingApprovals(): Promise<ApprovalRow[]> {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   const { data, error } = await sb
     .from('approvals')
     .select(

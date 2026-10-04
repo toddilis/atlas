@@ -1,0 +1,10 @@
+import { config, input } from '../test/fixtures/pricing/synthetic.js';
+import { calculatePricing } from '../src/platform/pricing/versioned.js';
+const company='63000000-0000-4000-8000-000000000001';
+const account='63000000-0000-4000-8000-000000000002';
+const product='63000000-0000-4000-8000-000000000003';
+const c=config(); c.businessId=company; c.pricingDateBasis='dispatch';
+c.books[0]!.entries[0]!.productId=product; c.bindings=[{accountId:account,bookId:'book'}]; c.discounts=[]; c.tiers[0]!.productId=product;
+const i=input(); i.businessId=company;i.accountId=account;i.lines[0]!.productId=product;
+const a=calculatePricing(c,i); i.dispatchKey='dispatch-b';i.lines[0]!.dispatched=60;const b=calculatePricing(c,i);
+for(const [name,value] of Object.entries({config:c,a,b})) console.log(`select set_config('test.pricing_${name}','${JSON.stringify(value).replaceAll("'","''")}',false);`);

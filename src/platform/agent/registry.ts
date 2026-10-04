@@ -2,6 +2,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import { registerProjector } from '../events/projector.js';
 import { log } from '../log.js';
 import type { AgentDefinition } from './types.js';
+import { isProjectionReplay } from '../events/context.js';
 
 const registered: Map<string, AgentDefinition> = new Map();
 
@@ -24,13 +25,25 @@ export async function registerAgent(def: AgentDefinition): Promise<void> {
         description: def.description ?? null,
         enabled: true,
       },
-      { onConflict: 'org_id,name' },
+      // Boot seeds missing agents; persisted operator disablement survives restart.
+      { onConflict: 'org_id,name', ignoreDuplicates: true },
     );
   if (error) throw error;
 
   for (const trigger of def.triggers) {
     registerProjector(trigger, async (event) => {
+      // Agents can call legacy domain handlers directly; skip the whole agent in
+      // rebuilds while allowing canonical read projectors to run.
+      if (isProjectionReplay()) return;
       try {
+        const { data: agent, error: agentError } = await sb.from('agents').select('enabled')
+          .eq('org_id', orgId()).eq('name', def.name).maybeSingle();
+        if (agentError) throw agentError;
+        const { data: controls, error: controlError } = await sb.from('action_controls').select('paused')
+          .eq('org_id', orgId()).maybeSingle();
+        if (controlError) throw controlError;
+        // Throw so durable event recovery keeps this work outstanding while paused.
+        if (!agent?.enabled || controls?.paused) throw new Error(`agent ${def.name} is disabled or business actions are paused`);
         await def.onEvent(event);
       } catch (e) {
         log.error('agent.handler_failed', {
