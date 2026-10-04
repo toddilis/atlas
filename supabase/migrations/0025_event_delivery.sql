@@ -55,7 +55,7 @@ $$;
 
 create function publish_platform_event(p_org_id uuid,p_envelope jsonb,p_source_key text,p_consumers text[] default '{}')
 returns uuid language plpgsql security definer set search_path=pg_catalog,public as $$
-declare e platform_events%rowtype; v_log uuid; v_conn text; v_consumer text; v_id text; k text;
+declare e platform_events%rowtype; v_log uuid; v_conn text; v_consumer text; v_id text; k text; v_kind text; v_key text; v_revision text;
 begin
  perform assert_evidence_company(p_org_id,p_envelope);
  if octet_length(p_envelope::text)>262144 then raise exception 'event exceeds 256 KiB'; end if;
@@ -72,6 +72,22 @@ begin
    if coalesce(p_envelope->>k,'')='' then raise exception 'missing event field %',k; end if;
  end loop;
  perform (p_envelope->>'occurred_at')::timestamptz,(p_envelope->>'observed_at')::timestamptz;
+ -- Port the archived EVENT candidate's subject/payload consistency guard into the
+ -- single canonical publisher. Unknown versions remain uninterpreted/quarantined.
+ if p_envelope->>'event_version'='1' and p_envelope->>'event_type' in
+ ('controller.decision.proposed','controller.action.prepared','controller.action.execution_recorded','controller.outcome.recorded') then
+   case p_envelope->>'event_type'
+   when 'controller.decision.proposed' then v_kind:='Decision'; v_key:='decision_id';
+   when 'controller.action.prepared' then v_kind:='Action'; v_key:='action_id';
+   when 'controller.action.execution_recorded' then v_kind:='Execution'; v_key:='execution_id';
+   else v_kind:='Outcome'; v_key:='outcome_id'; end case;
+   v_revision:=case when v_kind in ('Decision','Action') then p_envelope#>>'{payload,revision}' else '1' end;
+   if p_envelope#>>'{payload,company_id}' is distinct from p_org_id::text or p_envelope#>>'{payload,contract_version}' is distinct from '1'
+   or p_envelope->>'subject_type' is distinct from v_kind or p_envelope->>'subject_id' is distinct from p_envelope->'payload'->>v_key
+   or p_envelope->>'subject_version' is distinct from v_revision
+   or p_envelope->>'event_class' is distinct from case when v_kind='Decision' then 'proposal' else 'fact' end
+   then raise exception 'Controller event subject/payload mismatch'; end if;
+ end if;
  v_id:=p_envelope->>'event_id';
  -- JSON text distinguishes null from every possible connection ID.
  v_conn:=(p_envelope->'connection_id')::text;

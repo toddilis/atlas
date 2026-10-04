@@ -4,7 +4,8 @@ Owner: event/evidence track. Branch `codex/event-evidence-oct01`, isolated check
 Starting main: `cbcb2e7620e73f1406bc8e31edb5b91687c866fb`. Architecture v0.2 /
 Controller v1: `c816ac212c666f5e4e2f6799701e7bc9da963b20`. DATA-01 is included in
 that main. Initial AUTH dependency: `f09d0a505c45d8b0cb7a9a44d7be3ee40c736d7b`
-(PR #25); final acceptance must pin the repaired AUTH candidate.
+(PR #25). Repaired AUTH dependency incorporated at
+`ffa12001ea107794719c6301976a3dd6766a6443`; later AUTH 0027 remains a combined-journey gate.
 
 Coordinator reserved migrations 0025–0026, new event/evidence modules and tests.
 Approved shared patches: appended migration probe, one concurrency CI step, two-line
@@ -45,6 +46,8 @@ the live projection. The TS worker always uses the shared side-effect-disabled c
 Legacy `replay({fromSeq})` now uses that context too, skips agent callbacks (including
 Controller's direct draft handler), and retains ordinary read projectors. Ordinary
 legacy retry remains existing behavior and is not certified as receipt-based processing.
+Historical rebuilds never update live projection completion/retry state, so a blocked
+rebuild cannot silently enqueue live business effects afterwards.
 
 ## Evidence integration
 
@@ -109,6 +112,20 @@ migration, AUTH/DATA concurrency and SQL↔TS parity suites.
 Local Postgres/pgvector is unavailable; real SQL acceptance comes from actual CI on
 the named candidate. Generated database types must be obtained from that migrated
 database and committed, not handwritten. Initial PR is draft until checks pass.
+
+First candidate `07e578f07d0aaa58d6a339fe607764862bc8f143`, draft PR #30, ran in
+CI `36788419655`: migration/event/evidence probes, DATA/AUTH/event concurrency and
+console checks passed. Root typecheck and generated-schema drift failed; root tests,
+root build and parity were therefore not executed. The CI-generated type artifact was
+retrieved verbatim for the follow-up; no type assertion bypass is used.
+
+On discovering unpublished original work, compared archived `atlas-events`
+`44c59bc7cfbd795432d629bb65ebc4e5fe59bd5d` read-only. Retain weekly 0025–0026 as
+the single store and transport; do not apply its conflicting old 0023. Reuse its
+Controller subject/payload guard, bounded gap-exhaustion/resume acceptance and concurrent
+async replay-isolation test. Preserve original source untouched. Weekly implementation
+adds existing-spine publication, leases/fencing, killed-worker tests, actual AUTH row
+triggers, native linkage/read model and explicit inherited service-role privilege revokes.
 
 Remaining integration gates: repaired AUTH exact commit, Controller transaction hooks,
 authenticated console journey, independent review on the final combined candidate.

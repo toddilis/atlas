@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { registerEvidenceRoutes } from '../src/api/evidence-routes.js';
 import { parsePublishedEvent, projectNextEvent, publishEvent } from '../src/platform/events/delivery.js';
-import { withProjectionReplay } from '../src/platform/events/context.js';
+import { assertEffectsAllowed, isProjectionReplay, withProjectionReplay } from '../src/platform/events/context.js';
 import { recordDecision } from '../src/platform/evidence/ledger.js';
 import { readFileSync } from 'node:fs';
 
@@ -49,6 +49,14 @@ test('replay cannot publish evidence or fresh continuation', async () => {
   await assert.rejects(withProjectionReplay(() => publishEvent(event, 'one')), /forbidden during projection replay/);
   await assert.rejects(withProjectionReplay(() => recordDecision(fixture.decision, { amount_minor: '4' })), /forbidden during projection replay/);
   assert.equal(calls.length, before);
+});
+// Reused acceptance from the archived atlas-events 44c59bc implementation.
+test('async replay context does not leak into concurrent live work', async () => {
+  await Promise.all([
+    withProjectionReplay(async () => { await Promise.resolve(); assert.throws(assertEffectsAllowed, /forbidden/); }),
+    Promise.resolve().then(() => assertEffectsAllowed()),
+  ]);
+  assert.equal(isProjectionReplay(), false);
 });
 test('projection consumer only claims and atomically applies persisted envelope', async () => {
   const before = calls.length;

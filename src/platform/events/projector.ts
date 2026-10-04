@@ -198,9 +198,19 @@ export async function replay(opts: { limit?: number; fromSeq?: number } = {}): P
     summary.scanned += 1;
     // Historical rebuilds must never dispatch agents or business effects. Ordinary
     // recovery retains the live path and existing action identities.
-    const outcome = opts.fromSeq != null
-      ? await withProjectionReplay(() => dispatchTracked(toAppendedEvent(row.event), row.attempts))
-      : await dispatchTracked(toAppendedEvent(row.event), row.attempts);
+    let outcome: ProjectionOutcome;
+    if (opts.fromSeq != null) {
+      // Never alter the live completion/attempt state during a historical rebuild.
+      // Otherwise a blocked rebuild could requeue the event for live agent dispatch.
+      try {
+        await withProjectionReplay(() => dispatch(toAppendedEvent(row.event)));
+        outcome = { projected: true };
+      } catch (error) {
+        outcome = { projected: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    } else {
+      outcome = await dispatchTracked(toAppendedEvent(row.event), row.attempts);
+    }
     if (outcome.projected) {
       summary.projected += 1;
     } else if (row.attempts + 1 >= MAX_PROJECTION_ATTEMPTS) {

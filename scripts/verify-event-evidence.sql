@@ -66,6 +66,21 @@ begin
  if (select state from event_receipts where org_id=o and event_id='future')<>'quarantined' then raise exception 'unknown version not quarantined'; end if;
  perform publish_platform_event(o,jsonb_set(pg_temp.event_fixture(o,'unregistered'),'{event_type}','"fixture.unregistered"'),'unregistered',array['ordered']);
  if (select state from event_receipts where org_id=o and event_id='unregistered')<>'quarantined' then raise exception 'unknown type not quarantined'; end if;
+ -- Port the archived candidate's retry exhaustion/resume case; also cover a lost
+ -- final lease, which must quarantine without requiring a successful callback.
+ perform publish_platform_event(o,pg_temp.event_fixture(o,'gap',9),'gap',array['bounded']);
+ for n in 1..10 loop
+   update event_receipts set next_attempt_at=clock_timestamp() where org_id=o and consumer='bounded';
+   c:=claim_event_receipt(o,'bounded');
+   perform apply_event_projection(o,'bounded','live','gap',(c->>'lease_token')::uuid);
+ end loop;
+ if (select state from event_receipts where org_id=o and consumer='bounded')<>'quarantined' then raise exception 'retry limit missing'; end if;
+ perform resume_event_receipt(o,'bounded','live','gap','operator','source inspected');
+ update event_receipts set attempts=9 where org_id=o and consumer='bounded';
+ c:=claim_event_receipt(o,'bounded');
+ update event_receipts set lease_until=clock_timestamp()-interval '1 second' where org_id=o and consumer='bounded';
+ if claim_event_receipt(o,'bounded') is not null or (select state from event_receipts where org_id=o and consumer='bounded')<>'quarantined'
+ then raise exception 'final crashed lease not quarantined'; end if;
  select count(*) into n from approved_actions where org_id=o;
  perform enqueue_event_replay(o,'ordered','rebuild-1',array['one','two','three']);
  for c in select jsonb_build_object('event_id',event_id) from event_receipts where org_id=o and generation='rebuild-1' order by event_id loop
@@ -95,6 +110,12 @@ begin
  intent:=jsonb_build_object('schema_version',1,'org_id',o,'agent_name','fixture','tool_name','fixture.evidence',
  'subject_type','invoice','subject_id',subject,'input','{}'::jsonb,'subject_snapshot','{"revision":1}'::jsonb,'policy_snapshot',null);
  a:=create_bound_approval(o,intent,now()+interval '1 hour');
+ select count(*) into n from approvals where org_id=o;
+ denied:=false;
+ begin perform create_bound_approval(o,jsonb_set(intent,'{input}',jsonb_build_object('oversize',repeat('x',270000))),now()+interval '1 hour');
+ exception when others then denied:=true; end;
+ if not denied or (select count(*) from approvals where org_id=o)<>n or (select count(*) from approved_actions where org_id=o)<>1
+ then raise exception 'publication failure did not roll back authority mutation'; end if;
  select id into action from approved_actions where approval_id=a;
  perform link_decision_action(o,'decision',1,action);
  view:=read_decision_evidence(o,'decision',1);

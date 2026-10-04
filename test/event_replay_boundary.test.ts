@@ -16,6 +16,7 @@ const event = { id: '52000000-0000-4000-8000-000000000002', org_id: company, seq
   subject_type: null, subject_id: null, occurred_at: '2026-10-01T00:00:00Z', appended_at: '2026-10-01T00:00:00Z', idempotency_key: 'fixture' };
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://fixture'); requests.push(url.pathname);
+  if (url.pathname === '/rest/v1/event_projections') assert.equal(req.method, 'GET', 'rebuild must not requeue live work');
   for await (const _ of req) { /* drain request */ }
   res.setHeader('Content-Type', 'application/json');
   if (url.pathname === '/rest/v1/event_log') res.end(JSON.stringify([event]));
