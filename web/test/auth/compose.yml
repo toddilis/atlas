@@ -23,7 +23,7 @@ services:
       API_EXTERNAL_URL: http://127.0.0.1:54321/auth/v1
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_NAMESPACE: auth
-      GOTRUE_DB_DATABASE_URL: postgres://postgres:disposable-auth-only@database:5432/auth_acceptance
+      GOTRUE_DB_DATABASE_URL: postgres://auth_test:disposable-auth-only@database:5432/auth_acceptance
       GOTRUE_SITE_URL: http://127.0.0.1:3002
       GOTRUE_JWT_SECRET: atlas-disposable-auth-test-secret-at-least-32-chars
       GOTRUE_JWT_EXP: 120
