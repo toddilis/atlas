@@ -23,6 +23,14 @@ is authorized by this queue. Previous dated approval text is not a new release m
 
 ### Current repository evidence
 
+**Latest intake, 4 October:** AUTH #31 `3355641cc95044cd4c4f764a3eeac66937f67f27`,
+EVENT #30 `5beeee2cc7f96ba152337b912e44ee6886928068`, and
+Controller #28 `3f5123db711f8fe00d3418b97109c0ad345e82a0` were freshly confirmed on GitHub
+after the detailed check ledger below. They are replacement candidates awaiting
+affected CI/independent reassessment; earlier failures and passes remain attached to
+their stated old SHAs, not transferred to these heads. Automation #27 remains
+`8c4732fcb1a58d5c7eac971ce74384d6dc36f8ea`. No accepted combined candidate yet.
+
 GitHub main is `cbcb2e7620e73f1406bc8e31edb5b91687c866fb` (**M**). Fresh inspection
 of its [CI run 36306722411](https://github.com/toddilis/atlas/actions/runs/36306722411)
 shows successful root, console and real Postgres migration/parity jobs. This evidence
@@ -58,7 +66,7 @@ product work starts from M unless an exact dependency below is stated. Isolated
 checkouts are under `C:/Users/toddl/Documents/Codex/2026-10-01/` in the owner's task
 directory; existing September worktrees were inspected without modification.
 
-| Task / named owner | Branch / PR and starting commit | Dependencies / owned surfaces | Current candidate and next acceptance |
+| Task / named owner | Branch / PR and starting commit | Dependencies / owned surfaces | Last inspected checks and next acceptance (new heads in latest intake above) |
 | --- | --- | --- | --- |
 | Integration / `01a0f427-d5c8-7833-9232-4e60c8bce138` | `codex/integration-2026-10-01`, starts M; [planning #29](https://github.com/toddilis/atlas/pull/29) | Queue, PLAN/roadmap reconciliation, shared contract decisions, composition/evidence | Published initial docs `233d51cb1756888540e90745921b00fa0f13a6d4`; subsequent queue refresh follows. No accepted combined product candidate. Claims/order and reversible merge-tree checks recorded. |
 | AUTH-01 + AUTHZ-02 / `01a0f428-1f15-70f1-9ab4-1298b60b078c` | `codex/auth-oct01-completion`, starts #25 f09d0a5; preserves #19, #25 ffa1200 and older auth abd36ce ancestry; [draft #31](https://github.com/toddilis/atlas/pull/31) | C + entitlement in M. control-plane approvals/bound-actions, tools grants/registry/outbox, events/context, agent/registry, approval-routes, web auth and auth-browser workflow; 0022/0027 | `2179d8c8f4bb6662a68a0f8d9dc78e78725f1a99`: [37186551868](https://github.com/toddilis/atlas/actions/runs/37186551868) root/DB passed, web typecheck failed (F10); [browser37186551883](https://github.com/toddilis/atlas/actions/runs/37186551883) failed GoTrue initialization (F11), browser cases did not run. No complete AUTH or browser acceptance. |
@@ -260,6 +268,26 @@ every four hours through 7 October. It inspects candidates, performs reversible 
 checks, updates this queue and routes owner handoffs. It grants no product build-runner,
 paid reviewer, merge, deployment or live-action authority. No changed evidence means no
 duplicate status churn. This schedule does not establish BUILD-02 unattended acceptance.
+
+Integration-only rehearsal is leased to Controller in an isolated branch/worktree
+using explicitly pinned AUTH/EVENT/Controller candidates, with a draft evidence PR
+if needed for disposable database CI. It is not a competing implementation or an
+accepted combined candidate. Controller must return full dependency/head/tree manifest,
+run the actual 40/60 success path with the EVENT helper present, and route peer code
+conflicts back to owners. Coordinator owns final composition and acceptance record.
+Protected editor integration still waits AUTH acceptance. Existing native issuance
+event publication should move inside the invoice transaction; a new canonical issued
+wire is not yet approved merely from the draft event schema.
+
+Automation supplied exact staged CI resolution under its `ci-reconciliation/` folder.
+Final atlas-ci.yml SHA-256 is
+`f314358aefe504bc25223dcc92da51424e6fcc8c7b764ea385b1ba3471aeb345` (Git blob
+`3100ab75e9763d15992b1c0c0f792d309c25708b`); disabled reviewer policy SHA-256 is
+`bc92278547b2631cdcb58ac808fafb6db3a98d32ab9ce5a17495f27a35257e77` (blob
+`9e95cfa6c4faf666367951a3944a4baa6e0d4fd9`). Use the chosen resolved source/one
+appropriate patch, not every alternative. Owner checked byte equality/application
+against AUTH2179/842 and EVENT07e/5be workflow blobs; newer heads still require drift
+inspection. This is static workflow composition, not trusted-workflow approval or CI.
 
 ---
 
