@@ -33,6 +33,10 @@ services:
       GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
       GOTRUE_MAILER_AUTOCONFIRM: 'true'
       GOTRUE_DISABLE_SIGNUP: 'true'
+      # supabase-js sends `apikey` on every auth request. Hosted Supabase's gateway allows
+      # it; GoTrue's own CORS list does not, so without this the browser's preflight is
+      # refused and the sign-in POST is never sent.
+      GOTRUE_CORS_ALLOWED_HEADERS: apikey
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9999/health']
       interval: 2s

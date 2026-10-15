@@ -1,7 +1,7 @@
 import 'server-only';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { authEnv, operatorAllowed } from './auth';
+import { authEnv, operatorAllowed, sameOriginRequest } from './auth';
 import WebSocket from 'ws';
 import type { RealtimeClientOptions } from '@supabase/supabase-js';
 
@@ -22,8 +22,7 @@ export async function requireOperator(request?: Request) {
     throw new OperatorAuthError(503, 'Operator access is not configured.');
   }
   if (request && !['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) {
-    const origin = request.headers.get('origin');
-    if (!origin || origin !== new URL(request.url).origin) {
+    if (!sameOriginRequest(request.headers)) {
       throw new OperatorAuthError(403, 'Same-origin request required.');
     }
   }

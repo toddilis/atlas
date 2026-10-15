@@ -20,6 +20,24 @@ export function operatorAllowed(
   return !!email && allowlist.includes(email.trim().toLowerCase());
 }
 
+/**
+ * CSRF guard for state-changing console requests: the browser's Origin must name the
+ * host the request was addressed to (Host, or X-Forwarded-Host from a proxy), as Next.js
+ * checks server actions. Do not compare with `request.url`: in route handlers it carries
+ * Next's own hostname (e.g. localhost), so genuine same-origin requests were refused.
+ * A cross-site browser request cannot set either header. Missing or opaque Origin fails.
+ */
+export function sameOriginRequest(headers: Pick<Headers, 'get'>): boolean {
+  const origin = headers.get('origin');
+  const host = headers.get('x-forwarded-host')?.split(',')[0]?.trim() || headers.get('host');
+  if (!origin || !host) return false;
+  try {
+    return new URL(origin).host === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeProjectUrl(value: string | undefined): string | null {
   if (!value) return null;
   try {
