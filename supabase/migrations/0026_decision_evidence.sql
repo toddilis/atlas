@@ -161,7 +161,7 @@ begin
      then raise exception 'missing or cross-company observation'; end if;
  end loop;
  insert into evidence_decisions(org_id,decision_id,revision,record,state_snapshot,snapshot_id,snapshot_hash)
- values(p_org_id,v_id,v_revision,p_record,p_state_snapshot,p_record#>>'{state_snapshot_ref,id}',encode(digest(p_state_snapshot::text,'sha256'),'hex')) on conflict do nothing;
+ values(p_org_id,v_id,v_revision,p_record,p_state_snapshot,p_record#>>'{state_snapshot_ref,id}',encode(sha256(convert_to(p_state_snapshot::text,'UTF8')),'hex')) on conflict do nothing;
  select * into prior from evidence_decisions where org_id=p_org_id and decision_id=v_id and revision=v_revision;
  if not found or prior.record is distinct from p_record or prior.state_snapshot is distinct from p_state_snapshot then raise exception 'conflicting immutable decision snapshot'; end if;
  return v_id;

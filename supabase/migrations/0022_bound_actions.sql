@@ -100,7 +100,7 @@ begin
  values(p_org_id,p_intent->>'agent_name',p_intent->>'tool_name',p_intent->>'subject_type',v_subject,p_intent,p_summary,'approve_required',p_expires_at)
  returning id into v_approval;
  insert into approved_actions(id,org_id,approval_id,intent,intent_hash,idempotency_key)
- values(v_action,p_org_id,v_approval,p_intent,encode(digest(p_intent::text,'sha256'),'hex'),p_org_id::text||':'||v_action::text||':1');
+ values(v_action,p_org_id,v_approval,p_intent,encode(sha256(convert_to(p_intent::text,'UTF8')),'hex'),p_org_id::text||':'||v_action::text||':1');
  insert into audit_log(org_id,agent_name,action,approval_id,risk,outcome,detail)
  values(p_org_id,p_intent->>'agent_name','action.prepared',v_approval,'approve_required','blocked',
  jsonb_build_object('action_id',v_action,'revision',1,'intent',p_intent));
