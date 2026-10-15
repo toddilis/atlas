@@ -23,8 +23,6 @@ source mappings, with Shopify-specific interpretation in an adapter. PRICING-01 
 support separate business configurations and optional shipping. These requirements
 shape the current slices rather than postponing them for a future generalisation pass.
 
-Alongside that work, finish review/integration of the existing authentication and
-permission changes, then bind approvals to the exact stored action in AUTHZ-02.
 The next new operator-facing deliverable is [PRICING-01](tasks/PRICING-01.md): a usable
 product, retailer and shipping pricing editor with a calculation preview.
 

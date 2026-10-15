@@ -15,7 +15,7 @@ The user's current instructions and granted authority take precedence over this 
 ## Work selection and handoff
 
 - Select the first ready task whose prerequisites are verified. Report the task ID, starting commit and intended user outcome.
-- Use an isolated branch. Check existing PRs before creating overlapping work; console authentication is already proposed in PR #19.
+- Use an isolated branch. Check existing PRs before creating overlapping work; console authentication and exact-action approvals are in PR #31, which supersedes #19 and #25.
 - Keep task scope bounded. Continue routine implementation and fixes without asking the user to choose technical details.
 - Persist the PR, exact candidate commit, checks, unresolved findings and next eligible task. A final chat message alone is not durable execution state.
 - If a task is blocked, identify the missing fact or capability and continue independent authorized work. Do not mark it complete or invent business values.
