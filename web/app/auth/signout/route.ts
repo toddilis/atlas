@@ -1,12 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { authEnv } from '../../../lib/auth';
+import { authEnv, sameOriginRequest } from '../../../lib/auth';
 import WebSocket from 'ws';
 import type { RealtimeClientOptions } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
-  if (request.headers.get('origin') !== new URL(request.url).origin) {
+  if (!sameOriginRequest(request.headers)) {
     return NextResponse.json({ error: 'Same-origin request required.' }, { status: 403 });
   }
   const env = authEnv();
@@ -24,5 +24,6 @@ export async function POST(request: Request) {
     });
     await supabase.auth.signOut();
   }
-  return NextResponse.redirect(new URL('/login', request.url), { status: 302 });
+  // Relative Location: request.url names Next's own hostname, not the browser's.
+  return new NextResponse(null, { status: 302, headers: { Location: '/login' } });
 }

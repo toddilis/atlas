@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NextResponse } from 'next/server';
-import { authEnv, normalizeProjectUrl, operatorAllowed } from '../lib/auth';
+import { authEnv, normalizeProjectUrl, operatorAllowed, sameOriginRequest } from '../lib/auth';
 import { redirectWithCookies } from '../lib/auth-response';
 
 test('operator allowlist fails closed when empty or missing an email', () => {
@@ -89,4 +89,23 @@ test('redirects retain refreshed and cleared Supabase cookies', () => {
   assert.equal(redirect.cookies.get('sb-access')?.value, 'fresh');
   assert.equal(redirect.cookies.get('sb-access')?.httpOnly, true);
   assert.equal(redirect.cookies.get('sb-refresh')?.maxAge, 0);
+});
+
+test('same-origin guard compares Origin with the host the browser addressed', () => {
+  const headers = (values: Record<string, string>) => new Headers(values);
+  assert.equal(sameOriginRequest(headers({ origin: 'http://127.0.0.1:3002', host: '127.0.0.1:3002' })), true);
+  assert.equal(sameOriginRequest(headers({ origin: 'https://console.example', host: 'Console.Example' })), true);
+  assert.equal(
+    sameOriginRequest(headers({ origin: 'https://console.example', host: 'app:3000', 'x-forwarded-host': 'console.example' })),
+    true,
+  );
+});
+
+test('same-origin guard refuses cross-site, missing and opaque origins', () => {
+  const headers = (values: Record<string, string>) => new Headers(values);
+  assert.equal(sameOriginRequest(headers({ origin: 'https://attacker.invalid', host: '127.0.0.1:3002' })), false);
+  assert.equal(sameOriginRequest(headers({ origin: 'http://localhost:3002', host: '127.0.0.1:3002' })), false);
+  assert.equal(sameOriginRequest(headers({ host: '127.0.0.1:3002' })), false);
+  assert.equal(sameOriginRequest(headers({ origin: 'null', host: '127.0.0.1:3002' })), false);
+  assert.equal(sameOriginRequest(headers({ origin: 'http://127.0.0.1:3002' })), false);
 });
