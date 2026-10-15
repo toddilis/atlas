@@ -138,3 +138,17 @@ Remaining limits, not fixed here:
   an allocation policy decision.
 - Part suffixes follow drafting order.
 - Actual-cost freight (GoSweetSpot) cannot be drafted until stored carrier evidence exists.
+
+## 15 October review of `63ade52`
+
+Fixed in the next commit: the content hash uses built-in `sha256` (hosted Supabase keeps
+pgcrypto in `extensions`), the due date compares independent of DateStyle, freight cannot be
+allocated to a dispatch outside the order, and stored snapshots carry no extra input lines
+and only the product's own name.
+
+Open, needing a decision or a larger change: billed retailer derived from the order;
+legacy `draft_invoice_atomic` can invoice a BILL-drafted fulfillment again (and the reverse);
+tax-exempt retailers are charged tax; a retailer-specific plus general rule for one product
+blocks that retailer; a per-dispatch free-freight threshold with `order_schedule` blocks
+part B; and how freight is split across parts (each dispatch's own freight, or one order
+amount split across parts), which decides the staggered-dispatch fix.

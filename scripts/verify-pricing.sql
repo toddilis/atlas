@@ -43,6 +43,10 @@ begin
   perform pg_temp.pricing_reject(format('select save_pricing_version(%L,0,%L,%L,%L)',company,c||'{"version":"stale"}','operator','stale'),'%%stale pricing revision%%');
   perform pg_temp.pricing_reject(format('update pricing_versions set reason=%L where id=%L','changed',version_id),'%%append-only%%');
   perform assert_pricing_snapshot(c,a); perform assert_pricing_snapshot(c,b);
+  -- The due-date comparison must not depend on the session's DateStyle.
+  execute 'set local datestyle = ''SQL, DMY''';
+  perform assert_pricing_snapshot(c,a);
+  execute 'reset datestyle';
   forged:=jsonb_set(a,'{lines,0,unitPrice}','"1"');
   forged:=jsonb_set(forged,'{lines,0,lineAmount}','"40"');
   forged:=jsonb_set(forged,'{subtotal}','"40"');forged:=jsonb_set(forged,'{tax,amount}','"66"');forged:=jsonb_set(forged,'{total}','"506"');
@@ -67,7 +71,7 @@ begin
     '{terms}','{"kind":"following_month_day","day":20,"anchor":"invoice","invoiceAt":"2026-12-15T10:00:00+13:00","dueDate":"2027-01-20"}');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',variant,forged),'%%must use the draft date%%');
   forged:=jsonb_set(jsonb_set(forged,'{input,terms,invoiceAt}',to_jsonb(now())),'{terms,invoiceAt}',to_jsonb(now()));
-  forged:=jsonb_set(forged,'{terms,dueDate}',to_jsonb(((date_trunc('month',now() at time zone 'Pacific/Auckland')+interval '1 month')::date+19)::text));
+  forged:=jsonb_set(forged,'{terms,dueDate}',to_jsonb(to_char((date_trunc('month',now() at time zone 'Pacific/Auckland')+interval '1 month')::date+19,'YYYY-MM-DD')));
   perform assert_pricing_snapshot(variant,forged);
 
   insert into dispatch_sources(org_id,provider,connection_key) values(company,'synthetic','fixture') returning id into source;
@@ -111,6 +115,15 @@ begin
   forged:=jsonb_set(jsonb_set(a,'{input,terms}','{"kind":"explicit","dueDate":"2027-06-30","actor":"anyone","reason":"model proposal"}'),
     '{terms}','{"kind":"explicit","dueDate":"2027-06-30","actor":"anyone","reason":"model proposal"}');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%protected exception service%%');
+  -- Stored content: no unverified extra input line, and the product's own name.
+  forged:=jsonb_set(a,'{input,lines}',(a#>'{input,lines}')||jsonb_build_array(jsonb_set(a#>'{input,lines,0}','{lineId}','"ghost-line"')));
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%snapshot/input line mismatch%%');
+  forged:=jsonb_set(jsonb_set(a,'{lines,0,description}','"Gift"'),'{input,lines,0,description}','"Gift"');
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%product name%%');
+  -- Freight cannot be parked on a dispatch outside the order, where it would never be invoiced.
+  variant:='{"id":"schedule-1","total":"1000","allocations":[{"dispatchKey":"dispatch-a","amount":"0"},{"dispatchKey":"dispatch-b","amount":"0"},{"dispatchKey":"ghost","amount":"1000"}]}';
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,freightSchedule}',variant),'{freight,schedule}',variant),'{freight,amount}','"0"'),'{tax,amount}','"4800"'),'{total}','"36800"');
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%outside this order%%');
 
   -- 40/60 dispatch -> invoice parts A and B, drafted by the service role.
   execute 'set local role service_role';

@@ -50,6 +50,7 @@ begin
   if found then select x into b from jsonb_array_elements(c->'books') x where x->>'id'=r->>'bookId';
   elsif c->>'fallback'='default_book' then select x into b from jsonb_array_elements(c->'books') x where (x->>'isDefault')::boolean; end if;
   if b is null then raise exception 'snapshot retailer binding missing'; end if;
+  if jsonb_array_length(i->'lines') is distinct from jsonb_array_length(s->'lines') then raise exception 'snapshot/input line mismatch'; end if;
   for l in select x from jsonb_array_elements(s->'lines') x loop
     if not exists(select 1 from jsonb_array_elements(i->'lines') x where x->>'lineId'=l->>'lineId'
       and x->>'productId'=l->>'productId' and x->>'ordered'=l->>'ordered' and x->>'dispatched'=l->>'dispatched'
@@ -145,7 +146,7 @@ begin
     anchor:=(case when i#>>'{terms,anchor}'='dispatch' then i->>'dispatchAt' when i#>>'{terms,anchor}'='invoice' then i#>>'{terms,invoiceAt}' else null end)::timestamptz;
     due:=(date_trunc('month',anchor at time zone (c->>'timezone'))+interval '1 month')::date+((i#>>'{terms,day}')::integer-1);
   else raise exception 'terms missing or unsupported'; end if;
-  if due is null or s#>>'{terms,dueDate}' is distinct from due::text or ((s->'terms')-'dueDate') is distinct from ((i->'terms')-'dueDate') then raise exception 'terms snapshot mismatch'; end if;
+  if due is null or s#>>'{terms,dueDate}' is distinct from to_char(due,'YYYY-MM-DD') or ((s->'terms')-'dueDate') is distinct from ((i->'terms')-'dueDate') then raise exception 'terms snapshot mismatch'; end if;
 end $$;
 
 create function draft_dispatch_invoice(p_org_id uuid,p_source_id uuid,p_dispatch_id uuid,p_source_revision timestamptz,
@@ -198,6 +199,7 @@ begin
     if not found or dl.quantity::text is distinct from l->>'dispatched' or dl.ordered_quantity::text is distinct from l->>'ordered'
       then raise exception 'snapshot dispatched quantity mismatch'; end if;
     if not exists(select 1 from products where org_id=p_org_id and id::text=l->>'productId' and sku=dl.item_key) then raise exception 'snapshot product mapping mismatch'; end if;
+    if not exists(select 1 from products where org_id=p_org_id and id::text=l->>'productId' and display_name=l->>'description') then raise exception 'snapshot line description must be the product name'; end if;
     if coalesce(l->>'unitPrice','') !~ '^(0|[1-9][0-9]*)$' or coalesce(l->>'lineAmount','') !~ '^(0|[1-9][0-9]*)$'
       or (l->>'lineAmount')::numeric <> (l->>'unitPrice')::numeric * dl.quantity then raise exception 'snapshot line arithmetic mismatch'; end if;
     v_subtotal := v_subtotal+(l->>'lineAmount')::numeric;
@@ -221,6 +223,10 @@ begin
       or (select count(*) from jsonb_array_elements(v_schedule->'allocations') x where x->>'dispatchKey'=d.source_dispatch_key and (x->>'amount')::bigint=v_freight) <> 1
       or (select count(distinct x->>'dispatchKey') from jsonb_array_elements(v_schedule->'allocations') x) <> jsonb_array_length(v_schedule->'allocations')
       or (select sum((x->>'amount')::numeric) from jsonb_array_elements(v_schedule->'allocations') x) <> (v_schedule->>'total')::numeric then raise exception 'invalid freight schedule allocation'; end if;
+    -- Freight parked on a key that is not a dispatch of this order would never be invoiced.
+    if exists(select 1 from jsonb_array_elements(v_schedule->'allocations') x where not exists(select 1 from dispatches o
+      where o.org_id=p_org_id and o.source_id=p_source_id and o.order_key=d.order_key and o.source_dispatch_key=x->>'dispatchKey'))
+      then raise exception 'freight schedule names a dispatch outside this order'; end if;
   elsif p_snapshot#>>'{freight,basis}'='order_schedule' then raise exception 'freight schedule missing'; end if;
   -- DATA-01 locks/checks successful expected revision and all cumulative quantities.
   v_part := claim_dispatch(p_org_id,p_source_id,p_dispatch_id,p_source_revision,'bill:'||p_dispatch_id::text);
@@ -236,7 +242,7 @@ begin
     values(p_org_id,v_invoice,'Freight',1,v_freight,v_freight); end if;
   v_document:=jsonb_build_object('schemaVersion',1,'company_id',p_org_id,'invoiceId',v_invoice,'revision',1,
     'invoiceNumber',v_number,'orderReference',p_order_reference,'calculation',p_snapshot);
-  v_hash:=encode(digest(v_document::text,'sha256'),'hex');
+  v_hash:=encode(sha256(convert_to(v_document::text,'UTF8')),'hex');
   insert into invoice_calculation_snapshots(id,org_id,invoice_id,part_id,source_id,dispatch_id,source_revision,pricing_version_id,snapshot,content_hash,document)
     values(v_snapshot_id,p_org_id,v_invoice,v_part,p_source_id,p_dispatch_id,p_source_revision,p_pricing_version_id,p_snapshot,v_hash,v_document);
   v_event:=jsonb_build_object('event_id','invoice-drafted:'||v_invoice,'event_type','controller.invoice.drafted','event_version',1,
