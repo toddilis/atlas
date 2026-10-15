@@ -82,6 +82,9 @@ jobs:
       # control-plane integrity. The 0016 post-mortem lesson, wired into CI.
       - run: ./scripts/verify-migrations.sh
 
+      # Same migrations with pgcrypto/vector in the hosted Supabase `extensions` schema.
+      - run: bash scripts/verify-supabase-layout.sh
+
       - run: ./scripts/verify-dispatch-concurrency.sh
 
       - run: bash scripts/verify-bound-action-concurrency.sh
