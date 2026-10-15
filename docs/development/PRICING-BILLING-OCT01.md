@@ -102,3 +102,39 @@ the successful BILL journey blocked. The coordinator authorized a separate integ
 rehearsal using EVENT `07e578f07d0aaa58d6a339fe607764862bc8f143` and AUTH
 `2179d8c8f4bb6662a68a0f8d9dc78e78725f1a99`; neither that rehearsal nor this draft is
 acceptance of AUTH's pending browser tests, provider operation or deployment.
+
+## 15 October: F7 closed at the draft boundary
+
+#30 (EVENT/EVIDENCE, carrying #31 AUTH) is merged in, so `verify-pricing.sql` drafts the
+40/60 parts against a real database instead of reporting BLOCKED. #28 now lands after
+#31 and #30, as PLAN D14 orders them.
+
+Before this change the service draft accepted six internally consistent forgeries: a
+typed-in carrier quote, a typed-in actual carrier cost, an unverified destination, a
+chosen due day, an invoice anchor with a chosen invoice date and explicit terms naming
+any actor. Now:
+
+- Standard payment terms are versioned configuration (`terms`: following-month day and
+  anchor). Calculator and SQL reject any other day or anchor; invoice-anchored terms must
+  use the draft's own date. The 20th and its anchor remain synthetic until onboarding.
+- Owner-selected (explicit) terms, carrier quotes with actual/adjusted freight, and
+  destination claims or destination-scoped rules are refused when persisting, until the
+  protected exception seam, stored carrier evidence and an authoritative dispatch
+  destination exist. Previews still calculate them.
+- `verify-pricing.sql` sends 13 forged drafts (price, freight, effective date, terms)
+  through the service-role draft. Each is refused and leaves no part, allocation, order
+  group, invoice, snapshot or event. It then drafts A/B and prints them, and covers
+  retries (including a forged retry), a scheduled price change and a stale preview for
+  a later dispatch.
+- `verify-bill-concurrency.sh` (CI): A and B drafted concurrently; the same dispatch
+  drafted twice concurrently; a drafting session killed before commit, then recovered.
+
+Remaining limits, not fixed here:
+
+- Nothing binds an order to its retailer. A draft can bill a dispatch to another bound
+  retailer of the same business at that retailer's prices. This needs an order-to-account
+  source contract (for VICE, the Shopify customer link).
+- `order_schedule` freight names every dispatch up front. Staggered real dispatches need
+  an allocation policy decision.
+- Part suffixes follow drafting order.
+- Actual-cost freight (GoSweetSpot) cannot be drafted until stored carrier evidence exists.

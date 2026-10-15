@@ -21,6 +21,8 @@ export async function draftPricedDispatch(context: DispatchContext, request: {
   if(input.businessId!==context.orgId || input.orderKey!==dispatch.order_key || input.dispatchKey!==dispatch.source_dispatch_key) throw new Error('billing: source/business binding mismatch');
   input.dispatchAt=dispatch.source_occurred_at;
   input.evaluatedAt=new Date().toISOString();
+  // The draft is the invoice date; SQL rejects invoice-dated terms from any other day.
+  if(input.terms.kind==='following_month_day') input.terms.invoiceAt=input.evaluatedAt;
   const productIds=input.lines.map(l=>l.productId);
   const {data:products,error:productError}=await sb.from('products').select('id,sku,display_name').eq('org_id',context.orgId).eq('active',true).in('id',productIds);
   if(productError) throw productError;

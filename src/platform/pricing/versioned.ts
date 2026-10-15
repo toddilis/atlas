@@ -38,6 +38,9 @@ export const PricingConfigSchema = z.object({
     chargingBasis: z.enum(['per_dispatch', 'order_schedule']),
     freeThreshold: z.object({ amount: money, valueBasis: z.enum(['order', 'dispatch']), afterDiscount: z.boolean(), includesTax: z.boolean() }).strict().nullable(),
   }).strict()) }).strict(),
+  // Standard payment terms. A different due date for one invoice is an owner decision
+  // (explicit terms), never a caller's choice of day or anchor.
+  terms: z.object({ kind: z.literal('following_month_day'), day: z.number().int().min(1).max(28), anchor: z.enum(['invoice', 'dispatch']) }).strict(),
 }).strict().superRefine((v, ctx) => {
   const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
   if (v.effectiveUntil && Date.parse(v.effectiveUntil) <= Date.parse(v.effectiveFrom)) fail('invalid effective interval');
@@ -172,6 +175,7 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
     dueDate = input.terms.dueDate;
     if (new Date(dueDate + 'T00:00:00Z').toISOString().slice(0,10) !== dueDate) throw new Error('pricing: invalid due date');
   } else {
+    if (input.terms.day !== config.terms.day || input.terms.anchor !== config.terms.anchor) throw new Error('pricing: terms differ from configured standard terms');
     const anchor = input.terms.anchor === 'invoice' ? input.terms.invoiceAt : input.dispatchAt;
     if (!anchor) throw new Error('pricing: terms anchor missing');
     const [year, month] = localDate(anchor, config.timezone).split('-').map(Number);

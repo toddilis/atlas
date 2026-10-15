@@ -74,3 +74,12 @@ test('unsafe numeric money rejected and bigint computations are exact', () => {
   assert.throws(() => calculatePricing({ ...c, taxRateBps: 1.5 },i));
 });
 
+test('standard terms come from configuration; a caller cannot choose the day or anchor', () => {
+  const c = config(); const i = input();
+  if (i.terms.kind !== 'following_month_day') throw new Error('fixture uses standard terms');
+  i.terms.day = 28; assert.throws(() => calculatePricing(c,i), /configured standard terms/);
+  i.terms.day = 20; i.terms.anchor = 'invoice'; assert.throws(() => calculatePricing(c,i), /configured standard terms/);
+  c.terms.anchor = 'invoice'; i.terms.invoiceAt = '2026-11-03T10:00:00+13:00';
+  assert.equal(calculatePricing(c,i).terms.dueDate, '2026-12-20');
+  const { terms: _omitted, ...withoutTerms } = config(); assert.equal(PricingConfigSchema.safeParse(withoutTerms).success, false);
+});

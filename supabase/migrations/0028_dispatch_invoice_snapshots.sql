@@ -94,6 +94,12 @@ begin
     if (l->>'unitPrice')::numeric is distinct from unit then raise exception 'configured unit price mismatch'; end if;
     subtotal:=subtotal+unit*(l->>'dispatched')::integer;
   end loop;
+  -- Dispatches carry no authoritative destination, so an unverified claim may neither
+  -- select a destination rule nor be stored as fact; never infer an address zone.
+  if nullif(i->'destination','null') is not null or ((c#>>'{shipping,enabled}')::boolean and exists(
+    select 1 from jsonb_array_elements(c#>'{shipping,rules}') x where nullif(x->'destination','null') is not null
+      and (x->>'accountId' is null or x->>'accountId'=i->>'accountId')))
+    then raise exception 'destination freight requires authoritative dispatch destination'; end if;
   if (c#>>'{shipping,enabled}')::boolean then
     select max((x->>'priority')::integer) into highest from jsonb_array_elements(c#>'{shipping,rules}') x
       where (x->>'accountId' is null or x->>'accountId'=i->>'accountId') and (x->>'destination' is null or x->>'destination'=i->>'destination');
@@ -102,15 +108,12 @@ begin
     if n<>1 then raise exception 'missing or conflicting shipping rules'; end if; shipping:=rules->0;
     if s#>>'{freight,ruleId}' is distinct from shipping->>'id' or s#>>'{freight,basis}' is distinct from shipping->>'chargingBasis'
       or s#>'{freight,carrier}' is distinct from i->'carrier' or s#>'{freight,schedule}' is distinct from i->'freightSchedule' then raise exception 'freight binding mismatch'; end if;
-    if carrier is not null and (carrier->>'businessId' is distinct from s->>'businessId' or carrier->>'shipmentKey' is distinct from i->>'dispatchKey'
-      or carrier->>'currency' is distinct from c->>'currency' or carrier->>'taxBasis' is distinct from 'exclusive'
-      or (carrier->>'observedAt')::timestamptz>clock_timestamp()) then raise exception 'carrier binding mismatch'; end if;
     k:=shipping#>>'{mode,kind}';
-    if k in ('actual','adjusted') then
-      if carrier is null or (carrier->>'expiresAt')::timestamptz<=clock_timestamp() then raise exception 'carrier evidence missing or expired'; end if;
-      freight:=(carrier->>'cost')::numeric;
-      if k='adjusted' then freight:=freight+(shipping#>>'{mode,fixed}')::numeric+floor(freight*(shipping#>>'{mode,markupBps}')::numeric/10000); end if;
-    elsif k='fixed' then freight:=(shipping#>>'{mode,amount}')::numeric;
+    -- Carrier cost belongs to the configured carrier evidence adapter (SOURCE_OWNERSHIP).
+    -- Until matched evidence is stored, a quote in the snapshot is only the caller's claim:
+    -- it can neither set an actual/adjusted charge nor be recorded as known cost.
+    if carrier is not null or k in ('actual','adjusted') then raise exception 'persisted carrier cost requires stored carrier evidence'; end if;
+    if k='fixed' then freight:=(shipping#>>'{mode,amount}')::numeric;
     elsif k='free' then freight:=0;
     else raise exception 'persisted manual freight requires protected exception service'; end if;
     if nullif(i->'freightOverride','null') is not null then raise exception 'persisted freight override requires protected exception service'; end if;
@@ -127,11 +130,18 @@ begin
     elsif nullif(i->'freightSchedule','null') is not null then raise exception 'unexpected order freight schedule'; end if;
   elsif s#>>'{freight,basis}' is distinct from 'disabled' or carrier is not null or nullif(i->'freightOverride','null') is not null or nullif(i->'freightSchedule','null') is not null then raise exception 'shipping disabled'; end if;
   if (s#>>'{freight,amount}')::numeric is distinct from freight then raise exception 'configured freight amount mismatch'; end if;
-  if i#>>'{terms,kind}'='explicit' then
-    if nullif(btrim(i#>>'{terms,actor}'),'') is null or nullif(btrim(i#>>'{terms,reason}'),'') is null then raise exception 'explicit terms actor and reason required'; end if;
-    due:=(i#>>'{terms,dueDate}')::date;
+  -- Standard terms are configuration. Owner-selected terms for one invoice wait for the
+  -- protected exception seam, like overrides: an actor string here is not authentication.
+  if i#>>'{terms,kind}'='explicit' then raise exception 'persisted explicit terms require protected exception service';
   elsif i#>>'{terms,kind}'='following_month_day' then
-    if (i#>>'{terms,day}')::integer not between 1 and 28 then raise exception 'unsupported calendar term'; end if;
+    if c#>>'{terms,kind}' is distinct from 'following_month_day' or coalesce((c#>>'{terms,day}')::integer,0) not between 1 and 28
+      or coalesce(c#>>'{terms,anchor}','') not in ('invoice','dispatch') then raise exception 'configured payment terms missing'; end if;
+    if i#>'{terms,day}' is distinct from c#>'{terms,day}' or i#>>'{terms,anchor}' is distinct from c#>>'{terms,anchor}'
+      then raise exception 'terms differ from configured standard terms'; end if;
+    -- The draft is the invoice date: a caller cannot back- or forward-date the anchor month.
+    if i#>>'{terms,anchor}'='invoice' and ((((i#>>'{terms,invoiceAt}')::timestamptz) at time zone (c->>'timezone'))::date
+      is distinct from (now() at time zone (c->>'timezone'))::date or (i#>>'{terms,invoiceAt}')::timestamptz>clock_timestamp())
+      then raise exception 'invoice-dated terms must use the draft date'; end if;
     anchor:=(case when i#>>'{terms,anchor}'='dispatch' then i->>'dispatchAt' when i#>>'{terms,anchor}'='invoice' then i#>>'{terms,invoiceAt}' else null end)::timestamptz;
     due:=(date_trunc('month',anchor at time zone (c->>'timezone'))+interval '1 month')::date+((i#>>'{terms,day}')::integer-1);
   else raise exception 'terms missing or unsupported'; end if;

@@ -9,7 +9,8 @@ export function config(): PricingConfig {
     bindings: [{ accountId: 'retailer-a', bookId: 'book' }, { accountId: 'retailer-b', bookId: 'book' }], negotiated: [],
     tiers: [{ id: 'volume-100', accountId: null, productId: 'widget', minimum: 100, unitPrice: '800' }],
     discounts: [{ id: 'retailer-b-10', accountId: 'retailer-b', productId: 'widget', order: 0, discount: { kind: 'percent', bps: 1000 } }],
-    shipping: { enabled: true, rules: [{ id: 'freight', accountId: null, destination: null, priority: 0, mode: { kind: 'fixed', amount: '1000' }, chargingBasis: 'order_schedule', freeThreshold: null }] } };
+    shipping: { enabled: true, rules: [{ id: 'freight', accountId: null, destination: null, priority: 0, mode: { kind: 'fixed', amount: '1000' }, chargingBasis: 'order_schedule', freeThreshold: null }] },
+    terms: { kind: 'following_month_day', day: 20, anchor: 'dispatch' } };
 }
 export function input(): PricingInput {
   return { businessId: 'wholesale', accountId: 'retailer-a', orderKey: 'order-100', dispatchKey: 'dispatch-a', orderAt: '2026-10-01T09:00:00+13:00', dispatchAt: '2026-10-02T09:00:00+13:00', evaluatedAt: '2026-10-02T10:00:00+13:00', destination: null,
