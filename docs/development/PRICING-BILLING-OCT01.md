@@ -166,3 +166,25 @@ Still open: part suffixes follow drafting order; the printed document is a place
 (account id, no supplier details or invoice date); explanation text in a snapshot is not
 re-derived; every draft takes the org-wide pricing lock; backdated activations and SQL-side
 configuration validation at save are not addressed.
+
+## GoSweetSpot carrier cost adapter
+
+`src/integrations/gosweetspot/consignment.ts` maps a GoSweetSpot shipment response to carrier
+cost evidence and records it with `record_carrier_cost`:
+
+- It uses only the documented response fields: each consignment's `ConsignmentId`, `Connote` and
+  `Cost` (dollars, excluding tax).
+- A dispatch's consignments are those whose connote is one of its Shopify fulfillment tracking
+  numbers. Every tracking number must be covered, so a partial response records nothing. A
+  dispatch shipped as several consignments records their summed cost once.
+- Costs convert to cents exactly; more than two decimals is refused, never rounded.
+- The site, its cost currency and how long a recorded cost may be used are business
+  configuration. No currency is assumed.
+- The pricing probe's carrier quotes come from this mapping, so the database accepts exactly
+  what it produces.
+
+Not built, pending facts: how Atlas receives the shipment response for shipments booked in
+GoSweetSpot (booking through the API, a webhook or an export), the base URL and API key
+handling for VICE's account, and where the connection settings are stored. The documentation
+hosts were unreachable from the build environment, so field names follow the public search
+summaries of the GoSweetSpot API docs and should be checked against a real response.

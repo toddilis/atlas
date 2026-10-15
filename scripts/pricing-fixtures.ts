@@ -1,5 +1,6 @@
 import { config, input } from '../test/fixtures/pricing/synthetic.js';
 import { calculatePricing, type PricingInput } from '../src/platform/pricing/versioned.js';
+import { consignmentEvidence } from '../src/integrations/gosweetspot/consignment.js';
 // Optional two-digit id prefix gives each probe its own synthetic business.
 const prefix=/^[0-9]{2}$/.test(process.argv[2]??'') ? process.argv[2]! : '63';
 const uuid=(n:number)=>`${prefix}000000-0000-4000-8000-${n.toString().padStart(12,'0')}`;
@@ -11,9 +12,14 @@ c.books[0]!.entries[0]!.productId=product; c.bindings=[{accountId:account,bookId
 c.discounts=[]; c.tiers[0]!.productId=product; c.negotiated=[{id:'other-deal',accountId:other,productId:product,unitPrice:'700'}];
 // VICE's rule shape (PLAN D15): the first part pays that shipment's carrier rate, later parts none.
 c.shipping.rules[0]!.mode={kind:'actual'};
-// A stored carrier quote, as the carrier adapter records it, for a dispatch's first part.
-const quote=(dispatchKey:string,observedAt:string)=>({businessId:company,connectionId:'gosweetspot:synthetic',shipmentKey:dispatchKey,
-  quoteId:`quote-${dispatchKey}`,observedAt,expiresAt:'2099-01-01T00:00:00Z',currency:'NZD',taxBasis:'exclusive' as const,cost:'1000'});
+// A dispatch's first-part carrier cost exactly as the GoSweetSpot adapter maps a booked
+// shipment (synthetic: NZ$10.00 for the consignment carrying the dispatch's tracking number).
+const quote=(dispatchKey:string,observedAt:string)=>{
+  const e=consignmentEvidence({Consignments:[{ConsignmentId:`c-${dispatchKey}`,Connote:`SYN-${dispatchKey}`,Cost:10}]},[`SYN-${dispatchKey}`],
+    {siteId:'synthetic',currency:'NZD',validityDays:3650},new Date(observedAt));
+  return {businessId:company,connectionId:e.carrierConnection,shipmentKey:dispatchKey,quoteId:e.quoteKey,observedAt:e.observedAt,
+    expiresAt:e.expiresAt,currency:e.currency,taxBasis:'exclusive' as const,cost:e.costMinor.toString()};
+};
 const part=(edit:(i:PricingInput)=>void)=>{
   const i=input(); i.businessId=company; i.accountId=account; i.orderKey=order100; i.lines[0]!.productId=product; edit(i); return i;
 };
