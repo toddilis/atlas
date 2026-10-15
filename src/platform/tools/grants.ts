@@ -8,7 +8,7 @@ export interface ToolGrant {
   enabled?: boolean;
 }
 
-/** Upsert a single agent→tool grant. Idempotent. */
+/** Seed a missing grant. Boot must never overwrite operator revocation or risk. */
 export async function grantTool(grant: ToolGrant): Promise<void> {
   const sb = supabase();
   const { error } = await sb
@@ -21,7 +21,7 @@ export async function grantTool(grant: ToolGrant): Promise<void> {
         risk: grant.risk,
         enabled: grant.enabled ?? true,
       },
-      { onConflict: 'org_id,agent_name,tool_name' },
+      { onConflict: 'org_id,agent_name,tool_name', ignoreDuplicates: true },
     );
   if (error) throw error;
 }

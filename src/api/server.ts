@@ -8,7 +8,9 @@ import { bootPlatform } from '../platform/orchestration/boot.js';
 import { syncAll } from '../integrations/shopify/sync.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
-import { bearerAuthState } from './auth.js';
+import { registerAdminAuth } from './auth.js';
+import { registerApprovalRoutes } from './approval-routes.js';
+import { registerEvidenceRoutes } from './evidence-routes.js';
 
 async function main() {
   await bootPlatform();
@@ -30,18 +32,11 @@ async function main() {
   // open here because they carry their own cryptographic auth (Shopify HMAC, Stripe
   // signature); /healthz stays open for load-balancer probes. Fails closed: with no token
   // configured the admin surface answers 503 rather than running unauthenticated.
-  app.addHook('onRequest', async (req, reply) => {
-    if (!req.url.startsWith('/admin/')) return;
-    const state = bearerAuthState(req.headers.authorization, process.env.ATLAS_API_TOKEN);
-    if (state === 'unconfigured') {
-      return reply.code(503).send({ ok: false, error: 'ATLAS_API_TOKEN not configured' });
-    }
-    if (state === 'unauthorized') {
-      return reply.code(401).send({ ok: false, error: 'unauthorized' });
-    }
-  });
+  registerAdminAuth(app);
 
   // Liveness: process is up. Readiness (below) is what deploy health checks should use.
+  registerApprovalRoutes(app);
+  registerEvidenceRoutes(app);
   app.get('/healthz', async () => ({ ok: true }));
 
   // Readiness: config present AND the database answers. Fly's http check points here

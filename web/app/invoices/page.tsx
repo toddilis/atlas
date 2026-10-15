@@ -25,7 +25,7 @@ interface InvoiceRow {
 }
 
 async function loadInvoices(state: InvoiceStateFilter): Promise<InvoiceRow[]> {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   let q = sb
     .from('invoices')
     .select(

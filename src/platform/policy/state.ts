@@ -47,7 +47,7 @@ registerStateBuilder('controller.issue_invoice', async () => {
   // the AR allowance for rolling-window purposes).
   const { data: issued, error: issuedErr } = await sb
     .from('invoices')
-    .select('id, total_cents, currency, account_id, fulfillment_event_id, issued_at, state, stripe_invoice_id')
+    .select('id, total_cents::text, currency, account_id, fulfillment_event_id, issued_at, state, stripe_invoice_id')
     .eq('org_id', orgId())
     .in('state', ['issued', 'paid', 'partial'])
     .order('issued_at', { ascending: false })
@@ -58,7 +58,7 @@ registerStateBuilder('controller.issue_invoice', async () => {
     action: 'controller.issue_invoice',
     subjectType: 'invoice',
     subjectId: inv.id as string,
-    amount: BigInt(inv.total_cents as number),
+    amount: BigInt(inv.total_cents),
     currency: inv.currency as string,
     attributes: {
       account_id: (inv.account_id as string | null) ?? null,

@@ -49,7 +49,7 @@ async function loadStatement(id: string): Promise<{
   statement: StatementDetail;
   lines: StatementLine[];
 } | null> {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   const org = orgId();
 
   const { data: statement, error: stErr } = await sb

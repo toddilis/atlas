@@ -44,7 +44,7 @@ Every push runs three jobs (`.github/workflows/atlas-ci.yml`):
    keys, RPC execution probes, payment atomicity (exactly-once, stranded-heal),
    control-plane integrity, and statement aging/reconciliation. `scripts/sql-ts-parity.ts`
    then executes the SQL money functions and compares them with their TS mirrors.
-3. `console typecheck + build`.
+3. `console auth tests + typecheck + build`.
 
 Regenerate DB types after adding a migration: `npm run gen:types` (spins an ephemeral
 cluster from the migrations — no live project needed). `VERIFICATION.md` is the
@@ -91,9 +91,7 @@ npm install
 npm run dev                     # http://localhost:3002
 ```
 
-The current service-role client bypasses RLS and uses a single-business deployment
-context. Shared-business deployment requires the membership, authorization and
-isolation gates in the product contract; an org column alone is insufficient.
+Access is gated by Supabase Auth and an operator email allowlist. Server-side data access also verifies the session before returning the service-role client. The client bypasses RLS and uses a single-business deployment context. Shared-business deployment requires the membership, authorization and isolation gates in the product contract; an org column alone is insufficient.
 
 ## Deterministic boundary (platform-wide invariant)
 

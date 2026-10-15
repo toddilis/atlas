@@ -67,7 +67,7 @@ async function loadInvoice(id: string): Promise<{
   payments: PaymentRow[];
   ledgerTxns: LedgerTxnRow[];
 } | null> {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   const org = orgId();
 
   const { data: invoice, error: invErr } = await sb
