@@ -15,7 +15,7 @@ deployed behavior or authorize automatic customer communication.
 | Existing invoice process | The owner currently creates invoices in Excel. |
 | Trigger and grouping | Invoice when goods dispatch. A partially fulfilled order is invoiced in parts, for example `#xxxxA`, `#xxxxB`, etc. Each part covers its dispatched quantities and remains linked to the same Shopify order. |
 | Pricing | Atlas must offer adaptable product pricing, retailer agreements and discounts that the operator can maintain in the platform. The uploaded Excel list is an initial import/reference, not a fixed pricing policy. |
-| Freight | Shipping rates vary through GoSweetSpot. Atlas must distinguish carrier cost from the customer charge and let the operator configure freight rules and invoice-specific exceptions. Existing examples inform initial configuration. |
+| Freight | Shipping rates vary through GoSweetSpot. Atlas must distinguish carrier cost from the customer charge and let the operator configure freight rules and invoice-specific exceptions. Existing examples inform initial configuration. Partial orders (owner-confirmed 15 October 2026, PLAN D15): the first shipment's invoice part is charged the GoSweetSpot rate for that shipment; the second part is freight-free. Treatment of a third or later part is not yet confirmed. |
 | Tax practice | The owner reports GST on invoices except Australia and other export destinations. Exact destination/tax configuration and supporting rules remain to be established; this statement alone is not an executable tax rule. |
 | Standard terms | Usually the 20th of the following month. Exceptions, including custom designs, are decided case by case; the owner must specify the applicable terms/due date on the invoice before approving it. The standard rule's month anchor still needs confirmation. |
 | Delivery | Usually a printed invoice in the shipment; sometimes email. The invoice carries the Shopify order number. |
@@ -85,8 +85,9 @@ issue invoices, email customers or access live bank data during development.
    when configuring the pilot. These values do not block building the pricing editor.
 2. One matching Shopify order/dispatch and completed invoice, with a GoSweetSpot
    shipment/rate example to explain the actual customer freight charge.
-3. An example partial-order invoice pair to confirm the base number, suffix format,
-   freight allocation and relationship to the Shopify order number.
+3. An example partial-order invoice pair to confirm the base number, suffix format
+   and relationship to the Shopify order number. Freight across parts is confirmed
+   above, except for a third or later part.
 4. Whether the usual 20th follows the invoice month or dispatch month; export tax
    configuration. Case-specific terms will be entered by the owner per invoice,
    rather than requiring a universal custom-design terms rule.
