@@ -6,64 +6,84 @@ begin
   begin execute command; exception when others then if sqlerrm not like pattern then raise; end if; return; end;
   raise exception 'ASSERT PRICING/BILL expected rejection: %',pattern;
 end $$;
--- F7: the service-role draft refuses a forged snapshot before claiming the dispatch, so the
+create function pg_temp.effects(company uuid) returns text language sql as $$
+  select (select count(*) from dispatch_invoice_parts where org_id=company)||'/'||(select count(*) from dispatch_allocations where org_id=company)
+    ||'/'||(select count(*) from billing_order_groups where org_id=company)||'/'||(select count(*) from invoices where org_id=company)
+    ||'/'||(select count(*) from invoice_calculation_snapshots where org_id=company)||'/'||(select count(*) from platform_events where org_id=company) $$;
+-- F7: the service-role draft refuses a forged snapshot before claiming the dispatch, and the
 -- refusal leaves no part, allocation, order group, invoice, snapshot or event behind.
 create function pg_temp.draft_refused(company uuid,dispatch uuid,version uuid,snapshot jsonb,pattern text) returns void language plpgsql as $$
-declare d dispatches%rowtype;
+declare d dispatches%rowtype; before text:=pg_temp.effects(company);
 begin
   select * into d from dispatches where id=dispatch;
   execute 'set local role service_role';
   perform pg_temp.pricing_reject(format('select draft_dispatch_invoice(%L,%L,%L,%L,%L,%L,%L)',
     company,d.source_id,dispatch,d.source_revision,version,snapshot,'#synthetic'),pattern);
   execute 'reset role';
-  perform pg_temp.pricing_assert(not exists(select 1 from dispatch_invoice_parts p join dispatches x on x.id=p.dispatch_id where x.org_id=company and x.order_key=d.order_key)
-    and not exists(select 1 from dispatch_allocations l join dispatches x on x.id=l.dispatch_id where x.org_id=company and x.order_key=d.order_key)
-    and not exists(select 1 from billing_order_groups where org_id=company and order_key=d.order_key)
-    and (select count(*) from invoices where org_id=company)=(select count(*) from invoice_calculation_snapshots where org_id=company)
-    and (select count(*) from platform_events where org_id=company)=(select count(*) from invoice_calculation_snapshots where org_id=company),
-    'refused draft left an effect: '||pattern);
+  perform pg_temp.pricing_assert(pg_temp.effects(company)=before,'refused draft left an effect: '||pattern);
 end $$;
+create function pg_temp.draft(company uuid,dispatch uuid,version uuid,snapshot jsonb,reference text) returns jsonb language plpgsql as $$
+declare d dispatches%rowtype; r jsonb;
+begin
+  select * into d from dispatches where id=dispatch;
+  execute 'set local role service_role';
+  r:=draft_dispatch_invoice(company,d.source_id,dispatch,d.source_revision,version,snapshot,reference);
+  execute 'reset role';
+  return r;
+end $$;
+-- Snapshot for a projected dispatch: the TS fixture plus the real line identity.
+create function pg_temp.bind(snapshot jsonb,dispatch uuid) returns jsonb language sql as $$
+  select jsonb_set(jsonb_set(snapshot,'{lines,0,lineId}',to_jsonb(l.id::text)),'{input,lines,0,lineId}',to_jsonb(l.id::text))
+  from dispatch_lines l where l.dispatch_id=dispatch $$;
 create function pg_temp.dollars(cents numeric) returns text language sql as $$ select to_char(cents/100,'FM999,999,990.00') $$;
 do $$
 declare
   company uuid:=current_setting('test.pricing_company'); account uuid:=current_setting('test.pricing_account');
-  product uuid:=current_setting('test.pricing_product'); c jsonb:=current_setting('test.pricing_config')::jsonb;
+  other uuid:=current_setting('test.pricing_other_account'); product uuid:=current_setting('test.pricing_product');
+  order100 uuid:=current_setting('test.pricing_order_100'); order200 uuid:=current_setting('test.pricing_order_200');
+  order500 uuid:=current_setting('test.pricing_order_500'); c jsonb:=current_setting('test.pricing_config')::jsonb;
   a jsonb:=current_setting('test.pricing_a')::jsonb; b jsonb:=current_setting('test.pricing_b')::jsonb;
   late_v1 jsonb:=current_setting('test.pricing_late_v1')::jsonb; late_v2 jsonb:=current_setting('test.pricing_late_v2')::jsonb;
-  forged jsonb; variant jsonb; quote jsonb; version_id uuid; next_version uuid; source uuid; da uuid; db uuid; dc uuid; line_id uuid;
-  ra jsonb; rb jsonb; rc jsonb; retry jsonb; saved jsonb; part record;
+  exempt jsonb:=current_setting('test.pricing_exempt')::jsonb; swap jsonb:=current_setting('test.pricing_swap')::jsonb;
+  forged jsonb; variant jsonb; quote jsonb; version_id uuid; next_version uuid; source uuid; plain uuid;
+  da uuid; db uuid; dc uuid; de uuid; dx uuid; dy uuid; dz uuid; ds uuid; ra jsonb; rb jsonb; rc jsonb; retry jsonb; saved jsonb; part record;
+  order600 uuid:=gen_random_uuid(); order700 uuid:=gen_random_uuid(); order800 uuid:=gen_random_uuid(); fz uuid; fe uuid;
   revision timestamptz:='2026-10-02T09:00:00+13:00'; late_revision timestamptz:='2026-10-04T09:00:00+13:00';
+  lines jsonb:='[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":40,"ordered_quantity":100}]';
+  whole jsonb:='[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":10,"ordered_quantity":10}]';
 begin
   insert into orgs(id,slug,display_name) values(company,'pricing-fixture','Synthetic pricing');
   insert into accounts(id,org_id,name) values(account,company,'Synthetic retailer');
+  insert into accounts(id,org_id,name,tax_exempt) values(other,company,'Synthetic export retailer',true);
   insert into products(id,org_id,sku,display_name) values(product,company,'WIDGET','Synthetic widget');
+  -- Shopify orders name their retailer through the linked customer.
+  insert into shopify_customers(org_id,shopify_customer_id,raw,account_id) values
+    (company,'cust-a','{}',account),(company,'cust-b','{}',other),(company,'cust-x','{}',null);
+  insert into shopify_orders(id,org_id,shopify_order_id,shopify_order_name,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at) values
+    (order100,company,'100','#synthetic-100','cust-a','NZD',0,0,'{}','2026-10-01T09:00:00+13:00'),
+    (order200,company,'200','#synthetic-200','cust-a','NZD',0,0,'{}','2026-10-03T12:00:00+13:00'),
+    (order500,company,'500','#synthetic-500','cust-b','NZD',0,0,'{}','2026-10-01T09:00:00+13:00'),
+    (order600,company,'600','#synthetic-600','cust-x','NZD',0,0,'{}','2026-10-01T09:00:00+13:00'),
+    (order700,company,'700','#synthetic-700','cust-a','AUD',0,0,'{}','2026-10-01T09:00:00+13:00'),
+    (order800,company,'800','#synthetic-800','cust-a','NZD',0,0,'{}','2026-10-01T09:00:00+13:00');
   version_id:=save_pricing_version(company,0,c,'fixture-operator','Synthetic initial version');
   perform pg_temp.pricing_assert(version_id=save_pricing_version(company,0,c,'fixture-operator','Synthetic initial version'),'save retry stable');
   perform activate_pricing_version(company,version_id,1,'fixture-operator','Synthetic activation');
   perform pg_temp.pricing_reject(format('select save_pricing_version(%L,0,%L,%L,%L)',company,c||'{"version":"stale"}','operator','stale'),'%%stale pricing revision%%');
   perform pg_temp.pricing_reject(format('update pricing_versions set reason=%L where id=%L','changed',version_id),'%%append-only%%');
-  perform assert_pricing_snapshot(c,a); perform assert_pricing_snapshot(c,b);
+  perform assert_pricing_snapshot(c,a); perform assert_pricing_snapshot(c,b); perform assert_pricing_snapshot(c,exempt);
   -- The due-date comparison must not depend on the session's DateStyle.
   execute 'set local datestyle = ''SQL, DMY''';
   perform assert_pricing_snapshot(c,a);
   execute 'reset datestyle';
-  forged:=jsonb_set(a,'{lines,0,unitPrice}','"1"');
-  forged:=jsonb_set(forged,'{lines,0,lineAmount}','"40"');
-  forged:=jsonb_set(forged,'{subtotal}','"40"');forged:=jsonb_set(forged,'{tax,amount}','"66"');forged:=jsonb_set(forged,'{total}','"506"');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{lines,0,unitPrice}','"1"'),'{lines,0,lineAmount}','"40"'),'{subtotal}','"40"'),'{tax,amount}','"156"'),'{total}','"1196"');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',c,forged),'%%configured unit price mismatch%%');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',c,a #- '{terms,dueDate}'),'%%terms snapshot mismatch%%');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',c,jsonb_set(a,'{freight,amount}','"0"')),'%%configured freight amount mismatch%%');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',c,jsonb_set(a,'{pricingAt}','"2027-01-01T00:00:00Z"')),'%%calculation contract mismatch%%');
-  -- Rules this configuration does not use, exercised through configuration variants.
-  -- Actual-cost freight: a typed-in quote is not matched carrier evidence.
-  variant:=jsonb_set(jsonb_set(c,'{shipping,rules,0,mode}','{"kind":"actual"}'),'{shipping,rules,0,chargingBasis}','"per_dispatch"');
-  quote:=jsonb_build_object('businessId',company,'connectionId','carrier','shipmentKey','dispatch-a','quoteId','typed-in',
-    'observedAt','2026-10-02T09:00:00+13:00','expiresAt','2099-01-01T00:00:00Z','currency','NZD','taxBasis','exclusive','cost','1');
-  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,carrier}',quote),'{freight,carrier}',quote),'{input,freightSchedule}','null'),'{freight,schedule}','null');
-  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(forged,'{freight,basis}','"per_dispatch"'),'{freight,amount}','"1"'),'{tax,amount}','"4800"'),'{total}','"36801"');
-  perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',variant,forged),'%%requires stored carrier evidence%%');
+  perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',c,a||'{"note":"approved"}'),'%%snapshot shape mismatch%%');
   -- A destination rule can be neither applied nor skipped without an authoritative destination.
-  variant:=jsonb_set(c,'{shipping,rules}',(c#>'{shipping,rules}')||'[{"id":"remote","accountId":null,"destination":"remote","priority":10,"mode":{"kind":"fixed","amount":"2500"},"chargingBasis":"order_schedule","freeThreshold":null}]');
+  variant:=jsonb_set(c,'{shipping,rules}',(c#>'{shipping,rules}')||'[{"id":"remote","accountId":null,"destination":"remote","priority":10,"mode":{"kind":"fixed","amount":"2500"},"chargingBasis":"first_part","freeThreshold":null}]');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',variant,a),'%%authoritative dispatch destination%%');
   -- Invoice-dated standard terms take the draft's own date, never a supplied one.
   variant:=jsonb_set(c,'{terms,anchor}','"invoice"');
@@ -74,33 +94,41 @@ begin
   forged:=jsonb_set(forged,'{terms,dueDate}',to_jsonb(to_char((date_trunc('month',now() at time zone 'Pacific/Auckland')+interval '1 month')::date+19,'YYYY-MM-DD')));
   perform assert_pricing_snapshot(variant,forged);
 
-  insert into dispatch_sources(org_id,provider,connection_key) values(company,'synthetic','fixture') returning id into source;
-  da:=project_dispatch(company,source,'dispatch-a','order-100',revision,'succeeded',null,
-    '[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":40,"ordered_quantity":100}]',null,'{}',revision);
-  db:=project_dispatch(company,source,'dispatch-b','order-100',revision,'succeeded',null,
-    '[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":60,"ordered_quantity":100}]',null,'{}',revision);
-  select id into line_id from dispatch_lines where dispatch_id=da;
-  a:=jsonb_set(jsonb_set(a,'{lines,0,lineId}',to_jsonb(line_id::text)),'{input,lines,0,lineId}',to_jsonb(line_id::text));
-  select id into line_id from dispatch_lines where dispatch_id=db;
-  b:=jsonb_set(jsonb_set(b,'{lines,0,lineId}',to_jsonb(line_id::text)),'{input,lines,0,lineId}',to_jsonb(line_id::text));
+  source:=bind_shopify_dispatch_source(company,'synthetic-shop.myshopify.com');
+  da:=project_dispatch(company,source,'dispatch-a',order100::text,revision,'succeeded',null,lines,null,'{}',revision);
+  db:=project_dispatch(company,source,'dispatch-b',order100::text,revision,'succeeded',null,jsonb_set(lines,'{0,quantity}','60'),null,'{}',revision);
+  de:=project_dispatch(company,source,'dispatch-e',order500::text,revision,'succeeded',null,whole,null,'{}',revision);
+  dx:=project_dispatch(company,source,'dispatch-x',order600::text,revision,'succeeded',null,lines,null,'{}',revision);
+  dy:=project_dispatch(company,source,'dispatch-y',order700::text,revision,'succeeded',null,lines,null,'{}',revision);
+  a:=pg_temp.bind(a,da); b:=pg_temp.bind(b,db); exempt:=pg_temp.bind(exempt,de); swap:=pg_temp.bind(swap,da);
+  -- Carrier evidence as the adapter records it; a replay is a no-op, a changed replay is refused.
+  quote:=a#>'{input,carrier}';
+  perform pg_temp.pricing_assert(record_carrier_cost(company,source,da,quote->>'connectionId',quote->>'quoteId','NZD',1000,(quote->>'observedAt')::timestamptz,(quote->>'expiresAt')::timestamptz,'{"synthetic":true}')
+    =record_carrier_cost(company,source,da,quote->>'connectionId',quote->>'quoteId','NZD',1000,(quote->>'observedAt')::timestamptz,(quote->>'expiresAt')::timestamptz,'{"synthetic":true}'),'carrier evidence replay stable');
+  perform pg_temp.pricing_reject(format('select record_carrier_cost(%L,%L,%L,%L,%L,%L,%s,%L,%L,%L)',company,source,da,quote->>'connectionId',quote->>'quoteId','NZD',1,
+    quote->>'observedAt',quote->>'expiresAt','{"synthetic":true}'),'%%conflicts with the stored record%%');
+  perform pg_temp.pricing_reject(format('update carrier_cost_evidence set cost_minor=1 where dispatch_id=%L',da),'%%append-only%%');
+  quote:=exempt#>'{input,carrier}';
+  perform record_carrier_cost(company,source,de,quote->>'connectionId',quote->>'quoteId','NZD',1000,(quote->>'observedAt')::timestamptz,(quote->>'expiresAt')::timestamptz,'{"synthetic":true}');
 
   -- F7 draft-boundary matrix. Every forgery keeps its own totals consistent.
   -- Price
-  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{lines,0,unitPrice}','"1"'),'{lines,0,lineAmount}','"40"'),'{subtotal}','"40"'),'{tax,amount}','"66"'),'{total}','"506"');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{lines,0,unitPrice}','"1"'),'{lines,0,lineAmount}','"40"'),'{subtotal}','"40"'),'{tax,amount}','"156"'),'{total}','"1196"');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%configured unit price mismatch%%');
   forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{lines,0,selectedKind}','"book"'),'{lines,0,selectedRule}','"book"'),
     '{lines,0,beforeDiscountUnitPrice}','"1000"'),'{lines,0,beforeOverrideUnitPrice}','"1000"'),'{lines,0,unitPrice}','"1000"');
-  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(forged,'{lines,0,lineAmount}','"40000"'),'{subtotal}','"40000"'),'{tax,amount}','"6060"'),'{total}','"46460"');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(forged,'{lines,0,lineAmount}','"40000"'),'{subtotal}','"40000"'),'{tax,amount}','"6150"'),'{total}','"47150"');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%configured price selection mismatch%%');
   forged:=jsonb_set(jsonb_set(forged,'{lines,0,ordered}','40'),'{input,lines,0,ordered}','40');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%dispatched quantity mismatch%%');
   -- Freight
   forged:=jsonb_set(jsonb_set(jsonb_set(a,'{freight,amount}','"0"'),'{tax,amount}','"4800"'),'{total}','"36800"');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%configured freight amount mismatch%%');
-  variant:='{"id":"schedule-1","total":"500","allocations":[{"dispatchKey":"dispatch-a","amount":"200"},{"dispatchKey":"dispatch-b","amount":"300"}]}';
-  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,freightSchedule}',variant),'{freight,schedule}',variant),'{freight,amount}','"200"'),'{tax,amount}','"4830"'),'{total}','"37030"');
-  perform pg_temp.draft_refused(company,da,version_id,forged,'%%configured order freight mismatch%%');
-  perform pg_temp.draft_refused(company,da,version_id,jsonb_set(jsonb_set(a,'{input,carrier}',quote),'{freight,carrier}',quote),'%%requires stored carrier evidence%%');
+  quote:=jsonb_set(jsonb_set(a#>'{input,carrier}','{quoteId}','"typed-in"'),'{cost}','"1"');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,carrier}',quote),'{freight,carrier}',quote),'{freight,amount}','"1"'),'{tax,amount}','"4800"'),'{total}','"36801"');
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%requires stored carrier evidence%%');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,carrier}','null'),'{freight,carrier}','null'),'{freight,amount}','"0"'),'{tax,amount}','"4800"'),'{total}','"36800"');
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%requires stored carrier evidence%%');
   perform pg_temp.draft_refused(company,da,version_id,jsonb_set(a,'{input,destination}','"remote"'),'%%authoritative dispatch destination%%');
   -- Effective date (a stale version for a later dispatch is checked after the price change below)
   perform pg_temp.draft_refused(company,da,version_id,jsonb_set(a,'{pricingAt}','"2026-10-05T00:00:00+13:00"'),'%%calculation contract mismatch%%');
@@ -120,23 +148,34 @@ begin
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%snapshot/input line mismatch%%');
   forged:=jsonb_set(jsonb_set(a,'{lines,0,description}','"Gift"'),'{input,lines,0,description}','"Gift"');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%product name%%');
-  -- Freight cannot be parked on a dispatch outside the order, where it would never be invoiced.
-  variant:='{"id":"schedule-1","total":"1000","allocations":[{"dispatchKey":"dispatch-a","amount":"0"},{"dispatchKey":"dispatch-b","amount":"0"},{"dispatchKey":"ghost","amount":"1000"}]}';
-  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,freightSchedule}',variant),'{freight,schedule}',variant),'{freight,amount}','"0"'),'{tax,amount}','"4800"'),'{total}','"36800"');
-  perform pg_temp.draft_refused(company,da,version_id,forged,'%%outside this order%%');
+  -- Retailer: the order's own, at its own prices and tax treatment.
+  perform pg_temp.draft_refused(company,da,version_id,swap,'%%not the order''s retailer%%');
+  perform pg_temp.draft_refused(company,dx,version_id,jsonb_set(jsonb_set(a,'{input,orderKey}',to_jsonb(order600::text)),'{input,dispatchKey}','"dispatch-x"'),'%%order retailer unknown%%');
+  perform pg_temp.draft_refused(company,dy,version_id,jsonb_set(jsonb_set(a,'{input,orderKey}',to_jsonb(order700::text)),'{input,dispatchKey}','"dispatch-y"'),'%%order currency differs%%');
+  insert into dispatch_sources(org_id,provider,connection_key) values(company,'synthetic','fixture') returning id into plain;
+  ds:=project_dispatch(company,plain,'dispatch-s','order-s',revision,'succeeded',null,lines,null,'{}',revision);
+  perform pg_temp.draft_refused(company,ds,version_id,jsonb_set(jsonb_set(a,'{input,orderKey}','"order-s"'),'{input,dispatchKey}','"dispatch-s"'),'%%order retailer contract required%%');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,taxExempt}','true'),'{tax,exempt}','true'),'{tax,rateBps}','0'),'{tax,amount}','"0"'),'{total}','"33000"');
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%tax treatment differs%%');
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(exempt,'{input,taxExempt}','false'),'{tax,exempt}','false'),'{tax,rateBps}','1500'),'{tax,amount}','"1200"'),'{total}','"9200"');
+  perform pg_temp.draft_refused(company,de,version_id,forged,'%%tax treatment differs%%');
+  -- First-part freight: a first part cannot pose as a later one to skip the charge.
+  forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,priorParts}','1'),'{freight,amount}','"0"'),'{freight,explanation}',
+    to_jsonb((a#>>'{freight,explanation}')||'; later part carries no freight')),'{tax,amount}','"4800"'),'{total}','"36800"');
+  perform pg_temp.draft_refused(company,da,version_id,forged,'%%stale part order%%');
 
-  -- 40/60 dispatch -> invoice parts A and B, drafted by the service role.
-  execute 'set local role service_role';
-  ra:=draft_dispatch_invoice(company,source,da,revision,version_id,a,'#synthetic-100');
-  rb:=draft_dispatch_invoice(company,source,db,revision,version_id,b,'#synthetic-100');
-  execute 'reset role';
+  -- 40/60 dispatch -> invoice parts A and B. Only the first part carries freight (D15 rule).
+  ra:=pg_temp.draft(company,da,version_id,a,'#synthetic-100');
+  rb:=pg_temp.draft(company,db,version_id,b,'#synthetic-100');
   saved:=(select snapshot from invoice_calculation_snapshots where id=(ra->>'snapshotId')::uuid);
   perform pg_temp.pricing_assert((select sum(quantity)=100 and count(*)=2 from dispatch_allocations where org_id=company),'40/60 exactly once');
-  perform pg_temp.pricing_assert((select invoice_number like '%A' and total_cents=37260 from invoices where id=(ra->>'invoiceId')::uuid),'part A identity/amount');
-  perform pg_temp.pricing_assert((select invoice_number like '%B' and total_cents=55890 from invoices where id=(rb->>'invoiceId')::uuid),'part B identity/amount');
+  perform pg_temp.pricing_assert((select invoice_number like '%A' and total_cents=37950 from invoices where id=(ra->>'invoiceId')::uuid),'part A identity/amount');
+  perform pg_temp.pricing_assert((select invoice_number like '%B' and total_cents=55200 from invoices where id=(rb->>'invoiceId')::uuid),'part B identity/amount');
+  perform pg_temp.pricing_assert((select count(*)=1 from invoice_lines where invoice_id=(ra->>'invoiceId')::uuid and description='Freight' and total_cents=1000)
+    and not exists(select 1 from invoice_lines where invoice_id=(rb->>'invoiceId')::uuid and description='Freight'),'freight on the first part only');
   perform pg_temp.pricing_assert((select count(distinct left(invoice_number,-1))=1 and count(*)=2 from invoices where org_id=company),'A/B share one order number');
   perform pg_temp.pricing_assert((select count(*)=2 from platform_events where org_id=company and event_type='controller.invoice.drafted'),'one drafted event per part');
-  raise notice 'BILL 40/60: order-100 (#synthetic-100), 100 ordered, dispatched 40 then 60; NZD from the stored rows';
+  raise notice 'BILL 40/60: order #synthetic-100, 100 ordered, dispatched 40 then 60; NZD from the stored rows';
   raise notice '  % % % % % % % % %',rpad('invoice',10),rpad('dispatch',10),lpad('qty',3),lpad('unit',6),lpad('products',8),lpad('freight',7),lpad('tax',6),lpad('total',8),'due';
   for part in select i.invoice_number,d.source_dispatch_key,l.quantity,s.snapshot,i.total_cents,(i.due_at at time zone 'Pacific/Auckland')::date due
     from invoice_calculation_snapshots s join invoices i on i.id=s.invoice_id join dispatches d on d.id=s.dispatch_id
@@ -146,34 +185,54 @@ begin
       lpad(pg_temp.dollars((part.snapshot#>>'{freight,amount}')::numeric),7),lpad(pg_temp.dollars((part.snapshot#>>'{tax,amount}')::numeric),6),
       lpad(pg_temp.dollars(part.total_cents),8),part.due;
   end loop;
-  raise notice '  order total % = % + %; freight % = the configured order charge, split by the stored schedule',
-    (select pg_temp.dollars(sum(total_cents)) from invoices where org_id=company),pg_temp.dollars(37260),pg_temp.dollars(55890),
+  raise notice '  order total % = % + %; freight % on the first part (its stored carrier rate), none on later parts',
+    (select pg_temp.dollars(sum(total_cents)) from invoices where org_id=company),pg_temp.dollars(37950),pg_temp.dollars(55200),
     (select pg_temp.dollars(sum((snapshot#>>'{freight,amount}')::numeric)) from invoice_calculation_snapshots where org_id=company);
 
   -- Retries reuse the stored part without recalculating, whatever snapshot they carry.
   for n in 1..3 loop
-    retry:=draft_dispatch_invoice(company,source,da,revision,version_id,a,'#synthetic-100');
+    retry:=pg_temp.draft(company,da,version_id,a,'#synthetic-100');
     perform pg_temp.pricing_assert(retry->>'invoiceId'=ra->>'invoiceId' and (retry->>'reused')::boolean,'retry stable');
   end loop;
-  retry:=draft_dispatch_invoice(company,source,da,revision,version_id,forged,'#synthetic-100');
+  retry:=pg_temp.draft(company,da,version_id,forged,'#synthetic-100');
   perform pg_temp.pricing_assert(retry->>'invoiceId'=ra->>'invoiceId' and (retry->>'reused')::boolean,'forged retry returns the stored part');
+
+  -- A tax-exempt retailer's order is billed without tax.
+  rc:=pg_temp.draft(company,de,version_id,exempt,'#synthetic-500');
+  perform pg_temp.pricing_assert((select tax_cents=0 and total_cents=8000 and account_id=other from invoices where id=(rc->>'invoiceId')::uuid),'exempt retailer billed without tax');
+
+  -- Legacy fulfillment invoices and BILL parts exclude each other, in both orders.
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at)
+    values(company,'dispatch-a',order100,'success','{}',revision) returning id into fe;
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+    values(company,fe,order100,account,'wholesale',revision) returning id into fe;
+  perform pg_temp.pricing_reject(format('select * from draft_invoice_atomic(%L,%L,%L,%L,%L)',company,account,fe,'NZD',
+    '[{"product_id":"'||product||'","description":"Synthetic widget","quantity":40,"unit_price_cents":800}]'),'%%already invoiced by BILL%%');
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at)
+    values(company,'dispatch-z',order800,'success','{}',revision) returning id into fz;
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+    values(company,fz,order800,account,'wholesale',revision) returning id into fz;
+  perform pg_temp.pricing_assert((select not was_existing from draft_invoice_atomic(company,account,fz,'NZD',
+    jsonb_build_array(jsonb_build_object('product_id',product,'description','Synthetic widget','quantity',40,'unit_price_cents',800)))),'legacy invoice created first');
+  dz:=project_dispatch(company,source,'dispatch-z',order800::text,revision,'succeeded',null,lines,null,'{}',revision);
+  perform pg_temp.draft_refused(company,dz,version_id,pg_temp.bind(jsonb_set(jsonb_set(a,'{input,orderKey}',to_jsonb(order800::text)),'{input,dispatchKey}','"dispatch-z"'),dz),
+    '%%already has a legacy invoice%%');
+  perform pg_temp.pricing_assert(not has_function_privilege('anon','draft_invoice_atomic(uuid,uuid,uuid,character,jsonb)','execute')
+    and not has_function_privilege('authenticated','draft_invoice_atomic(uuid,uuid,uuid,character,jsonb)','execute'),'legacy draft is service-only');
+
+  -- Scheduled price change: drafted parts keep v1; a later dispatch must use v2.
   c:=current_setting('test.pricing_config_v2')::jsonb;
   next_version:=save_pricing_version(company,1,c,'fixture-operator','Synthetic price change');
   perform activate_pricing_version(company,next_version,2,'fixture-operator','Synthetic price change');
-  retry:=draft_dispatch_invoice(company,source,da,revision,next_version,'{}','#synthetic-100');
+  retry:=pg_temp.draft(company,da,next_version,'{}','#synthetic-100');
   perform pg_temp.pricing_assert(retry->>'invoiceId'=ra->>'invoiceId','retry does not recalculate after price change');
   perform pg_temp.pricing_assert((select snapshot=saved from invoice_calculation_snapshots where id=(ra->>'snapshotId')::uuid),'historical snapshot unchanged');
-  -- A dispatch after the change must use v2: its stale v1 preview is refused under either version id.
-  dc:=project_dispatch(company,source,'dispatch-c','order-200',late_revision,'succeeded',null,
-    '[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":100,"ordered_quantity":100}]',null,'{}',late_revision);
-  select id into line_id from dispatch_lines where dispatch_id=dc;
-  late_v1:=jsonb_set(jsonb_set(late_v1,'{lines,0,lineId}',to_jsonb(line_id::text)),'{input,lines,0,lineId}',to_jsonb(line_id::text));
-  late_v2:=jsonb_set(jsonb_set(late_v2,'{lines,0,lineId}',to_jsonb(line_id::text)),'{input,lines,0,lineId}',to_jsonb(line_id::text));
+  dc:=project_dispatch(company,source,'dispatch-c',order200::text,late_revision,'succeeded',null,jsonb_set(lines,'{0,quantity}','100'),null,'{}',late_revision);
+  late_v1:=pg_temp.bind(late_v1,dc); late_v2:=pg_temp.bind(late_v2,dc); quote:=late_v2#>'{input,carrier}';
+  perform record_carrier_cost(company,source,dc,quote->>'connectionId',quote->>'quoteId','NZD',1000,(quote->>'observedAt')::timestamptz,(quote->>'expiresAt')::timestamptz,'{"synthetic":true}');
   perform pg_temp.draft_refused(company,dc,version_id,late_v1,'%%stale or inactive pricing snapshot%%');
   perform pg_temp.draft_refused(company,dc,next_version,late_v1,'%%stale or inactive pricing snapshot%%');
-  execute 'set local role service_role';
-  rc:=draft_dispatch_invoice(company,source,dc,late_revision,next_version,late_v2,'#synthetic-200');
-  execute 'reset role';
+  rc:=pg_temp.draft(company,dc,next_version,late_v2,'#synthetic-200');
   perform pg_temp.pricing_assert((select invoice_number like '%A' and total_cents=139150 from invoices where id=(rc->>'invoiceId')::uuid),'later order bills the v2 price');
   perform pg_temp.pricing_assert((select snapshot=saved from invoice_calculation_snapshots where id=(ra->>'snapshotId')::uuid),'part A still holds v1');
   perform pg_temp.pricing_reject(format('update invoices set due_at=now() where id=%L',ra->>'invoiceId'),'%%immutable%%');

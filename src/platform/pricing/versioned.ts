@@ -35,7 +35,9 @@ export const PricingConfigSchema = z.object({
   discounts: z.array(z.object({ ...scope, id, order: z.number().int().nonnegative(), discount }).strict()),
   shipping: z.object({ enabled: z.boolean(), rules: z.array(z.object({
     id, accountId: id.nullable(), destination: id.nullable(), priority: z.number().int(), mode: shippingMode,
-    chargingBasis: z.enum(['per_dispatch', 'order_schedule']),
+    // per_dispatch charges every part; first_part charges only an order's first drafted part,
+    // so a part never depends on dispatches that have not happened yet.
+    chargingBasis: z.enum(['per_dispatch', 'first_part']),
     freeThreshold: z.object({ amount: money, valueBasis: z.enum(['order', 'dispatch']), afterDiscount: z.boolean(), includesTax: z.boolean() }).strict().nullable(),
   }).strict()) }).strict(),
   // Standard payment terms. A different due date for one invoice is an owner decision
@@ -53,6 +55,15 @@ export const PricingConfigSchema = z.object({
   if (v.bindings.some(b => !v.books.some(book => book.id === b.bookId))) fail('unknown price book');
   unique([...v.negotiated, ...v.tiers, ...v.discounts].map(r => r.id), 'product rule identity');
   unique(v.shipping.rules.map(r => r.id), 'shipping rule identity');
+  // A retailer-specific rule outranks a general one; two rules of the same scope conflict.
+  const scoped = (r: { accountId: string | null; productId: string }) => `${r.accountId ?? '*'}|${r.productId}`;
+  unique(v.negotiated.map(scoped), 'negotiated prices (conflicting)');
+  unique(v.tiers.map(r => `${scoped(r)}|${r.minimum}`), 'quantity tiers (conflicting)');
+  if (v.discountCombination === 'single') unique(v.discounts.map(scoped), 'discounts (conflicting)');
+  else {
+    unique(v.discounts.map(r => `${scoped(r)}|${r.order}`), 'discount order (conflicting)');
+    for (const r of v.discounts) if (r.accountId !== null && v.discounts.some(g => g.accountId === null && g.productId === r.productId && g.order === r.order)) fail('discount order (conflicting)');
+  }
   if (!v.shipping.enabled && v.shipping.rules.length) fail('disabled shipping cannot have active rules');
 });
 export type PricingConfig = z.infer<typeof PricingConfigSchema>;
@@ -64,7 +75,9 @@ export const PricingInputSchema = z.object({
   lines: z.array(z.object({ lineId: id, productId: id, description: id, ordered: quantity, dispatched: quantity, override: override.nullable() }).strict()).min(1),
   carrier: z.object({ businessId: id, connectionId: id, shipmentKey: id, quoteId: id, observedAt: instant, expiresAt: instant, currency: id, taxBasis: z.literal('exclusive'), cost: money }).strict().nullable(),
   freightOverride: override.nullable(),
-  freightSchedule: z.object({ id, total: money, allocations: z.array(z.object({ dispatchKey: id, amount: money }).strict()).min(1) }).strict().nullable(),
+  // Parts of this order already drafted, and the retailer's tax treatment. The database
+  // verifies both (order lock, account record) before saving.
+  priorParts: z.number().int().min(0).max(10000), taxExempt: z.boolean(),
   // Whole-order threshold amounts must come from an authoritative pricing preview.
   orderValue: z.object({ beforeDiscount: money, afterDiscount: money }).strict().nullable(),
   terms: z.discriminatedUnion('kind', [
@@ -99,20 +112,28 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
   const binding = config.bindings.find(b => b.accountId === input.accountId);
   const book = binding ? config.books.find(b => b.id === binding.bookId) : config.fallback === 'default_book' ? config.books.find(b => b.isDefault) : undefined;
   if (!book) throw new Error('pricing: retailer has no price book');
+  // The applied rate: a tax-exempt retailer (export / zero-rated) is charged none.
+  const taxRateBps = input.taxExempt ? 0 : config.taxRateBps;
   const lines = input.lines.map(line => {
     if (line.dispatched > line.ordered) throw new Error('pricing: quantity exceeds order');
-    const matches = (r: { accountId: string | null; productId: string }) => r.productId === line.productId && (r.accountId === null || r.accountId === input.accountId);
+    // A retailer-specific rule outranks a general (accountId null) rule for the same product.
+    const scoped = <T extends { accountId: string | null; productId: string }>(rules: T[]) => {
+      const own = rules.filter(r => r.productId === line.productId && r.accountId === input.accountId);
+      return own.length ? own : rules.filter(r => r.productId === line.productId && r.accountId === null);
+    };
     const entry = book.entries.find(e => e.productId === line.productId);
     if (!entry) throw new Error(`pricing: missing product ${line.productId}`);
-    const negotiated = one(config.negotiated.filter(matches), 'negotiated prices');
-    const eligible = config.tiers.filter(r => matches(r) && r.minimum <= (config.tierQuantityBasis === 'ordered' ? line.ordered : line.dispatched));
+    const negotiated = one(scoped(config.negotiated), 'negotiated prices');
+    const tierBasis = config.tierQuantityBasis === 'ordered' ? line.ordered : line.dispatched;
+    const eligible = scoped(config.tiers.filter(r => r.minimum <= tierBasis));
     const highest = Math.max(0, ...eligible.map(r => r.minimum));
     const tier = one(eligible.filter(r => r.minimum === highest), 'quantity tiers');
     const candidates = { negotiated, tier, book: { id: book.id, unitPrice: entry.unitPrice } };
     const kind = config.pricePrecedence.find(k => candidates[k])!;
     const selected = candidates[kind]!;
     let unit = BigInt(selected.unitPrice);
-    const discounts = config.discounts.filter(matches).sort((a,b) => a.order - b.order);
+    const discounts = (config.discountCombination === 'single' ? scoped(config.discounts)
+      : config.discounts.filter(r => r.productId === line.productId && (r.accountId === null || r.accountId === input.accountId))).sort((a,b) => a.order - b.order);
     if (discounts.length > 1 && (config.discountCombination === 'single' || new Set(discounts.map(d => d.order)).size !== discounts.length)) throw new Error('pricing: conflicting discount order/combination');
     const applied = kind === 'book' || config.discountOnSpecialPrice ? discounts : [];
     for (const rule of applied) {
@@ -131,9 +152,9 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
   const subtotal = lines.reduce((n,l) => n + BigInt(l.lineAmount), 0n);
   let freight = 0n;
   let shippingRule: string | null = null;
-  let shippingBasis: 'disabled' | 'per_dispatch' | 'order_schedule' = 'disabled';
+  let shippingBasis: 'disabled' | 'per_dispatch' | 'first_part' = 'disabled';
   let freightExplanation = 'Shipping capability disabled';
-  if (!config.shipping.enabled && (input.carrier || input.freightOverride || input.freightSchedule)) throw new Error('pricing: shipping inputs supplied to disabled capability');
+  if (!config.shipping.enabled && (input.carrier || input.freightOverride)) throw new Error('pricing: shipping inputs supplied to disabled capability');
   if (config.shipping.enabled) {
     if (!input.dispatchKey) throw new Error('pricing: shipping requires dispatch identity');
     const rules = config.shipping.rules.filter(r => (r.accountId === null || r.accountId === input.accountId) && (r.destination === null || r.destination === input.destination));
@@ -143,33 +164,28 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
     shippingRule = rule.id; shippingBasis = rule.chargingBasis;
     const carrier = input.carrier;
     if (carrier && (carrier.businessId !== input.businessId || carrier.shipmentKey !== input.dispatchKey || carrier.currency !== config.currency || Date.parse(carrier.observedAt) > Date.parse(input.evaluatedAt))) throw new Error('pricing: invalid carrier evidence binding');
-    if (rule.mode.kind === 'actual' || rule.mode.kind === 'adjusted') {
+    const laterPart = rule.chargingBasis === 'first_part' && input.priorParts > 0;
+    if (laterPart) freight = 0n;
+    else if (rule.mode.kind === 'actual' || rule.mode.kind === 'adjusted') {
       if (!carrier || Date.parse(carrier.expiresAt) <= Date.parse(input.evaluatedAt)) throw new Error('pricing: missing or expired carrier quote');
       freight = BigInt(carrier.cost);
       if (rule.mode.kind === 'adjusted') freight += BigInt(rule.mode.fixed) + tax(freight, rule.mode.markupBps);
     } else if (rule.mode.kind === 'fixed') freight = BigInt(rule.mode.amount);
     else if (rule.mode.kind === 'manual' && !input.freightOverride) throw new Error('pricing: reasoned freight override required');
-    if (rule.freeThreshold) {
+    if (rule.freeThreshold && !laterPart) {
       const threshold = rule.freeThreshold;
       let value: bigint;
       if (threshold.valueBasis === 'order') {
         if (!input.orderValue) throw new Error('pricing: whole order value required for threshold');
         value = BigInt(threshold.afterDiscount ? input.orderValue.afterDiscount : input.orderValue.beforeDiscount);
       } else value = threshold.afterDiscount ? subtotal : lines.reduce((n,l) => n + BigInt(l.beforeDiscountUnitPrice) * BigInt(l.dispatched), 0n);
-      if (threshold.includesTax) value += tax(value, config.taxRateBps);
+      if (threshold.includesTax) value += tax(value, taxRateBps);
       if (value >= BigInt(threshold.amount)) freight = 0n;
     }
     if (input.freightOverride) freight = BigInt(input.freightOverride.amount);
-    freightExplanation = `${rule.id}: ${rule.mode.kind}; ${rule.chargingBasis}${input.freightOverride ? '; reasoned override' : ''}`;
-    if (rule.chargingBasis === 'order_schedule') {
-      const schedule = input.freightSchedule;
-      if (!schedule || BigInt(schedule.total) !== freight || new Set(schedule.allocations.map(a => a.dispatchKey)).size !== schedule.allocations.length || schedule.allocations.reduce((n,a) => n + BigInt(a.amount), 0n) !== freight) throw new Error('pricing: invalid freight allocation schedule');
-      const allocation = schedule.allocations.find(a => a.dispatchKey === input.dispatchKey);
-      if (!allocation) throw new Error('pricing: dispatch absent from freight schedule');
-      freight = BigInt(allocation.amount);
-    } else if (input.freightSchedule) throw new Error('pricing: unexpected freight schedule');
+    freightExplanation = `${rule.id}: ${rule.mode.kind}; ${rule.chargingBasis}${laterPart ? '; later part carries no freight' : ''}${input.freightOverride ? '; reasoned override' : ''}`;
   }
-  const taxAmount = tax(subtotal + (config.freightTaxable ? freight : 0n), config.taxRateBps);
+  const taxAmount = tax(subtotal + (config.freightTaxable ? freight : 0n), taxRateBps);
   let dueDate: string;
   if (input.terms.kind === 'explicit') {
     dueDate = input.terms.dueDate;
@@ -184,8 +200,8 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
   return { schemaVersion: 1 as const, businessId: config.businessId, configVersion: config.version, currency: config.currency, scale: config.scale,
     taxBasis: config.taxBasis, pricingAt, pricingDateBasis: config.pricingDateBasis, timezone: config.timezone,
     rounding: 'floor_minor_unit_per_discount_then_invoice_tax' as const, input, lines,
-    freight: { amount: amount(freight), carrier: input.carrier, ruleId: shippingRule, basis: shippingBasis, schedule: input.freightSchedule, override: input.freightOverride, explanation: freightExplanation },
-    tax: { rateBps: config.taxRateBps, freightTaxable: config.freightTaxable, amount: amount(taxAmount) },
+    freight: { amount: amount(freight), carrier: input.carrier, ruleId: shippingRule, basis: shippingBasis, override: input.freightOverride, explanation: freightExplanation },
+    tax: { rateBps: taxRateBps, exempt: input.taxExempt, freightTaxable: config.freightTaxable, amount: amount(taxAmount) },
     subtotal: amount(subtotal), total: amount(subtotal + freight + taxAmount), terms: { ...input.terms, dueDate },
   };
 }

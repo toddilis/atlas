@@ -8,27 +8,37 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 sql() { psql "$DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 "$@"; }
 
-setup() {   # $1 = id prefix: org, active v1 pricing and the 40/60 dispatches of order-100
+setup() {   # $1 = id prefix: Shopify order 100 for its retailer, active v1 pricing, the 40/60
+            # dispatches and a stored carrier quote for each, since either may be drafted first
   npx tsx "$SCRIPT_DIR/pricing-fixtures.ts" "$1" >"$WORK/fixtures-$1.sql"
   sql -f "$WORK/fixtures-$1.sql" -f - <<'SQL' >/dev/null
 do $$
-declare company uuid:=current_setting('test.pricing_company'); source uuid; v uuid; revision timestamptz:='2026-10-02T09:00:00+13:00';
+declare company uuid:=current_setting('test.pricing_company'); account uuid:=current_setting('test.pricing_account');
+  order100 uuid:=current_setting('test.pricing_order_100'); source uuid; v uuid; d uuid; q jsonb; f text;
+  revision timestamptz:='2026-10-02T09:00:00+13:00';
 begin
   insert into orgs(id,slug,display_name) values(company,'bill-race-'||left(company::text,2),'Synthetic BILL race');
-  insert into accounts(id,org_id,name) values(current_setting('test.pricing_account')::uuid,company,'Synthetic retailer');
+  insert into accounts(id,org_id,name) values(account,company,'Synthetic retailer');
   insert into products(id,org_id,sku,display_name) values(current_setting('test.pricing_product')::uuid,company,'WIDGET','Synthetic widget');
+  insert into shopify_customers(org_id,shopify_customer_id,raw,account_id) values(company,'cust-a','{}',account);
+  insert into shopify_orders(id,org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(order100,company,'100','cust-a','NZD',0,0,'{}','2026-10-01T09:00:00+13:00');
   v:=save_pricing_version(company,0,current_setting('test.pricing_config')::jsonb,'fixture-operator','Synthetic race version');
   perform activate_pricing_version(company,v,1,'fixture-operator','Synthetic race activation');
-  insert into dispatch_sources(org_id,provider,connection_key) values(company,'synthetic','race') returning id into source;
-  perform project_dispatch(company,source,'dispatch-a','order-100',revision,'succeeded',null,
-    '[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":40,"ordered_quantity":100}]',null,'{}',revision);
-  perform project_dispatch(company,source,'dispatch-b','order-100',revision,'succeeded',null,
-    '[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":60,"ordered_quantity":100}]',null,'{}',revision);
+  source:=bind_shopify_dispatch_source(company,left(company::text,2)||'-race.myshopify.com');
+  foreach f in array array['a','b_first'] loop
+    q:=current_setting('test.pricing_'||f)::jsonb#>'{input,carrier}';
+    d:=project_dispatch(company,source,q->>'shipmentKey',order100::text,revision,'succeeded',null,
+      jsonb_build_array(jsonb_build_object('source_line_key','original','order_line_key','order-line','item_key','WIDGET',
+        'quantity',current_setting('test.pricing_'||f)::jsonb#>'{lines,0,dispatched}','ordered_quantity',100)),null,'{}',revision);
+    perform record_carrier_cost(company,source,d,q->>'connectionId',q->>'quoteId',q->>'currency',(q->>'cost')::bigint,
+      (q->>'observedAt')::timestamptz,(q->>'expiresAt')::timestamptz,'{"synthetic":true}');
+  end loop;
 end $$;
 SQL
 }
 
-session() {  # $1 prefix, $2 fixture (a|b), $3 dispatch key, $4 seconds held open after drafting
+session() {  # $1 prefix, $2 fixture, $3 dispatch key, $4 seconds held open after drafting
   cat "$WORK/fixtures-$1.sql"
   cat <<SQL
 select d.org_id company, d.source_id source, d.id dispatch, d.source_revision revision, v.version_id version,
@@ -43,18 +53,25 @@ commit;
 SQL
 }
 count() { sql -c "select count(*) from $1 where org_id='$2000000-0000-4000-8000-000000000001'"; }
+parts() { sql -c "select string_agg(d.source_dispatch_key||'='||right(i.invoice_number,1)||'/'||l.quantity||'/'||(s.snapshot#>>'{freight,amount}')||'/'||i.total_cents,',' order by d.source_dispatch_key)
+  from invoice_calculation_snapshots s join invoices i on i.id=s.invoice_id join dispatches d on d.id=s.dispatch_id
+  join dispatch_allocations l on l.part_id=s.part_id where s.org_id='$1000000-0000-4000-8000-000000000001'"; }
 
-# Parts A and B drafted at the same moment: one shared order number, distinct suffixes,
-# each dispatch billed at its own quantity and freight allocation.
+# A and B drafted at the same moment, each claiming to be the order's first part. The order
+# lock admits one; the other is refused as stale and redrafted as a later, freight-free part.
 setup 64
 session 64 a dispatch-a 0.3 | sql -f - >"$WORK/ab-a" 2>&1 & a=$!
-session 64 b dispatch-b 0.3 | sql -f - >"$WORK/ab-b" 2>&1 & b=$!
-wait "$a" || { cat "$WORK/ab-a"; exit 1; }
-wait "$b" || { cat "$WORK/ab-b"; exit 1; }
-[[ "$(sql -c "select count(*)||':'||string_agg(right(invoice_number,1),'' order by invoice_number)||':'||count(distinct left(invoice_number,-1)) from invoices where org_id='64000000-0000-4000-8000-000000000001'")" = '2:AB:1' ]] \
-  || { echo 'concurrent A/B drafts did not produce one order number with suffixes A and B' >&2; exit 1; }
-[[ "$(sql -c "select string_agg(d.source_dispatch_key||'='||l.quantity||'/'||i.total_cents,',' order by d.source_dispatch_key) from invoice_calculation_snapshots s join invoices i on i.id=s.invoice_id join dispatches d on d.id=s.dispatch_id join dispatch_allocations l on l.part_id=s.part_id where s.org_id='64000000-0000-4000-8000-000000000001'")" = 'dispatch-a=40/37260,dispatch-b=60/55890' ]] \
-  || { echo 'concurrent A/B drafts billed the wrong quantity or amount' >&2; exit 1; }
+session 64 b_first dispatch-b 0.3 | sql -f - >"$WORK/ab-b" 2>&1 & b=$!
+ra=0; rb=0; wait "$a" || ra=$?; wait "$b" || rb=$?
+if [[ "$ra" = 0 && "$rb" != 0 ]]; then loser="$WORK/ab-b"; retry='b dispatch-b'; expected='dispatch-a=A/40/1000/37950,dispatch-b=B/60/0/55200'
+elif [[ "$ra" != 0 && "$rb" = 0 ]]; then loser="$WORK/ab-a"; retry='a_later dispatch-a'; expected='dispatch-a=B/40/0/36800,dispatch-b=A/60/1000/56350'
+else cat "$WORK/ab-a" "$WORK/ab-b"; echo 'expected exactly one concurrent first part' >&2; exit 1; fi
+grep -q 'stale part order' "$loser" || { cat "$loser"; echo 'the losing first part failed for another reason' >&2; exit 1; }
+# shellcheck disable=SC2086
+session 64 $retry 0 | sql -f - >"$WORK/ab-retry" 2>&1 || { cat "$WORK/ab-retry"; echo 'redrafting the later part failed' >&2; exit 1; }
+[[ "$(parts 64)" = "$expected" ]] || { parts 64; echo "concurrent A/B parts differ from $expected" >&2; exit 1; }
+[[ "$(sql -c "select count(distinct left(invoice_number,-1)) from invoices where org_id='64000000-0000-4000-8000-000000000001'")" = 1 ]] \
+  || { echo 'A/B parts do not share one order number' >&2; exit 1; }
 [[ "$(count platform_events 64)" = 2 ]] || { echo 'expected one drafted event per part' >&2; exit 1; }
 
 # The same dispatch drafted twice at once: one part, one invoice, one event; the loser
@@ -86,6 +103,5 @@ if wait "$crashed"; then echo 'terminated draft unexpectedly committed' >&2; exi
   || { echo 'terminated draft left an effect' >&2; exit 1; }
 session 65 b dispatch-b 0 | sql -f - >"$WORK/recovered" 2>&1 || { cat "$WORK/recovered"; exit 1; }
 grep -q '"reused": false' "$WORK/recovered"
-[[ "$(sql -c "select right(invoice_number,1)||':'||total_cents from invoices i join invoice_calculation_snapshots s on s.invoice_id=i.id join dispatches d on d.id=s.dispatch_id where i.org_id='65000000-0000-4000-8000-000000000001' and d.source_dispatch_key='dispatch-b'")" = 'B:55890' ]] \
-  || { echo 'recovered draft did not become part B' >&2; exit 1; }
-echo 'OK - concurrent A/B parts, identical concurrent drafts and terminated-draft recovery'
+[[ "$(parts 65)" = 'dispatch-a=A/40/1000/37950,dispatch-b=B/60/0/55200' ]] || { parts 65; echo 'recovered draft did not become part B' >&2; exit 1; }
+echo 'OK - one concurrent first part, identical concurrent drafts and terminated-draft recovery'

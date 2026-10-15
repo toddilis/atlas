@@ -459,7 +459,6 @@ export type Database = {
         Row: {
           account_id: string
           created_at: string
-          freight_schedule: Json | null
           number_base: string
           order_key: string
           order_reference: string
@@ -469,7 +468,6 @@ export type Database = {
         Insert: {
           account_id: string
           created_at?: string
-          freight_schedule?: Json | null
           number_base: string
           order_key: string
           order_reference: string
@@ -479,7 +477,6 @@ export type Database = {
         Update: {
           account_id?: string
           created_at?: string
-          freight_schedule?: Json | null
           number_base?: string
           order_key?: string
           order_reference?: string
@@ -504,6 +501,67 @@ export type Database = {
             columns: ["org_id", "source_id"]
             referencedRelation: "dispatch_sources"
             referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
+      carrier_cost_evidence: {
+        Row: {
+          carrier_connection: string
+          cost_minor: number
+          currency: string
+          dispatch_id: string
+          evidence: NonNullable<Json>
+          expires_at: string
+          id: string
+          observed_at: string
+          org_id: string
+          quote_key: string
+          recorded_at: string
+          source_id: string
+          tax_basis: string
+        }
+        Insert: {
+          carrier_connection: string
+          cost_minor: number
+          currency: string
+          dispatch_id: string
+          evidence: NonNullable<Json>
+          expires_at: string
+          id?: string
+          observed_at: string
+          org_id: string
+          quote_key: string
+          recorded_at?: string
+          source_id: string
+          tax_basis: string
+        }
+        Update: {
+          carrier_connection?: string
+          cost_minor?: number
+          currency?: string
+          dispatch_id?: string
+          evidence?: NonNullable<Json>
+          expires_at?: string
+          id?: string
+          observed_at?: string
+          org_id?: string
+          quote_key?: string
+          recorded_at?: string
+          source_id?: string
+          tax_basis?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "carrier_cost_evidence_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "carrier_cost_evidence_org_id_source_id_dispatch_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "source_id", "id"]
           },
         ]
       }
@@ -3033,6 +3091,21 @@ export type Database = {
           p_state: string
         }
         Returns: undefined
+      }
+      record_carrier_cost: {
+        Args: {
+          p_carrier_connection: string
+          p_cost_minor: number
+          p_currency: string
+          p_dispatch_id: string
+          p_evidence: Json
+          p_expires_at: string
+          p_observed_at: string
+          p_org_id: string
+          p_quote_key: string
+          p_source_id: string
+        }
+        Returns: string
       }
       record_evidence_decision: {
         Args: { p_org_id: string; p_record: Json; p_state_snapshot: Json }

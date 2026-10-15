@@ -70,7 +70,7 @@ export default function PricingEditor(props:PricingEditorProps) {
         edit({shipping:{...config.shipping,rules:config.shipping.rules.map((r,n)=>n===index?{...r,mode}:r)}});
       }}>{['actual','adjusted','fixed','free','manual'].map(mode=><option key={mode}>{mode}</option>)}</select></label>
       {'amount' in rule.mode&&text('Fixed freight (cents)',rule.mode.amount,value=>edit({shipping:{...config.shipping,rules:config.shipping.rules.map((r,n)=>n===index?{...r,mode:{kind:'fixed',amount:value}}:r)}}))}
-      <p>{rule.chargingBasis==='order_schedule'?'Uses the explicit order allocation schedule':'Charges each dispatch'}</p></div>)}
+      <p>{rule.chargingBasis==='first_part'?"Charges only the order's first invoice part":'Charges each dispatch'}</p></div>)}
     </fieldset>
     <fieldset disabled={busy} className="grid md:grid-cols-3 gap-4"><legend>Preview</legend>
       <label>Account<select className={field} value={input.accountId} onChange={e=>editInput({accountId:e.target.value})}>{props.accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>

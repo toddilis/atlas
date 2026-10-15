@@ -32,15 +32,15 @@ are exclusive; an expired selected version cannot fall back to an older one.
 
 Shipping can be disabled. Supported modes: actual cost, fixed/percentage markup,
 fixed, free and reasoned manual charge. Carrier identity/cost remains separate from
-customer charge. Per-dispatch charge or explicit whole-order allocation schedule is
-required; schedules freeze on the first invoice and cannot change on later parts.
+customer charge. Freight is charged on every part (`per_dispatch`) or only on an order's
+first drafted part (`first_part`, VICE's rule, PLAN D15); no basis depends on later dispatches.
 Unknown or conflicting rules fail visibly. Only exact integer units and scale-2,
 tax-exclusive configurations are supported in this slice. Service businesses can
 preview pricing without Shopify, stock or shipping; non-dispatch billing is not yet
 implemented. Whole-order threshold values require a trusted calculated input.
 
 Snapshots contain input/source identities, config version, ordered/dispatched
-quantities, rule explanation, override actor/reason, freight evidence/schedule,
+quantities, rule explanation, override actor/reason, freight evidence, part order,
 tax and terms/due date. Monetary values are decimal strings; bigint calculations
 floor each percentage reduction and invoice tax. A snapshot is a copied value;
 configuration changes do not mutate it. Explicit repricing/revision UI is pending.
@@ -59,7 +59,8 @@ generation means only generated, never printed, packed, emailed or delivered.
 Root typecheck and nine focused pricing tests passed with Node 20.20.2, `--jitless`,
 bounded 1 GB heap (30 September UTC / 1 October NZ). Earlier host memory failures
 are environment failures, not passed tests. Synthetic 100-unit 40/60 previews use
-800 minor-unit tier price, freight 400/600, tax 4,860/7,290, totals 37,260/55,890;
+800 minor-unit tier price, freight 400/600, tax 4,860/7,290, totals 37,260/55,890 (the
+since-removed order schedule; see the 15 October review for the D15 first-part rule);
 due date 20 November. Tests cover both retailers, effective boundaries, immutable
 copies, service configuration, freight modes/evidence/thresholds, conflicts and
 amounts above JavaScript safe-integer precision. Database, browser, full CI and
@@ -129,26 +130,39 @@ any actor. Now:
 - `verify-bill-concurrency.sh` (CI): A and B drafted concurrently; the same dispatch
   drafted twice concurrently; a drafting session killed before commit, then recovered.
 
-Remaining limits, not fixed here:
-
-- Nothing binds an order to its retailer. A draft can bill a dispatch to another bound
-  retailer of the same business at that retailer's prices. This needs an order-to-account
-  source contract (for VICE, the Shopify customer link).
-- `order_schedule` freight names every dispatch up front. Staggered real dispatches need
-  an allocation policy decision.
-- Part suffixes follow drafting order.
-- Actual-cost freight (GoSweetSpot) cannot be drafted until stored carrier evidence exists.
+The limits listed here at the time (retailer binding, staggered freight, carrier evidence)
+are addressed in the review section below.
 
 ## 15 October review of `63ade52`
 
-Fixed in the next commit: the content hash uses built-in `sha256` (hosted Supabase keeps
-pgcrypto in `extensions`), the due date compares independent of DateStyle, freight cannot be
-allocated to a dispatch outside the order, and stored snapshots carry no extra input lines
-and only the product's own name.
+`9098ec6` fixed the small findings: the content hash uses built-in `sha256` (hosted Supabase
+keeps pgcrypto in `extensions`), the due date compares independent of DateStyle, and stored
+snapshots carry no extra input lines and only the product's own name. #30 `2cc0c1e` brings
+#31's hosted-layout CI check and the same hash change for 0022/0026.
 
-Open, needing a decision or a larger change: billed retailer derived from the order;
-legacy `draft_invoice_atomic` can invoice a BILL-drafted fulfillment again (and the reverse);
-tax-exempt retailers are charged tax; a retailer-specific plus general rule for one product
-blocks that retailer; a per-dispatch free-freight threshold with `order_schedule` blocks
-part B; and how freight is split across parts (each dispatch's own freight, or one order
-amount split across parts), which decides the staggered-dispatch fix.
+Owner decisions applied in the following commit:
+
+- **Retailer:** the draft derives the billed account from the order (Shopify customer link)
+  and refuses a different, unknown or unlinked one, and a non-Shopify source, until that
+  source has an order account contract. The order's currency must match the pricing.
+- **Freight (PLAN D15):** `first_part` charging basis. Only an order's first drafted part
+  carries freight; later parts carry none. The part order (`priorParts`) is checked under
+  the order lock, so concurrent drafts admit one first part and the other is refused as
+  stale. `order_schedule`, which named future dispatches, is removed.
+- **Carrier cost:** `carrier_cost_evidence` holds carrier quotes recorded by the carrier
+  adapter through `record_carrier_cost` (idempotent, append-only). Actual/adjusted freight
+  needs one, and any quote in a snapshot must be the latest unexpired record for that
+  dispatch. The GoSweetSpot adapter that records them is not built yet.
+- **Tax:** `taxExempt` is a calculation input checked against `accounts.tax_exempt`;
+  exempt retailers are charged no tax and the snapshot records the applied rate.
+- **Legacy path:** a BILL draft refuses a fulfillment that has a legacy invoice; a trigger
+  refuses a legacy invoice for a fulfillment BILL has claimed (try-lock, so no deadlock);
+  `draft_invoice_atomic` is service-only.
+- **Rule precedence:** a retailer-specific negotiated price, tier or single discount
+  outranks a general one; two rules of the same scope are rejected by the schema.
+- Snapshots must have the exact expected shape, so no unverified fields are stored.
+
+Still open: part suffixes follow drafting order; the printed document is a placeholder
+(account id, no supplier details or invoice date); explanation text in a snapshot is not
+re-derived; every draft takes the org-wide pricing lock; backdated activations and SQL-side
+configuration validation at save are not addressed.

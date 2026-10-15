@@ -20,19 +20,19 @@ test('import repeated produces exact no-change diff and preserves negotiated agr
   assert.equal(second.requiresNewVersion,false);assert.equal(second.draft.negotiated[0]!.unitPrice,'700');
   assert.throws(()=>previewPriceImport(c,'book',[{sourceRow:2,productId:'missing',unitPrice:'1200'}]),/unmapped/);
 });
-test('reused original regressions: negotiated threshold, increased override and zero freight allocation',()=>{
+test('reused original regressions: negotiated threshold, increased override and a freight-free later part',()=>{
   const c=config(),i=input();c.negotiated=[{id:'deal',accountId:null,productId:'widget',unitPrice:'800'}];
-  const rule=c.shipping.rules[0]!;rule.chargingBasis='per_dispatch';rule.freeThreshold={amount:'35000',valueBasis:'dispatch',afterDiscount:false,includesTax:false};i.freightSchedule=null;
+  const rule=c.shipping.rules[0]!;rule.chargingBasis='per_dispatch';rule.freeThreshold={amount:'35000',valueBasis:'dispatch',afterDiscount:false,includesTax:false};
   assert.equal(calculatePricing(c,i).freight.amount,'1000'); // 40×800=32000, not catalogue40×1000.
   i.lines[0]!.override={amount:'1200',actor:'operator',reason:'Synthetic finishing'};
   const result=calculatePricing(c,i);assert.equal(result.lines[0]!.discountPerUnit,'0');assert.equal(result.lines[0]!.overrideDelta,'400');
-  const zero=input();zero.dispatchKey='dispatch-c';zero.freightSchedule!.allocations.push({dispatchKey:'dispatch-c',amount:'0'});
-  assert.equal(calculatePricing(config(),zero).freight.amount,'0');
+  const later=input();later.dispatchKey='dispatch-c';later.priorParts=1;
+  assert.equal(calculatePricing(config(),later).freight.amount,'0');
 });
 test('print renders immutable quantities/terms/order reference, escapes text and never converts money to float',()=>{
   const c=config(),i=input();i.lines[0]!.description='<script>bad</script>';const calculation=calculatePricing(c,i);
   const doc={schemaVersion:1 as const,company_id:c.businessId,invoiceId:'invoice-a',revision:1 as const,invoiceNumber:'SYN-A',orderReference:'#123',calculation};
-  const html=renderInvoiceDocument(doc);assert.match(html,/#123/);assert.match(html,/>40</);assert.match(html,/NZD 372.60/);assert.match(html,/2026-11-20/);
+  const html=renderInvoiceDocument(doc);assert.match(html,/#123/);assert.match(html,/>40</);assert.match(html,/NZD 379.50/);assert.match(html,/2026-11-20/);
   assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);
   c.tiers[0]!.unitPrice='2000';assert.equal(renderInvoiceDocument(doc),html);
 });
