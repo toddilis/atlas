@@ -24,7 +24,9 @@ export function gosweetspotEnv(env: Record<string, string | undefined> = process
   if (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > 3650) throw new Error('GOSWEETSPOT_COST_VALIDITY_DAYS must be 1-3650');
   return { credentials: { accessKey, siteId }, connection: { currency, validityDays } };
 }
-type Fetch = (url: string, init: { headers: Record<string, string> }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+type Fetch = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+/** Well inside the job's 5-minute lease, so a slow reply is retried rather than outliving it. */
+export const GOSWEETSPOT_TIMEOUT_MS = 30_000;
 
 /** Booked shipments carrying the given connotes. The response is accepted only as shipment
  * objects in the documented api/shipments shape (Consignments with ConsignmentId, Connote,
@@ -33,7 +35,8 @@ export async function fetchShipmentsByConnote(credentials: GoSweetSpotCredential
   if (!credentials.accessKey.trim() || !credentials.siteId.trim()) throw new Error('gosweetspot: access key and site id required');
   if (!connotes.length) throw new Error('gosweetspot: no consignment numbers to look up');
   const url = `${GOSWEETSPOT_API}/shipments?shipments=${encodeURIComponent(connotes.join(','))}&pagesize=250`;
-  const response = await fetcher(url, { headers: { access_key: credentials.accessKey, site_id: credentials.siteId, accept: 'application/json' } });
+  const response = await fetcher(url, { headers: { access_key: credentials.accessKey, site_id: credentials.siteId, accept: 'application/json' },
+    signal: AbortSignal.timeout(GOSWEETSPOT_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`gosweetspot: shipments lookup failed with HTTP ${response.status}`);
   const body = await response.json();
   const list = Array.isArray(body) ? body : [body];

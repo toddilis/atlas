@@ -42,17 +42,28 @@ export function consignmentEvidence(raw: unknown, trackingNumbers: string[], con
   const response = ShipmentResponseSchema.parse(raw);
   const tracking = new Set(trackingNumbers.map(normal).filter(Boolean));
   if (!tracking.size) throw new Error('gosweetspot: the dispatch has no tracking number to match');
-  const matched = response.Consignments.filter(c => tracking.has(normal(c.Connote)));
+  // The same consignment may be listed once per connote queried; identical copies are one
+  // consignment, while two different records under one id are refused.
+  const byId = new Map<string, (typeof response.Consignments)[number]>();
+  for (const c of response.Consignments.filter(c => tracking.has(normal(c.Connote)))) {
+    const seen = byId.get(String(c.ConsignmentId));
+    if (seen && JSON.stringify(seen) !== JSON.stringify(c)) throw new Error('gosweetspot: conflicting duplicate consignment in response');
+    byId.set(String(c.ConsignmentId), c);
+  }
+  const matched = [...byId.values()];
   const covered = new Set(matched.map(c => normal(c.Connote)));
   if (covered.size !== tracking.size) throw new Error('gosweetspot: response does not cover every tracking number of the dispatch');
-  if (new Set(matched.map(c => String(c.ConsignmentId))).size !== matched.length) throw new Error('gosweetspot: duplicate consignment in response');
+  // A zero cost is a consignment not yet priced, not free freight: record nothing and retry.
+  if (matched.some(c => costMinor(c.Cost) === 0n)) throw new Error('gosweetspot: consignment has no cost yet; no cost recorded');
   if (Number.isNaN(observedAt.getTime()) || observedAt.getTime() > Date.now()) throw new Error('gosweetspot: observation time must not be in the future');
   const ids = matched.map(c => String(c.ConsignmentId)).sort();
   const total = matched.reduce((sum, c) => sum + costMinor(c.Cost), 0n);
   if (total > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('gosweetspot: cost outside supported range');
   return {
     carrierConnection: `gosweetspot:${connection.siteId}`,
-    quoteKey: `consignment:${ids.join('+')}`,
+    // One evidence row per observation: a re-sync after expiry records a new observation
+    // rather than conflicting with the expired one.
+    quoteKey: `consignment:${ids.join('+')}@${observedAt.toISOString()}`,
     currency: connection.currency,
     costMinor: total,
     observedAt: observedAt.toISOString(),
@@ -62,7 +73,7 @@ export function consignmentEvidence(raw: unknown, trackingNumbers: string[], con
 }
 
 /** Records the shipment's carrier cost for a Shopify dispatch through the service-only
- * record_carrier_cost RPC (idempotent per consignment set; changed content is refused).
+ * record_carrier_cost RPC (idempotent per observation; changed content is refused).
  * Internal adapter: callers supply a verified business/source context, never a browser. */
 export async function recordGoSweetSpotShipment(context: DispatchContext, dispatchId: string, response: unknown,
   connection: unknown, observedAt = new Date()) {

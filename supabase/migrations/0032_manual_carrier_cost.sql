@@ -4,8 +4,10 @@
 --
 -- This is the one way an amount typed by a person becomes carrier evidence, so it is a
 -- distinct, attributable operator action, never a draft input:
---   * the operator's own `carriers.record_manual_cost` grant is required. It is NOT
---     seeded at boot; a business turns it on deliberately. Action pause applies;
+--   * the business's `carriers.record_manual_cost` operator grant is required. It is NOT
+--     seeded at boot; a business turns it on deliberately, and then any signed-in operator
+--     of that business may use it (it is not per person). A grant set to approve_required
+--     is refused, since no approval step exists for it yet. Action pause applies;
 --   * only a dismissed job, unchanged since the page loaded, whose dispatch is still
 --     eligible, unbilled and without an unexpired cost;
 --   * the amount is a decimal string with at most two places, excluding tax, in the
@@ -16,7 +18,7 @@
 --     the manual connection, so the invoice calculation shows where the cost came from.
 alter table job_runs drop constraint job_runs_outcome_check;
 alter table job_runs add constraint job_runs_outcome_check
-  check(outcome in ('succeeded','retry','blocked','lease_expired','operator_retry','operator_dismiss','operator_cost'));
+  check(outcome in ('succeeded','retry','blocked','lease_expired','not_needed','operator_retry','operator_dismiss','operator_cost'));
 
 create function record_manual_carrier_cost(p_org_id uuid,p_job_key text,p_expected_updated_at timestamptz,
   p_actor_id uuid,p_actor_email text,p_reason text,p_cost text,p_reference text) returns uuid
@@ -28,16 +30,14 @@ begin
   if coalesce(trim(p_cost),'') !~ '^[0-9]{1,9}(\.[0-9]{1,2})?$' then raise exception 'carrier cost must be an amount with at most two decimals'; end if;
   v_minor:=(trim(p_cost)::numeric*100)::bigint;
   perform assert_action_authority(p_org_id,'operator','carriers.record_manual_cost');
+  if exists(select 1 from tool_grants where org_id=p_org_id and agent_name='operator' and tool_name='carriers.record_manual_cost'
+    and risk='approve_required') then raise exception 'manual carrier cost approval is not built; its grant must not require approval'; end if;
   select * into j from scheduled_jobs where org_id=p_org_id and job_key=p_job_key for update;
   if not found then raise exception 'job not found'; end if;
   if j.updated_at is distinct from p_expected_updated_at then raise exception 'job changed since it was loaded'; end if;
   if j.kind<>'carrier_cost_sync' or j.state<>'dismissed' then raise exception 'only dismissed jobs can take a manual carrier cost'; end if;
+  if not carrier_cost_job_needed(j.org_id,j.source_id,j.dispatch_id) then raise exception 'job no longer needed'; end if;
   select * into d from dispatches where org_id=j.org_id and source_id=j.source_id and id=j.dispatch_id;
-  if not found or d.state<>'eligible'
-    or exists(select 1 from invoice_calculation_snapshots x join dispatches o on o.id=x.dispatch_id
-      where x.org_id=d.org_id and x.source_id=d.source_id and o.order_key=d.order_key)
-    or exists(select 1 from carrier_cost_evidence e where e.org_id=d.org_id and e.dispatch_id=d.id and e.expires_at>v_at)
-  then raise exception 'job no longer needed'; end if;
   select o.currency into v_currency from shopify_fulfillments f join shopify_orders o on o.id=f.shopify_order_id
     where f.org_id=d.org_id and f.dispatch_id=d.id;
   if v_currency is null then raise exception 'order currency unknown'; end if;

@@ -18,26 +18,49 @@ create index scheduled_jobs_due on scheduled_jobs(org_id,kind,next_attempt_at) w
 create table job_runs (
   id uuid primary key default gen_random_uuid(), org_id uuid not null, job_key text not null,
   attempt integer not null, started_at timestamptz not null, finished_at timestamptz not null default now(),
-  outcome text not null check(outcome in ('succeeded','retry','blocked','lease_expired')), detail jsonb not null default '{}',
+  outcome text not null check(outcome in ('succeeded','retry','blocked','lease_expired','not_needed')), detail jsonb not null default '{}',
   foreign key(org_id,job_key) references scheduled_jobs(org_id,job_key)
 );
 create trigger job_runs_immutable before update or delete on job_runs for each row execute function reject_dispatch_history_mutation();
 
--- Work discovery: an eligible Shopify dispatch that is the first of its order still to bill,
--- has tracking numbers to look up, and no unexpired stored carrier cost. Idempotent; a
--- finished job whose recorded cost has since expired is re-armed while the part is unbilled.
+-- The one precondition for carrier cost work, shared by discovery, claims, operator retry
+-- and manual cost: the dispatch is still eligible, its order is still unbilled (only the
+-- first part carries freight, PLAN D15) and it has no unexpired stored carrier cost.
+create function carrier_cost_job_needed(p_org_id uuid,p_source_id uuid,p_dispatch_id uuid) returns boolean
+language sql stable security definer set search_path=pg_catalog,public as $$
+  select exists(select 1 from dispatches d where d.org_id=p_org_id and d.source_id=p_source_id and d.id=p_dispatch_id and d.state='eligible'
+    and not exists(select 1 from invoice_calculation_snapshots x join dispatches o on o.id=x.dispatch_id
+      where x.org_id=d.org_id and x.source_id=d.source_id and o.order_key=d.order_key)
+    and not exists(select 1 from carrier_cost_evidence e where e.org_id=d.org_id and e.dispatch_id=d.id and e.expires_at>clock_timestamp()))
+$$;
+
+-- Record that a job's work is no longer needed and close it as done, with its prior state.
+create function close_unneeded_job(j scheduled_jobs) returns void
+language plpgsql security definer set search_path=pg_catalog,public as $$
+begin
+  insert into job_runs(org_id,job_key,attempt,started_at,outcome,detail)
+    values(j.org_id,j.job_key,j.attempts,clock_timestamp(),'not_needed',jsonb_build_object('previous_state',j.state,'previous_error',j.last_error));
+  update scheduled_jobs set state='succeeded',last_error=null,updated_at=clock_timestamp() where org_id=j.org_id and job_key=j.job_key;
+end $$;
+
+-- Work discovery: a needed dispatch of an enabled Shopify source with tracking numbers to
+-- look up. Idempotent; a finished job whose recorded cost has since expired is re-armed
+-- while the part is unbilled. A waiting or stopped job whose dispatch no longer needs a cost
+-- (it has one, its order is invoiced, or it is no longer eligible) is closed, so it neither
+-- calls the carrier again nor waits for a person.
 create function discover_carrier_cost_jobs(p_org_id uuid) returns integer
 language plpgsql security definer set search_path=pg_catalog,public as $$
-declare v_count integer;
+declare v_count integer; j scheduled_jobs%rowtype;
 begin
+  for j in select * from scheduled_jobs where org_id=p_org_id and kind='carrier_cost_sync' and state in ('pending','failed','blocked','quarantined')
+    and not carrier_cost_job_needed(org_id,source_id,dispatch_id) for update skip locked loop
+    perform close_unneeded_job(j);
+  end loop;
   with due as (
     select d.org_id,d.source_id,d.id from dispatches d
     join dispatch_sources s on s.org_id=d.org_id and s.id=d.source_id and s.provider='shopify' and s.enabled
     join shopify_fulfillments f on f.org_id=d.org_id and f.dispatch_id=d.id and cardinality(f.tracking_numbers)>0
-    where d.org_id=p_org_id and d.state='eligible'
-      and not exists(select 1 from invoice_calculation_snapshots x join dispatches o on o.id=x.dispatch_id
-        where x.org_id=d.org_id and x.source_id=d.source_id and o.order_key=d.order_key)
-      and not exists(select 1 from carrier_cost_evidence e where e.org_id=d.org_id and e.dispatch_id=d.id and e.expires_at>clock_timestamp())
+    where d.org_id=p_org_id and carrier_cost_job_needed(d.org_id,d.source_id,d.id)
   ), ins as (
     insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id)
       select org_id,'carrier-cost:'||id,'carrier_cost_sync',source_id,id from due
@@ -49,7 +72,9 @@ begin
 end $$;
 
 -- Lease the next due job of a kind. Expired leases (a crashed worker) are recorded and the
--- job is claimed again; jobs past the attempt limit are quarantined for a person.
+-- job is claimed again; jobs past the attempt limit are quarantined for a person. While
+-- business actions are paused nothing is claimed, so no carrier is called and no evidence
+-- is written; a due job that is no longer needed is closed instead of run.
 create function claim_scheduled_job(p_org_id uuid,p_kind text) returns scheduled_jobs
 language plpgsql security definer set search_path=pg_catalog,public as $$
 declare j scheduled_jobs%rowtype;
@@ -60,9 +85,14 @@ begin
     update scheduled_jobs set state=case when attempts>=8 then 'quarantined' else 'failed' end,lease_token=null,lease_until=null,
       last_error='lease expired before the run finished',updated_at=now() where org_id=j.org_id and job_key=j.job_key;
   end loop;
-  select * into j from scheduled_jobs where org_id=p_org_id and kind=p_kind and state in ('pending','failed','blocked')
-    and next_attempt_at<=clock_timestamp() order by next_attempt_at,job_key for update skip locked limit 1;
-  if not found then return null; end if;
+  if coalesce((select paused from action_controls where org_id=p_org_id),false) then return null; end if;
+  loop
+    select * into j from scheduled_jobs where org_id=p_org_id and kind=p_kind and state in ('pending','failed','blocked')
+      and next_attempt_at<=clock_timestamp() order by next_attempt_at,job_key for update skip locked limit 1;
+    if not found then return null; end if;
+    exit when j.kind<>'carrier_cost_sync' or carrier_cost_job_needed(j.org_id,j.source_id,j.dispatch_id);
+    perform close_unneeded_job(j);
+  end loop;
   update scheduled_jobs set state='running',attempts=attempts+1,lease_token=gen_random_uuid(),lease_until=clock_timestamp()+interval '5 minutes',
     updated_at=clock_timestamp() where org_id=j.org_id and job_key=j.job_key returning * into j;
   return j;
@@ -100,12 +130,19 @@ do $$ declare t text;r text;f regprocedure; begin
     end loop;
   end loop;
   for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace
-    and proname in ('discover_carrier_cost_jobs','claim_scheduled_job','finish_scheduled_job') loop
+    and proname in ('carrier_cost_job_needed','discover_carrier_cost_jobs','claim_scheduled_job','finish_scheduled_job') loop
     execute format('revoke all on function %s from public',f);
     foreach r in array array['anon','authenticated','service_role'] loop
       if exists(select 1 from pg_roles where rolname=r) then execute format('revoke all on function %s from %I',f,r);
         if r='service_role' then execute format('grant execute on function %s to service_role',f); end if;
       end if;
     end loop;
+  end loop;
+end $$;
+-- Internal to discovery and claims; no role calls it directly.
+revoke all on function close_unneeded_job(scheduled_jobs) from public;
+do $$ declare r text; begin
+  foreach r in array array['anon','authenticated','service_role'] loop
+    if exists(select 1 from pg_roles where rolname=r) then execute format('revoke all on function close_unneeded_job(scheduled_jobs) from %I',r); end if;
   end loop;
 end $$;

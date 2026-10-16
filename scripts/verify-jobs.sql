@@ -215,3 +215,97 @@ begin
   perform pg_temp.jobs_assert(not has_function_privilege('authenticated','record_manual_carrier_cost(uuid,text,timestamptz,uuid,text,text,text,text)','execute')
     and has_function_privilege('service_role','record_manual_carrier_cost(uuid,text,timestamptz,uuid,text,text,text,text)','execute'),'manual cost is service-only');
 end $$;
+
+-- Pause, obsolete jobs, re-observation and grant tiers: a second synthetic business.
+do $$
+declare
+  company uuid:='68000000-0000-4000-8000-000000000001'; account uuid:='68000000-0000-4000-8000-000000000002';
+  actor uuid:='68000000-0000-4000-8000-0000000000aa'; other_job text;
+  source uuid; v uuid; rev timestamptz:='2026-10-02T09:00:00+13:00'; o uuid; q uuid; d uuid; a uuid; b uuid; c uuid; part uuid; inv uuid;
+  j scheduled_jobs; ev1 uuid; ev2 uuid;
+  line jsonb:='[{"source_line_key":"1","order_line_key":"1","item_key":"WIDGET","quantity":1,"ordered_quantity":2}]';
+begin
+  insert into orgs(id,slug,display_name) values(company,'jobs-fixture-2','Synthetic jobs two');
+  insert into accounts(id,org_id,name) values(account,company,'Synthetic retailer');
+  insert into shopify_customers(org_id,shopify_customer_id,raw,account_id) values(company,'cust','{}',account);
+  source:=bind_shopify_dispatch_source(company,'jobs-fixture-2.myshopify.com');
+  v:=save_pricing_version(company,0,jsonb_build_object('schemaVersion',1,'businessId',company,'version','v1'),'fixture','jobs fixture');
+  insert into shopify_orders(org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(company,'p','cust','NZD',0,0,'{}',rev) returning id into o;
+  insert into shopify_orders(org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(company,'q','cust','NZD',0,0,'{}',rev) returning id into q;
+  foreach d in array array[gen_random_uuid(),gen_random_uuid(),gen_random_uuid()] loop
+    d:=project_dispatch(company,source,'p-'||d::text,(case when a is null or b is null then o else q end)::text,rev,'succeeded',null,line,null,'{}',rev);
+    insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
+      values(company,(select source_dispatch_key from dispatches where id=d),(select order_key::uuid from dispatches where id=d),'success',array['SYN-'||left(d::text,8)],'{}',rev,d);
+    if a is null then a:=d; elsif b is null then b:=d; else c:=d; end if;
+  end loop;
+  perform pg_temp.jobs_assert(discover_carrier_cost_jobs(company)=3,'three needed dispatches');
+
+  -- Paused business actions stop the worker: nothing is claimed, so no carrier is called.
+  perform set_action_pause(company,true,'probe','probe pause');
+  perform pg_temp.jobs_assert((claim_scheduled_job(company,'carrier_cost_sync')).job_key is null,'nothing claimed while paused');
+  perform set_action_pause(company,false,'probe','probe resume');
+
+  -- A due job whose dispatch has since been costed is closed on claim, not run.
+  perform record_carrier_cost(company,source,a,'gosweetspot:synthetic','consignment:1@'||rev,'NZD',700,rev,'2099-01-01T00:00:00Z','{}');
+  update scheduled_jobs set next_attempt_at=now()-interval '1 hour' where org_id=company and dispatch_id=a;
+  update scheduled_jobs set next_attempt_at=now()+interval '1 hour' where org_id=company and dispatch_id<>a;
+  perform pg_temp.jobs_assert((claim_scheduled_job(company,'carrier_cost_sync')).job_key is null,'an unneeded due job is not leased');
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and dispatch_id=a)
+    and exists(select 1 from job_runs r join scheduled_jobs s using(org_id,job_key) where s.org_id=company and s.dispatch_id=a and r.outcome='not_needed'),
+    'closed as no longer needed, with a recorded run');
+
+  -- Stopped jobs whose work is gone are closed by discovery instead of waiting for a person:
+  -- b's order is invoiced by its sibling, c's order (q) is invoiced.
+  update scheduled_jobs set state='quarantined',attempts=8,last_error='HTTP 503' where org_id=company and dispatch_id=b;
+  update scheduled_jobs set state='blocked',last_error='GOSWEETSPOT_SITE_ID must be set' where org_id=company and dispatch_id=c;
+  part:=claim_dispatch(company,source,c,rev,'bill:'||c);
+  insert into invoices(org_id,account_id,invoice_number,state,currency,subtotal_cents,tax_cents,total_cents)
+    values(company,account,'JOB2-1A','draft','NZD',0,0,0) returning id into inv;
+  insert into invoice_calculation_snapshots(org_id,invoice_id,part_id,source_id,dispatch_id,source_revision,pricing_version_id,snapshot,content_hash,document)
+    values(company,inv,part,source,c,rev,v,'{}','x','{}');
+  perform pg_temp.jobs_assert((select state='quarantined' from scheduled_jobs where org_id=company and dispatch_id=b),'b still needed before its order is billed');
+  part:=claim_dispatch(company,source,a,rev,'bill:'||a);
+  insert into invoices(org_id,account_id,invoice_number,state,currency,subtotal_cents,tax_cents,total_cents)
+    values(company,account,'JOB2-2A','draft','NZD',0,0,0) returning id into inv;
+  insert into invoice_calculation_snapshots(org_id,invoice_id,part_id,source_id,dispatch_id,source_revision,pricing_version_id,snapshot,content_hash,document)
+    values(company,inv,part,source,a,rev,v,'{}','x','{}');
+  perform discover_carrier_cost_jobs(company);
+  perform pg_temp.jobs_assert((select count(*)=2 from scheduled_jobs s where org_id=company and dispatch_id in (b,c) and state='succeeded'
+    and exists(select 1 from job_runs r where r.org_id=s.org_id and r.job_key=s.job_key and r.outcome='not_needed'
+      and r.detail->>'previous_state' in ('quarantined','blocked'))),'quarantined and blocked jobs closed once their work is gone');
+  perform pg_temp.jobs_assert(not has_function_privilege('service_role','close_unneeded_job(scheduled_jobs)','execute'),'closing is internal');
+
+  -- A cost that expired before billing is observed again as new evidence, not a replay conflict.
+  insert into shopify_orders(org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(company,'r','cust','NZD',0,0,'{}',rev) returning id into o;
+  d:=project_dispatch(company,source,'r-1',o::text,rev,'succeeded',null,line,null,'{}',rev);
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
+    values(company,'r-1',o,'success',array['SYN-R1'],'{}',rev,d);
+  ev1:=record_carrier_cost(company,source,d,'gosweetspot:synthetic','consignment:9@2026-09-01T00:00:00.000Z','NZD',800,'2026-09-01T00:00:00Z','2026-09-02T00:00:00Z','{}');
+  perform pg_temp.jobs_assert(discover_carrier_cost_jobs(company)=1 and carrier_cost_job_needed(company,source,d),'expired cost makes the dispatch due again');
+  ev2:=record_carrier_cost(company,source,d,'gosweetspot:synthetic','consignment:9@'||to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'NZD',800,now(),now()+interval '30 days','{}');
+  perform pg_temp.jobs_assert(ev1<>ev2 and not carrier_cost_job_needed(company,source,d)
+    and (select id from carrier_cost_evidence where org_id=company and dispatch_id=d order by observed_at desc,recorded_at desc limit 1)=ev2,
+    'the new observation is the latest evidence');
+
+  -- Manual cost is refused when its grant is set to require approval (no approval step exists).
+  select * into j from scheduled_jobs where org_id=company and dispatch_id=b;
+  insert into shopify_orders(org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(company,'s','cust','NZD',0,0,'{}',rev) returning id into o;
+  d:=project_dispatch(company,source,'s-1',o::text,rev,'succeeded',null,line,null,'{}',rev);
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
+    values(company,'s-1',o,'success',array['SYN-S1'],'{}',rev,d);
+  perform discover_carrier_cost_jobs(company);
+  update scheduled_jobs set state='dismissed' where org_id=company and dispatch_id=d returning * into j;
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','carriers.record_manual_cost','approve_required');
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','hand courier','12.50',null),
+    '%%must not require approval%%');
+  perform pg_temp.jobs_assert(not exists(select 1 from carrier_cost_evidence where org_id=company and dispatch_id=d),'refused manual cost records nothing');
+
+  -- Another business's job key is not found under this business's authority.
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.retry','notify');
+  select job_key into other_job from scheduled_jobs where org_id='67000000-0000-4000-8000-000000000001' limit 1;
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,other_job,now(),actor,'ops@example.test','not mine'),'%%job not found%%');
+end $$;

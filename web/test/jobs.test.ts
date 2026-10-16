@@ -33,7 +33,9 @@ test('due work the worker has not picked up for over 10 minutes is overdue', () 
     job('dead-lease', 'running', { lease_until: at(-15) }),
     job('stopped', 'quarantined', { next_attempt_at: at(-600) }),
   ], [{ job_key: 'late', attempt: 1, outcome: 'retry', finished_at: at(-30), detail: {} },
-      { job_key: 'x', attempt: 1, outcome: 'succeeded', finished_at: at(-20), detail: {} }], now);
+      { job_key: 'x', attempt: 1, outcome: 'succeeded', finished_at: at(-20), detail: {} },
+      // An operator action is not the worker running.
+      { job_key: 'x', attempt: 1, outcome: 'operator_retry', finished_at: at(-1), detail: {} }], now);
   assert.deepEqual(s.overdue.map(j => j.job_key), ['late', 'dead-lease']);
   assert.equal(s.lastRunAt, at(-20));
 });

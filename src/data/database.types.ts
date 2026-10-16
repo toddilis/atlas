@@ -2351,6 +2351,7 @@ export type Database = {
           source_id: string
           state: string
           updated_at: string
+          close_unneeded_job: undefined | null
         }
         Insert: {
           attempts?: number
@@ -2981,6 +2982,10 @@ export type Database = {
         Args: { p_connection_key: string; p_org_id: string }
         Returns: string
       }
+      carrier_cost_job_needed: {
+        Args: { p_dispatch_id: string; p_org_id: string; p_source_id: string }
+        Returns: boolean
+      }
       claim_bound_action: {
         Args: {
           p_actor: string
@@ -3028,6 +3033,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      close_unneeded_job: {
+        Args: { j: Database["public"]["Tables"]["scheduled_jobs"]["Row"] }
+        Returns: undefined
       }
       compute_gst_cents: {
         Args: { p_rate_bps: number; p_subtotal_cents: number }

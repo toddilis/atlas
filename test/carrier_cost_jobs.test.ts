@@ -28,7 +28,7 @@ test('each claimed job is finished with the outcome of its sync', async () => {
     return { evidenceId: 'ev-1', costMinor: '858' };
   };
   const result = await runCarrierCostJobs(ORG, { store, sync });
-  assert.deepEqual(result, { discovered: 4, succeeded: 1, retrying: 1, blocked: 1, quarantined: 1 });
+  assert.deepEqual(result, { discovered: 4, succeeded: 1, retrying: 1, blocked: 1, quarantined: 1, unfinished: 0 });
   assert.deepEqual(finished.map(f => f.outcome), ['succeeded', 'blocked', 'retry', 'retry']);
   assert.deepEqual(finished[0]?.detail, { evidence_id: 'ev-1', cost_minor: '858' });
   assert.deepEqual(finished[1]?.detail, { error: 'GOSWEETSPOT_SITE_ID must be set' });
@@ -42,14 +42,27 @@ test('a pass runs at most the limit and stops when nothing is due', async () => 
   assert.equal(finished.length, 5);
 });
 
+test('a run that cannot be finished does not stop the other due jobs', async () => {
+  const { store, finished } = fakeStore(3);
+  const finish = store.finish;
+  store.finish = async (org, j, outcome, detail) => {
+    if (j.job_key === 'carrier-cost:d1') throw { message: 'stale job lease', code: 'P0001' };
+    return finish(org, j, outcome, detail);
+  };
+  const result = await runCarrierCostJobs(ORG, { store, sync: async () => ({ evidenceId: 'ev', costMinor: '1' }) });
+  assert.equal(result.unfinished, 1); assert.equal(result.succeeded, 2);
+  assert.deepEqual(finished.map(f => f.key), ['carrier-cost:d2', 'carrier-cost:d3']);
+});
 test('failures a person must fix are blocked; transient ones are retried', () => {
   for (const m of ['GOSWEETSPOT_ACCESS_KEY must be set', 'gosweetspot: unexpected shipments response shape; no cost recorded',
     'gosweetspot: response does not cover every tracking number of the dispatch', 'gosweetspot: the dispatch has no tracking number to look up',
-    'gosweetspot: shipments lookup failed with HTTP 401', 'gosweetspot: shipments lookup failed with HTTP 403'])
+    'gosweetspot: shipments lookup failed with HTTP 401', 'gosweetspot: shipments lookup failed with HTTP 403',
+    'gosweetspot: conflicting duplicate consignment in response'])
     assert.equal(classify(new Error(m)), 'blocked', m);
   // Supabase RPC errors are plain objects carrying a message.
   assert.equal(classify({ message: 'carrier cost replay conflicts with recorded evidence', code: 'P0001' }), 'blocked');
-  for (const m of ['gosweetspot: shipments lookup failed with HTTP 503', 'fetch failed', 'HTTP 429'])
+  for (const m of ['gosweetspot: shipments lookup failed with HTTP 503', 'fetch failed', 'HTTP 429',
+    'gosweetspot: consignment has no cost yet; no cost recorded', 'The operation was aborted due to timeout'])
     assert.equal(classify(new Error(m)), 'retry', m);
 });
 

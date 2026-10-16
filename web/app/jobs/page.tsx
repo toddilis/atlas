@@ -251,7 +251,7 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions, manualCos
             {runs.map((run, i) => (
               <li key={i} className="flex gap-3">
                 <span className="tabular-nums text-zinc-500 whitespace-nowrap">{formatDateTime(run.finished_at)}</span>
-                <span className="whitespace-nowrap">{run.outcome === 'operator_retry' ? 'retried by operator' : run.outcome === 'operator_dismiss' ? 'dismissed by operator' : run.outcome === 'operator_cost' ? 'cost entered by operator' : <>#{run.attempt} {run.outcome}</>}</span>
+                <span className="whitespace-nowrap">{run.outcome === 'operator_retry' ? 'retried by operator' : run.outcome === 'operator_dismiss' ? 'dismissed by operator' : run.outcome === 'operator_cost' ? 'cost entered by operator' : run.outcome === 'not_needed' ? 'closed: no longer needed' : <>#{run.attempt} {run.outcome}</>}</span>
                 <span className="font-mono text-zinc-600 dark:text-zinc-400 break-words">
                   {run.outcome === 'operator_retry' || run.outcome === 'operator_dismiss' || run.outcome === 'operator_cost'
                     ? `${String(run.detail?.actor_email ?? '')}: ${String(run.detail?.reason ?? '')}`

@@ -218,9 +218,21 @@ does not cover Shopify ingestion scheduling, approval-expiry sweeps or rollups.
   - its order has no invoice snapshot yet;
   - it has no unexpired carrier cost.
   Discovery is idempotent. A succeeded job is re-armed when its cost has expired and the
-  order is still unbilled.
-- `claim_scheduled_job` leases one due job (skip locked, 5 minutes). If a worker crashes,
-  its lease expires; the expiry is recorded in `job_runs` and the job is claimed again.
+  order is still unbilled. The precondition is one SQL function, `carrier_cost_job_needed`,
+  shared by discovery, claims, retry and manual cost. A pending, failed, blocked or
+  quarantined job whose dispatch no longer needs a cost (it has one, its order is invoiced,
+  or it is no longer eligible) is closed as done with a `not_needed` run, so it neither
+  calls GoSweetSpot again nor waits for a person.
+- `claim_scheduled_job` leases one due job (skip locked, 5 minutes). It claims nothing while
+  business actions are paused, and closes a due job that is no longer needed instead of
+  leasing it. If a worker crashes, its lease expires; the expiry is recorded in `job_runs`
+  and the job is claimed again. A GoSweetSpot lookup times out after 30 seconds, well inside
+  the lease, and a run that cannot be finished does not stop the other due jobs.
+- Each sync records a new observation: its quote key is the consignment ids plus the
+  observation time. A re-sync after a cost expires therefore adds evidence instead of
+  conflicting with the expired row. A consignment reported with a zero cost is treated as
+  not yet priced (retried), never as free freight; identical duplicate consignments count
+  once and conflicting ones are blocked.
   `finish_scheduled_job` accepts only the current lease holder. It sets the outcome as
   follows:
   - transient errors retry with a backoff of 2, 4, 8 … minutes, capped at 6 hours;
@@ -348,8 +360,10 @@ How it works:
   The form posts to `/jobs/cost`, and the database function is `record_manual_carrier_cost`
   (0032, service-only).
 - **Checks.** The database requires:
-  - the operator's `carriers.record_manual_cost` grant. Boot does **not** seed it; a
-    business turns it on deliberately, and until then the form explains it is off;
+  - the business's `carriers.record_manual_cost` operator grant. Boot does **not** seed it;
+    a business turns it on deliberately, and until then the form explains it is off. Once
+    on, any signed-in operator of that business may use it: it is not per person. A grant
+    set to `approve_required` is refused, because no approval step exists for it yet;
   - the action pause to be off;
   - a dismissed job, unchanged since the page loaded;
   - a dispatch that is still eligible, in an unbilled order, with no unexpired cost;
@@ -367,7 +381,10 @@ How it works:
 
 Evidence:
 
+- `verify-pricing.sql` drafts a later order's first part from a manual cost end to end:
+  the part bills 10.00 freight and its snapshot names `manual:operator`.
 - `verify-jobs.sql` tests:
+  - a grant that requires approval;
   - no grant, malformed amounts (`12.345`, `-1`, `1,50`, `1e3`, `.5`, ten digits), no
     reason, a stale view, paused, wrong state, and an already-costed dispatch;
   - that the stored evidence is exact and is the dispatch's latest;

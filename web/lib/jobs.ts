@@ -39,7 +39,9 @@ const ADVICE: Array<[RegExp, string]> = [
   [/does not cover every tracking number/, 'GoSweetSpot has no consignment for one of this dispatch\'s Shopify tracking numbers. Check the shipment was booked in GoSweetSpot under that tracking number.'],
   [/no tracking number|no Shopify fulfillment/, 'The Shopify fulfillment has no tracking number. Add it in Shopify; the next sync picks it up.'],
   [/two decimals|outside supported range/, 'GoSweetSpot reported a cost Atlas will not round. The adapter needs a developer.'],
-  [/replay conflicts/, 'GoSweetSpot now reports a different cost for consignments already recorded. Atlas kept the recorded cost; check the shipment in GoSweetSpot.'],
+  [/replay conflicts/, 'This GoSweetSpot observation was already recorded with different content, so nothing new was recorded. Check the shipment in GoSweetSpot.'],
+  [/conflicting duplicate consignment/, 'GoSweetSpot returned two different records for one consignment, so no cost was recorded. Check the shipment in GoSweetSpot.'],
+  [/no cost yet/, 'GoSweetSpot has not priced this consignment yet (it reports a zero cost), so nothing was recorded. It is retried automatically.'],
   [/lease expired/, 'The worker stopped during this run. It is retried automatically.'],
 ];
 export function adviceFor(error: string | null): string | null {
@@ -84,8 +86,12 @@ export interface JobsSummary {
   dismissed: JobRow[];
   /** Jobs that should have been picked up by now but were not. */
   overdue: JobRow[];
+  /** The worker's own latest outcome; operator actions do not show that the worker runs. */
   lastRunAt: string | null;
 }
+
+/** Outcomes the worker records itself (finish, lease expiry, closing an unneeded job). */
+export const WORKER_OUTCOMES = new Set(['succeeded', 'retry', 'blocked', 'lease_expired', 'not_needed']);
 
 export function summarize(jobs: JobRow[], runs: JobRunRow[], now: Date): JobsSummary {
   const counts: Record<JobState, number> = { pending: 0, running: 0, succeeded: 0, failed: 0, blocked: 0, quarantined: 0, dismissed: 0 };
@@ -105,7 +111,8 @@ export function summarize(jobs: JobRow[], runs: JobRunRow[], now: Date): JobsSum
     overdue: jobs.filter(j =>
       (['pending', 'failed', 'blocked'].includes(j.state) && new Date(j.next_attempt_at).getTime() < cutoff)
       || (j.state === 'running' && j.lease_until != null && new Date(j.lease_until).getTime() < cutoff)),
-    lastRunAt: runs.reduce<string | null>((latest, r) => (!latest || r.finished_at > latest ? r.finished_at : latest), null),
+    lastRunAt: runs.filter(r => WORKER_OUTCOMES.has(r.outcome))
+      .reduce<string | null>((latest, r) => (!latest || r.finished_at > latest ? r.finished_at : latest), null),
   };
 }
 
@@ -146,7 +153,7 @@ export type ActionOutcome = keyof typeof ACTION_OUTCOMES;
 
 const ACTION_ERRORS: Array<[RegExp, ActionOutcome]> = [
   [/business actions paused/, 'paused'],
-  [/tool entitlement missing or revoked|agent disabled/, 'not_allowed'],
+  [/tool entitlement missing or revoked|agent disabled|grant must not require approval/, 'not_allowed'],
   [/job changed since it was loaded/, 'changed'],
   [/only (blocked|dismissed)/, 'not_stopped'],
   [/at most two decimals/, 'cost_format'],

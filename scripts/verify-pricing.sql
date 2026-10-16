@@ -48,7 +48,7 @@ declare
   exempt jsonb:=current_setting('test.pricing_exempt')::jsonb; swap jsonb:=current_setting('test.pricing_swap')::jsonb;
   forged jsonb; variant jsonb; quote jsonb; version_id uuid; next_version uuid; source uuid; plain uuid;
   da uuid; db uuid; dc uuid; de uuid; dx uuid; dy uuid; dz uuid; dw uuid; ds uuid; ra jsonb; rb jsonb; rc jsonb; retry jsonb; saved jsonb; part record;
-  order600 uuid:=gen_random_uuid(); order700 uuid:=gen_random_uuid(); order800 uuid:=gen_random_uuid(); fz uuid; fe uuid;
+  order600 uuid:=gen_random_uuid(); order700 uuid:=gen_random_uuid(); order800 uuid:=gen_random_uuid(); fz uuid; fe uuid; manual uuid;
   revision timestamptz:='2026-10-02T09:00:00+13:00'; late_revision timestamptz:='2026-10-04T09:00:00+13:00';
   lines jsonb:='[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":40,"ordered_quantity":100}]';
   whole jsonb:='[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":10,"ordered_quantity":10}]';
@@ -258,11 +258,24 @@ begin
   perform pg_temp.pricing_assert(retry->>'invoiceId'=ra->>'invoiceId','retry does not recalculate after price change');
   perform pg_temp.pricing_assert((select snapshot=saved from invoice_calculation_snapshots where id=(ra->>'snapshotId')::uuid),'historical snapshot unchanged');
   dc:=project_dispatch(company,source,'dispatch-c',order200::text,late_revision,'succeeded',null,jsonb_set(lines,'{0,quantity}','100'),null,'{}',late_revision);
-  late_v1:=pg_temp.bind(late_v1,dc); late_v2:=pg_temp.bind(late_v2,dc); quote:=late_v2#>'{input,carrier}';
-  perform record_carrier_cost(company,source,dc,quote->>'connectionId',quote->>'quoteId','NZD',1000,(quote->>'observedAt')::timestamptz,(quote->>'expiresAt')::timestamptz,'{"synthetic":true}');
+  late_v1:=pg_temp.bind(late_v1,dc); late_v2:=pg_temp.bind(late_v2,dc);
+  -- This shipment went by hand courier: an operator records its actual cost on the dismissed
+  -- carrier cost job (JOBS 0032), and the draft bills that stored manual cost like any other.
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at,dispatch_id)
+    values(company,'dispatch-c',order200,'success','{}',late_revision,dc);
+  insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id,state) values(company,'carrier-cost:'||dc,'carrier_cost_sync',source,dc,'dismissed');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','carriers.record_manual_cost','notify');
+  manual:=record_manual_carrier_cost(company,'carrier-cost:'||dc,(select updated_at from scheduled_jobs where org_id=company and job_key='carrier-cost:'||dc),
+    company,'ops@example.test','hand courier','10.00','REC-1');
+  quote:=(select jsonb_build_object('businessId',company,'connectionId',e.carrier_connection,'shipmentKey','dispatch-c','quoteId',e.quote_key,
+    'observedAt',to_jsonb(e.observed_at),'expiresAt',to_jsonb(e.expires_at),'currency',e.currency,'taxBasis','exclusive','cost',e.cost_minor::text)
+    from carrier_cost_evidence e where e.id=manual);
+  late_v2:=jsonb_set(jsonb_set(late_v2,'{input,carrier}',quote),'{freight,carrier}',quote);
   perform pg_temp.draft_refused(company,dc,version_id,late_v1,'%%stale or inactive pricing snapshot%%');
   perform pg_temp.draft_refused(company,dc,next_version,late_v1,'%%stale or inactive pricing snapshot%%');
   rc:=pg_temp.draft(company,dc,next_version,late_v2,'#synthetic-200');
+  perform pg_temp.pricing_assert((select snapshot#>>'{freight,carrier,connectionId}'='manual:operator' and snapshot#>>'{freight,amount}'='1000'
+    from invoice_calculation_snapshots where id=(rc->>'snapshotId')::uuid),'the part bills the manual cost and names its source');
   perform pg_temp.pricing_assert((select invoice_number like '%A' and total_cents=139150 from invoices where id=(rc->>'invoiceId')::uuid),'later order bills the v2 price');
   perform pg_temp.pricing_assert((select snapshot=saved from invoice_calculation_snapshots where id=(ra->>'snapshotId')::uuid),'part A still holds v1');
   perform pg_temp.pricing_reject(format('update invoices set due_at=now() where id=%L',ra->>'invoiceId'),'%%immutable%%');

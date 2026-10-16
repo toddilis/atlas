@@ -1,6 +1,7 @@
 import { supabase } from '../../data/supabase.js';
 import type { Json } from '../../data/database.types.js';
 import { syncGoSweetSpotCostFromEnv } from '../../integrations/gosweetspot/client.js';
+import { log } from '../log.js';
 
 // JOBS-01 runner for carrier cost sync. The database owns discovery, leases, backoff and
 // quarantine (0029); this loop only claims due jobs, runs the GoSweetSpot lookup and
@@ -17,7 +18,7 @@ export interface JobsStore {
 export type CostSync = (context: { orgId: string; sourceId: string }, dispatchId: string) => Promise<{ evidenceId: string | null; costMinor: string }>;
 
 const NEEDS_A_PERSON = [/^GOSWEETSPOT_/, /unexpected shipments response shape/, /does not cover every tracking number/,
-  /no tracking number/, /no Shopify fulfillment/, /two decimals/, /replay conflicts/, /HTTP 40[13]/];
+  /no tracking number/, /no Shopify fulfillment/, /two decimals/, /replay conflicts/, /conflicting duplicate consignment/, /HTTP 40[13]/];
 // Supabase RPC errors are plain objects with a message, not Error instances.
 const messageOf = (error: unknown) =>
   error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string' ? (error as { message: string }).message : String(error);
@@ -54,7 +55,7 @@ export const databaseJobs: JobsStore = {
 export async function runCarrierCostJobs(orgId: string, options: { limit?: number; store?: JobsStore; sync?: CostSync } = {}) {
   const store = options.store ?? databaseJobs;
   const sync = options.sync ?? syncGoSweetSpotCostFromEnv;
-  const result = { discovered: await store.discover(orgId), succeeded: 0, retrying: 0, blocked: 0, quarantined: 0 };
+  const result = { discovered: await store.discover(orgId), succeeded: 0, retrying: 0, blocked: 0, quarantined: 0, unfinished: 0 };
   for (let n = 0; n < (options.limit ?? 20); n++) {
     const job = await store.claim(orgId);
     if (!job) break;
@@ -65,7 +66,11 @@ export async function runCarrierCostJobs(orgId: string, options: { limit?: numbe
     } catch (e) {
       outcome = classify(e); detail = { error: messageOf(e) };
     }
-    const state = await store.finish(orgId, job, outcome, detail);
+    // A run that cannot be finished (its lease expired, or the database is unavailable) is
+    // left to lease expiry and recorded on the next pass; the other due jobs still run.
+    let state: string;
+    try { state = await store.finish(orgId, job, outcome, detail); }
+    catch (e) { log.error('jobs.finish_failed', { job_key: job.job_key, outcome, error: messageOf(e) }); result.unfinished++; continue; }
     if (state === 'succeeded') result.succeeded++; else if (state === 'quarantined') result.quarantined++;
     else if (state === 'blocked') result.blocked++; else result.retrying++;
   }
