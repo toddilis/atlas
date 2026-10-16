@@ -197,5 +197,6 @@ The response is accepted only in the documented shipment shape (`Consignments` w
 GoSweetSpot writes its connotes to the Shopify fulfillment as tracking numbers (confirmed by
 VICE, 16 October), which is the link the lookup matches on. Still to confirm with VICE's
 account: that the GET returns that shape (one webhook sample instead shows `TotalCost`), and
-the site id, key storage and cost currency. Nothing schedules the sync
+the site id and key storage. VICE's GoSweetSpot costs are in NZD (confirmed 16 October); that
+is VICE's connection setting (`currency: 'NZD'`), not a platform default. Nothing schedules the sync
 yet (JOBS-01), and no live call has been made.
