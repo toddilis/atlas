@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adviceFor, nextStep, runsByJob, summarize, type JobRow } from '../lib/jobs';
+import { adviceFor, isRetryOutcome, nextStep, RETRY_OUTCOMES, retryOutcomeFor, runsByJob, summarize, type JobRow } from '../lib/jobs';
 
 const now = new Date('2026-10-16T12:00:00Z');
 const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
@@ -71,4 +71,26 @@ test('attempt history is grouped per job, newest first', () => {
   ]);
   assert.deepEqual(runs.get('a')?.map(r => r.attempt), [2, 1]);
   assert.equal(runs.get('b')?.length, 1);
+});
+
+test('every database refusal of a retry maps to a fixed operator message', () => {
+  const cases: Array<[string, string]> = [
+    ['business actions paused', 'paused'],
+    ['tool entitlement missing or revoked', 'not_allowed'],
+    ['agent disabled', 'not_allowed'],
+    ['job changed since it was loaded', 'changed'],
+    ['only blocked or quarantined jobs can be retried', 'not_stopped'],
+    ['job no longer needed', 'not_needed'],
+    ['retry reason required', 'reason'],
+    ['job not found', 'not_found'],
+    ['connection reset', 'failed'],
+  ];
+  for (const [message, outcome] of cases) assert.equal(retryOutcomeFor(message), outcome, message);
+  assert.equal(RETRY_OUTCOMES.retried.ok, true);
+  assert.ok(Object.entries(RETRY_OUTCOMES).every(([k, v]) => k === 'retried' || !v.ok));
+});
+
+test('only known retry outcomes are shown from the URL', () => {
+  assert.equal(isRetryOutcome('retried'), true);
+  for (const v of ['<script>', 'toString', '__proto__', '', undefined, ['retried']]) assert.equal(isRetryOutcome(v), false, String(v));
 });

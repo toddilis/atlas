@@ -41,6 +41,8 @@ begin
     end loop;
   end loop;
 end $$;
+-- Console operators may retry stopped jobs in the fixture business only (boot seeds this grant).
+insert into tool_grants(org_id,agent_name,tool_name,risk) values('11111111-1111-4111-8111-111111111111','operator','jobs.retry','notify');
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';

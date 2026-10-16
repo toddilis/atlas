@@ -236,8 +236,7 @@ does not cover Shopify ingestion scheduling, approval-expiry sweeps or rollups.
   runs and service-only grants. `test/carrier_cost_jobs.test.ts` tests the runner and the
   classification.
 - Limits:
-  - A quarantined job has no retry button yet. Re-arming it needs a console action
-    behind the tool-grant boundary.
+  - Operators retry quarantined or blocked jobs from the console (see the next sections).
   - Live use still needs VICE's GoSweetSpot site id and one real response, to confirm the
     cost field.
 
@@ -261,6 +260,40 @@ checks what the operator sees and that the other business's job never appears.
 
 Limits:
 
-- There are no actions yet: no retry, dismiss or re-arm.
-- A quarantined job stays stopped until it is re-armed in the database.
 - Freshness is inferred from job runs. It is not a worker heartbeat.
+
+## 16 October: operator retry for stopped jobs
+
+Each job under **Needs a person** has a **Retry now** form that asks what was fixed. The
+form posts to `/jobs/retry`, which checks the operator's session, the allowlist and same
+origin, then calls `retry_scheduled_job` (0030, service-only). The database:
+
+- enforces the action pause and the operator's `operator → jobs.retry` tool grant. Boot
+  seeds the grant once; setting `enabled=false` revokes it and the page then explains that
+  retry is switched off;
+- refuses a retry when:
+  - the job changed since the page loaded (a stale tab or a double submit);
+  - the job is no longer blocked or quarantined;
+  - the reason or operator identity is missing;
+  - the dispatch no longer needs a cost (it has an unexpired cost, the order is invoiced,
+    or the dispatch is no longer eligible);
+- otherwise sets the job back to `pending` with its attempts reset, and records it in two
+  places:
+  - an `operator_retry` row in `job_runs`;
+  - a `jobs.retry` row in `audit_log`, with the operator, reason, previous state, previous
+    attempts and previous error.
+
+The console shows a fixed message for each outcome. Nothing from the URL is echoed back.
+
+Evidence:
+
+- `verify-jobs.sql` tests every refusal, the recorded evidence and the service-only grant.
+- The browser acceptance:
+  - retries the seeded quarantined job with a reason and sees it queued;
+  - replays the old form and gets "changed";
+  - checks a cross-site post is refused (403).
+
+Limits:
+
+- There is no dismiss action for a job that will never succeed.
+- Refused retries are shown to the operator but not written to `audit_log`.

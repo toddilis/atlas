@@ -3286,6 +3286,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      retry_scheduled_job: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_updated_at: string
+          p_job_key: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
+      }
       revoke_bound_action: {
         Args: {
           p_action_id: string

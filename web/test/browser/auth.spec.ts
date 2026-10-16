@@ -120,3 +120,45 @@ test('operator sees blocked and quarantined jobs with their reason, and no other
   await expect(page.getByText('OTHER-BUSINESS-SECRET-ERROR')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/jobs.png', fullPage: true });
 });
+
+test('operator retries a stopped job with a reason; a stale page cannot retry it again', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/jobs');
+  const quarantined = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job').filter({ hasText: 'TRK-QUARANTINED' });
+  await expect(quarantined).toContainText('quarantined');
+  // The form as loaded, kept to replay later as a stale page would.
+  const stale = {
+    job_key: await quarantined.locator('input[name=job_key]').inputValue(),
+    expected_updated_at: await quarantined.locator('input[name=expected_updated_at]').inputValue(),
+    reason: 'second click from an old tab',
+  };
+  await quarantined.getByRole('button', { name: 'Retry now' }).click();
+  await expect(page).toHaveURL(/\/jobs$/); // the browser refuses an empty reason before posting
+  await quarantined.getByLabel('Reason for retrying').fill('Booked the missing consignment in GoSweetSpot');
+  await quarantined.getByRole('button', { name: 'Retry now' }).click();
+  await expect(page).toHaveURL(/\/jobs\?retry=retried$/);
+  await expect(page.getByTestId('retry-notice')).toContainText('Job queued.');
+  await expect(page.getByRole('region', { name: 'Needs a person' }).getByText('TRK-QUARANTINED')).toHaveCount(0);
+  const queued = page.getByRole('region', { name: 'Queued and running' }).getByTestId('job').filter({ hasText: 'TRK-QUARANTINED' });
+  await expect(queued).toContainText('pending');
+  await expect(queued).toContainText('Not tried yet');
+
+  // Replaying the old form is refused by the database and says so; nothing changes.
+  await page.goto('/jobs');
+  await page.evaluate((fields) => {
+    const form = document.createElement('form');
+    form.method = 'post'; form.action = '/jobs/retry';
+    for (const [name, value] of Object.entries(fields)) {
+      const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = value; form.appendChild(input);
+    }
+    document.body.appendChild(form); form.submit();
+  }, stale);
+  await expect(page).toHaveURL(/\/jobs\?retry=changed$/);
+  await expect(page.getByTestId('retry-notice')).toContainText('This job changed after the page loaded. Nothing was retried');
+
+  // Another site cannot post the action with the operator's cookies.
+  const crossSite = await page.request.post('/jobs/retry', { headers: { Origin: 'https://attacker.invalid' }, form: stale });
+  expect(crossSite.status()).toBe(403);
+  await page.screenshot({ path: 'test-results/jobs-retried.png', fullPage: true });
+});

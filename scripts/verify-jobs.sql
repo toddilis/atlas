@@ -83,3 +83,44 @@ begin
   perform pg_temp.jobs_assert(not has_function_privilege('anon','claim_scheduled_job(uuid,text)','execute')
     and has_function_privilege('service_role','claim_scheduled_job(uuid,text)','execute'),'job functions are service-only');
 end $$;
+
+-- Operator retry (0030): entitlement, pause, identity, reason, stale view, state and current
+-- preconditions are enforced in the database; each retry is recorded in job_runs and audit_log.
+do $$
+declare
+  company uuid:='67000000-0000-4000-8000-000000000001'; actor uuid:='67000000-0000-4000-8000-0000000000aa';
+  j scheduled_jobs; p scheduled_jobs; call text;
+begin
+  select * into j from scheduled_jobs where org_id=company and state='quarantined';
+  call:=format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','site id fixed');
+  perform pg_temp.jobs_reject(call,'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.retry','notify');
+  perform set_action_pause(company,true,'probe','probe pause');
+  perform pg_temp.jobs_reject(call,'%%business actions paused%%');
+  perform set_action_pause(company,false,'probe','probe resume');
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test',' '),'%%retry reason required%%');
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,null,'ops@example.test','fixed'),'%%operator identity required%%');
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at-interval '1 second',actor,'ops@example.test','fixed'),'%%job changed since it was loaded%%');
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,'carrier-cost:none',j.updated_at,actor,'ops@example.test','fixed'),'%%job not found%%');
+
+  perform pg_temp.jobs_assert(retry_scheduled_job(company,j.job_key,j.updated_at,actor,'ops@example.test','  site id fixed ')='pending','retry accepted');
+  perform pg_temp.jobs_assert((select state='pending' and attempts=0 and last_error is null and next_attempt_at<=now() from scheduled_jobs where org_id=company and job_key=j.job_key),'job pending again from attempt 1');
+  perform pg_temp.jobs_assert((select count(*)=1 from job_runs where org_id=company and job_key=j.job_key and outcome='operator_retry'
+    and detail->>'reason'='site id fixed' and detail->>'actor_email'='ops@example.test' and detail->>'previous_state'='quarantined'),'retry recorded in job history');
+  perform pg_temp.jobs_assert((select count(*)=1 from audit_log where org_id=company and action='jobs.retry' and outcome='success'
+    and detail->>'job_key'=j.job_key and detail->>'actor_id'=actor::text and (detail->>'previous_attempts')::int=8),'retry audited');
+  perform pg_temp.jobs_reject(call,'%%job changed since it was loaded%%');
+  select * into p from scheduled_jobs where org_id=company and job_key=j.job_key;
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','again'),'%%only blocked or quarantined%%');
+
+  -- A blocked job whose dispatch has since been costed is refused, not re-run.
+  select * into p from scheduled_jobs where org_id=company and job_key<>j.job_key and dispatch_id in (select dispatch_id from scheduled_jobs where org_id=company) limit 1;
+  update scheduled_jobs set state='blocked',last_error='GOSWEETSPOT_SITE_ID must be set' where org_id=company and job_key=p.job_key returning * into p;
+  perform record_carrier_cost(company,p.source_id,p.dispatch_id,'gosweetspot:synthetic','q-retry-'||p.dispatch_id,'NZD',900,now(),'2099-01-01T00:00:00Z','{}');
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','fixed'),'%%job no longer needed%%');
+
+  update tool_grants set enabled=false where org_id=company and agent_name='operator' and tool_name='jobs.retry';
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','fixed'),'%%tool entitlement missing or revoked%%');
+  perform pg_temp.jobs_assert(not has_function_privilege('authenticated','retry_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute')
+    and has_function_privilege('service_role','retry_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute'),'retry is service-only');
+end $$;

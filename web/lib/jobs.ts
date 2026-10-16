@@ -115,3 +115,34 @@ export function runsByJob(runs: JobRunRow[]): Map<string, JobRunRow[]> {
   }
   return byJob;
 }
+
+/** Outcome codes of the console's retry action, carried in the redirect back to /jobs.
+ * Only these fixed messages are shown; nothing from the URL is echoed. */
+export const RETRY_OUTCOMES = {
+  retried: { ok: true, text: 'Job queued. The worker picks it up on its next pass, within about a minute.' },
+  paused: { ok: false, text: 'Business actions are paused, so nothing was retried. Resume them first.' },
+  not_allowed: { ok: false, text: 'Retrying jobs is switched off for this business (the operator jobs.retry grant is missing or revoked). Nothing was retried.' },
+  changed: { ok: false, text: 'This job changed after the page loaded. Nothing was retried; check its current state below.' },
+  not_stopped: { ok: false, text: 'This job is no longer blocked or stopped, so there was nothing to retry.' },
+  not_needed: { ok: false, text: 'This dispatch no longer needs a carrier cost (it has one, or its order is invoiced). Nothing was retried.' },
+  reason: { ok: false, text: 'Give a short reason for the retry (at least 3 characters). Nothing was retried.' },
+  not_found: { ok: false, text: 'That job no longer exists. Nothing was retried.' },
+  failed: { ok: false, text: 'The retry could not be recorded. Nothing changed; try again.' },
+} as const;
+export type RetryOutcome = keyof typeof RETRY_OUTCOMES;
+
+const RETRY_ERRORS: Array<[RegExp, RetryOutcome]> = [
+  [/business actions paused/, 'paused'],
+  [/tool entitlement missing or revoked|agent disabled/, 'not_allowed'],
+  [/job changed since it was loaded/, 'changed'],
+  [/only blocked or quarantined/, 'not_stopped'],
+  [/job no longer needed/, 'not_needed'],
+  [/retry reason required/, 'reason'],
+  [/job not found/, 'not_found'],
+];
+export function retryOutcomeFor(errorMessage: string): RetryOutcome {
+  return RETRY_ERRORS.find(([pattern]) => pattern.test(errorMessage))?.[1] ?? 'failed';
+}
+export function isRetryOutcome(value: unknown): value is RetryOutcome {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(RETRY_OUTCOMES, value);
+}
