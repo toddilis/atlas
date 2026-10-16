@@ -2973,6 +2973,10 @@ export type Database = {
         Args: { p_kind: string; p_org_id: string; p_record: Json }
         Returns: undefined
       }
+      assert_pricing_references: {
+        Args: { p_config: Json; p_org_id: string }
+        Returns: undefined
+      }
       assert_pricing_snapshot: {
         Args: { c: Json; s: Json }
         Returns: undefined
@@ -3193,6 +3197,28 @@ export type Database = {
         Returns: Json
       }
       next_invoice_number: { Args: { p_org_id: string }; Returns: string }
+      operator_activate_pricing_version: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_revision: number
+          p_org_id: string
+          p_reason: string
+          p_version_id: string
+        }
+        Returns: string
+      }
+      operator_save_pricing_version: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_config: Json
+          p_expected_revision: number
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
+      }
       overdue_days: {
         Args: { p_anchor: string; p_as_of: string; p_tz?: string }
         Returns: number

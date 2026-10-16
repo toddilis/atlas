@@ -214,3 +214,114 @@ test('operator records a hand-courier cost for a dismissed job, attributed to th
   await expect(page.getByText('TRK-COURIER')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/jobs-cost-recorded.png', fullPage: true });
 });
+
+test('operator builds the first pricing version, previews a retailer, saves and activates it', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/pricing');
+  await expect(page.getByRole('region', { name: 'In effect now' })).toContainText('No pricing version is in effect');
+  await expect(page.getByText(/OTHER-SECRET/)).toHaveCount(0);
+  // Nothing is priced until every money choice is made: the draft cannot be saved yet.
+  await expect(page.getByText('Not ready to save yet:')).toBeVisible();
+  await page.getByLabel('Reason for this change', { exact: true }).fill('Launch prices for the pilot');
+  await expect(page.getByRole('button', { name: 'Save new version' })).toBeDisabled();
+
+  await page.getByLabel('Version name', { exact: true }).fill('Synthetic launch prices');
+  await page.getByLabel('Timezone', { exact: true }).fill('Pacific/Auckland');
+  await page.getByLabel('Effective from', { exact: true }).fill('2026-01-01T00:00:00+13:00');
+  await page.getByLabel('Pricing date', { exact: true }).selectOption('dispatch');
+  await page.getByLabel('Currency', { exact: true }).selectOption('NZD');
+  await page.getByLabel('Tax rate', { exact: true }).fill('15');
+  await page.getByLabel('Freight taxable', { exact: true }).selectOption('yes');
+  await page.getByLabel('Payment due day', { exact: true }).fill('20');
+  await page.getByLabel('Due month follows', { exact: true }).selectOption('dispatch');
+  await page.getByLabel('Volume tier quantity', { exact: true }).selectOption('ordered');
+  await page.getByLabel('Retailers without a price book', { exact: true }).selectOption('default_book');
+  await page.getByLabel('Discount combination', { exact: true }).selectOption('single');
+  await page.getByLabel('Discounts on special prices', { exact: true }).selectOption('no');
+  await page.getByLabel('Price of Synthetic cap in standard', { exact: true }).fill('12.50');
+  await page.getByLabel('Price of Synthetic tee in standard', { exact: true }).fill('20.00');
+  await page.getByRole('button', { name: 'Add negotiated price' }).click();
+  await page.getByLabel('Negotiated 1 retailer', { exact: true }).selectOption({ label: 'Synthetic Export' });
+  await page.getByLabel('Negotiated 1 product', { exact: true }).selectOption({ label: 'Synthetic tee (TEE)' });
+  await page.getByLabel('Negotiated 1 price', { exact: true }).fill('18.00');
+  await page.getByLabel('This business charges freight').check();
+  await page.getByRole('button', { name: 'Add shipping rule' }).click();
+  await page.getByLabel('Shipping rule 1 charge', { exact: true }).selectOption('fixed');
+  await page.getByLabel('Shipping rule 1 fixed charge', { exact: true }).fill('10.00');
+  await expect(page.getByText('Not ready to save yet:')).toHaveCount(0);
+
+  // 10 tees at the book price, the first shipment's freight, 15% tax on both.
+  await page.getByLabel('Preview retailer', { exact: true }).selectOption({ label: 'Synthetic Retail North' });
+  await page.getByLabel('Preview line 1 product', { exact: true }).selectOption({ label: 'Synthetic tee (TEE)' });
+  await page.getByRole('button', { name: 'Preview this draft' }).click();
+  const draftPreview = page.getByRole('region', { name: 'This draft preview' });
+  await expect(draftPreview).toContainText('Products NZD 200.00');
+  await expect(draftPreview).toContainText('Freight NZD 10.00');
+  await expect(draftPreview).toContainText('Total NZD 241.50');
+
+  await page.getByRole('button', { name: 'Save new version' }).click();
+  await expect(page).toHaveURL(/\/pricing\?outcome=saved$/);
+  const history = page.getByRole('region', { name: 'Versions' });
+  await expect(history).toContainText('Synthetic launch prices');
+  await expect(history).toContainText('by operator@example.test');
+  await expect(history).toContainText('Saved, not active');
+
+  // Activation previews the saved version on the server's terms: the tax-exempt retailer's
+  // 10 caps, its freight, no tax.
+  await page.getByLabel('Preview retailer', { exact: true }).selectOption({ label: 'Synthetic Export (tax exempt)' });
+  await page.getByLabel('Preview line 1 product', { exact: true }).selectOption({ label: 'Synthetic cap (CAP)' });
+  await page.getByRole('button', { name: 'Preview saved version' }).click();
+  await expect(page.getByRole('region', { name: 'Saved version preview' })).toContainText('Total NZD 135.00');
+  await page.getByLabel('Reason for activating', { exact: true }).fill('Pilot go-live');
+  await page.getByRole('button', { name: 'Activate saved version' }).click();
+  await expect(page).toHaveURL(/\/pricing\?outcome=activated$/);
+  await expect(page.getByRole('region', { name: 'In effect now' })).toContainText('Synthetic launch prices (v1, revision 1)');
+  await expect(page.getByRole('region', { name: 'In effect now' })).toContainText('1 Jan 2026');
+  await expect(history).toContainText('Active');
+  await expect(history).toContainText('Activated');
+  await page.screenshot({ path: 'test-results/pricing-activated.png', fullPage: true });
+});
+
+test('a pricing save from a page loaded before another save is refused and keeps its draft', async ({ page, context }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  const other = await context.newPage();
+  await page.goto('/pricing');
+  await other.goto('/pricing');
+  // A next version starts with no start time; it must begin after the version in effect.
+  await expect(page.getByLabel('Effective from', { exact: true })).toHaveValue('');
+  await page.getByLabel('Effective from', { exact: true }).fill('2026-02-01T00:00:00+13:00');
+  await page.getByLabel('Price of Synthetic cap in standard', { exact: true }).fill('13.00');
+  await page.getByLabel('Reason for this change', { exact: true }).fill('Cap price up');
+  await page.getByRole('button', { name: 'Save new version' }).click();
+  await expect(page).toHaveURL(/\/pricing\?outcome=saved$/);
+
+  await other.getByLabel('Effective from', { exact: true }).fill('2026-03-01T00:00:00+13:00');
+  await other.getByLabel('Price of Synthetic tee in standard', { exact: true }).fill('21.00');
+  await other.getByLabel('Reason for this change', { exact: true }).fill('Tee price up');
+  await other.getByRole('button', { name: 'Save new version' }).click();
+  await expect(other.getByRole('status').filter({ hasText: 'Someone saved a newer version' })).toBeVisible();
+  await expect(other).toHaveURL(/\/pricing$/);
+  await expect(other.getByLabel('Price of Synthetic tee in standard', { exact: true })).toHaveValue('21.00');
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Versions' })).toContainText('Cap price up');
+  await expect(page.getByRole('region', { name: 'Versions' })).not.toContainText('Tee price up');
+});
+
+test('pricing writes need a signed-in operator posting from the console itself', async ({ page, playwright, baseURL }) => {
+  const anonymous = await playwright.request.newContext({ baseURL });
+  const draft = { config: {}, expectedRevision: 0, reason: 'from outside' };
+  // Without a session the console's gate sends the request to sign in; the route never runs.
+  const signedOut = await anonymous.post('/pricing/save', { headers: { Origin: baseURL! }, data: draft, maxRedirects: 0 });
+  expect(signedOut.status()).toBe(307);
+  expect(signedOut.headers()['location']).toMatch(/\/login/);
+  await anonymous.dispose();
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  const crossSite = await page.request.post('/pricing/activate', { headers: { Origin: 'https://attacker.invalid' },
+    data: { versionId: '00000000-0000-4000-8000-000000000000', expectedRevision: 1, reason: 'from outside', previewTotal: '0' } });
+  expect(crossSite.status()).toBe(403);
+  await page.goto('/pricing');
+  await expect(page.getByRole('region', { name: 'Versions' })).not.toContainText('from outside');
+});

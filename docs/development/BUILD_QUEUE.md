@@ -12,7 +12,8 @@ each PR. The 1–7 October target (D13) was not met; it is now step 4.
 | --- | --- | --- | --- | --- | --- |
 | 3b | GoSweetSpot carrier cost: live check | Todd | — (#35 merged) | Needs VICE's GoSweetSpot site id and one real `api/shipments` response | Confirm the cost field, then switch the sync on |
 | 3b | Manual carrier cost grant | Todd | — (#35 merged) | Off by default; not seeded at boot | Decide whether VICE turns it on |
-| 4 | Pricing editor + approve → print journey | Claude | — | Ready: steps 1–3b merged | Start next |
+| 4a | Pricing editor (PRICING-01 console journey) | Claude | `claude/amazing-mayer-t2r2fz` | In review | Merge, then 4b |
+| 4b | Approve the exact invoice part → print | Claude | — | Not started | After 4a |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
 After step 4: FLOW-01 bank reconciliation (needs a Wise/ASB export sample), UI-01,

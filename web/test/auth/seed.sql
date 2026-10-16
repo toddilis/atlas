@@ -42,12 +42,25 @@ begin
     end loop;
   end loop;
 end $$;
+-- Pricing (0033): two products and two retailers to price, and another business's product
+-- and retailer that the editor must never offer.
+insert into products(org_id,sku,display_name) values
+ ('11111111-1111-4111-8111-111111111111','TEE','Synthetic tee'),
+ ('11111111-1111-4111-8111-111111111111','CAP','Synthetic cap'),
+ ('22222222-2222-4222-8222-222222222222','SECRET','OTHER-SECRET-PRODUCT');
+insert into accounts(org_id,name,tax_exempt) values
+ ('11111111-1111-4111-8111-111111111111','Synthetic Retail North',false),
+ ('11111111-1111-4111-8111-111111111111','Synthetic Export',true),
+ ('22222222-2222-4222-8222-222222222222','OTHER-SECRET-RETAILER',false);
 -- Console operators may retry and dismiss stopped jobs in the fixture business only (boot seeds these grants).
 insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','jobs.retry','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','jobs.dismiss','notify'),
  -- Not seeded at boot; a business turns manual carrier costs on deliberately, as here.
- ('11111111-1111-4111-8111-111111111111','operator','carriers.record_manual_cost','notify');
+ ('11111111-1111-4111-8111-111111111111','operator','carriers.record_manual_cost','notify'),
+ -- Boot seeds the pricing grants too (0033).
+ ('11111111-1111-4111-8111-111111111111','operator','pricing.save','notify'),
+ ('11111111-1111-4111-8111-111111111111','operator','pricing.activate','notify');
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';
