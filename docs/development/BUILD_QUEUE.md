@@ -123,3 +123,63 @@ the task with "Reviewed, green lit"; passing candidate checks remain mandatory.
 Independent ready work after ARCH-01: AUTHZ-02, EVENT-01 and EVIDENCE-01 with their
 declared dependencies. Pricing domain/fixture work can proceed while AUTH-01 acceptance
 is completed. Preserve BILL-01/FLOW-01 gates and live-configuration requirements.
+
+## Current integration status — 16 October 2026
+
+This section supersedes the 27 September table (kept above as history). It is the
+"separate queue refresh" deferred by the October auth wave (`7f65fe5`), performed as the
+PARALLEL_BUILD_PROTOCOL §8 merge-wave review. Evidence for the baseline: `npm run check`
+passed all stages (app, web, db) on main `27aa57b` in a configured environment
+(PostgreSQL 16.15 + pgvector), including the dispatch/bound-action/bound-policy
+concurrency verifiers, the `database.types.ts` regeneration diff gate and SQL↔TS parity.
+
+### Merged since the 27 September table
+
+| Task / PR | How it landed | State on main |
+| --- | --- | --- |
+| AUTH-01 / PR #19 | Head `2d6544d` carried into main through the #31 branch; GitHub closed #19 as merged 2026-10-16 | Console auth + operator allowlist live; browser acceptance workflow `auth-browser.yml` in CI |
+| PR #25 (invoice snapshot locking) | Closed; its work was preserved and landed via the #31 continuation (`6873cd2`, `5685fac`) | Superseded by #31 — do not reopen |
+| AUTHZ-02 / PR #31 | Merged `27aa57b` 2026-10-16 (`codex/auth-oct01-completion`) | **Complete**: migrations `0022_bound_actions` + `0027_bound_invoice_policy`; runtime wiring in `src/platform/control-plane/bound-actions.ts`, `src/api/approval-routes.ts`, `src/agents/controller/tools/issue_invoice.ts`; intent hashing works on hosted Supabase (`2b78148`) |
+| Repo review / PR #33 | Merged `f21d2ae` 2026-10-16 | Review findings incorporated |
+| ARCH-01 / PR #24 | Merged `cbcb2e7` 2026-09-27 (recorded as "accepted" in the prior table) | Foundation docs + contracts on main |
+
+### Open PR inventory and merge constraint
+
+The three active product PRs are **stacked** — each later branch contains the earlier
+one's migrations — so the merge order is constrained and later diffs shrink as earlier
+PRs land:
+
+| Order | PR / branch | Task(s) | Head at this review | Contains migrations |
+| --- | --- | --- | --- | --- |
+| 1 | #30 `codex/event-evidence-oct01` | EVENT-01 / EVIDENCE-01 | `2cc0c1e` | 0025, 0026 |
+| 2 | #28 `codex/pricing-billing-oct01` | PRICING-01 / BILL-01 | `85c19f8` | 0023, 0028 (+ #30's) |
+| 3 | #35 `claude/atlas-repo-review-nc9z4q` | JOBS-01 (+ GoSweetSpot carrier costs, jobs console) | `aacfc51` | 0029–0032 (+ #28's) |
+
+PRICING-01 — named above as "the next new operator-facing feature" — is **claimed by
+#28**; do not start a parallel pricing track. JOBS-01 (PR-R) is claimed by #35.
+
+Also open: the BUILD-02 automation line (#21 → #26 → #27, oldest from 25 September —
+three overlapping PRs that need explicit consolidation or supersession before any live
+runner activation), and #2 (June, Hedera bounty staging, unrelated to the programme —
+recommend the owner closes it).
+
+### Gate status after this wave
+
+- **UI-01 / PR-Q**: AUTH-01 ✓ and AUTHZ-02 ✓; still gated on FLOW-01.
+- **FLOW-01**: inputs BILL-01 (#28) and EVENT-01/EVIDENCE-01 (#30) are in flight; the
+  bank-data source (Wise/ASB export or feed) remains unconfirmed — that confirmation is
+  an owner action, not a build task.
+- **Migration numbering**: ledger now recorded in `supabase/migrations/README.md`.
+  0023–0032 are assigned to the open stack; **0024 is reserved but unaccounted** — the
+  integration coordinator should confirm its assignee or release it; the next unclaimed
+  number is 0033.
+- **Deployment**: `DEPLOY.md` carries a revalidation banner — the runbook predates
+  D8–D10 (bank-transfer receivables), and whether migrations 0011+ have been applied to
+  the live Supabase project is not verifiable from the repo.
+
+### Next eligible work
+
+1. Independent verification (read-only) of the #30 candidate, then #28, per the
+   protocol's builder/verifier separation — unclaimed as of this review.
+2. Merge wave #30 → #28 → #35 once each has passing candidate checks and verification.
+3. FLOW-01 implementation after (2), alongside the owner's bank-source confirmation.
