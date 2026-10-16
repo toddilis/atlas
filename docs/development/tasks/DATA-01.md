@@ -1,7 +1,7 @@
 # DATA-01 - successful dispatch lines and invoice allocations
 
-Status: next independent coding slice after BUILD-01; not yet implemented. Start from
-the current verified repository and inspect active PRs before making a bounded branch.
+Status: implemented and merged in #23 (27 September 2026). The text below is the
+original brief, kept for its acceptance cases.
 Use synthetic Shopify fixtures and a disposable database. No real customer dispatch
 or invoice issuance is required for this task.
 

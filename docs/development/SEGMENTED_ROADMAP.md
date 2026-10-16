@@ -13,18 +13,16 @@ with isolation verified before shared-business use. Portability is not deferred 
 
 ## What happens next
 
-The next independent coding slice is [DATA-01](tasks/DATA-01.md): preserve actual
-dispatched lines and quantities, so shipments of 40 and 60 cannot each invoice the
-original 100-unit order. It is ready for synthetic implementation after BUILD-01;
-final invoice numbering is a later configuration dependency.
+DATA-01, AUTHZ-01 and the architecture foundation are merged. The current order of
+work and each PR's state are in the [build queue's current status](BUILD_QUEUE.md#current-status):
+authentication and exact-action approvals, then events/evidence, then pricing and
+invoice parts, then the pricing editor and approve → print journey (PLAN D13/D14).
 
 DATA-01 also establishes its part of PLAT-01: business-scoped canonical records and
 source mappings, with Shopify-specific interpretation in an adapter. PRICING-01 must
 support separate business configurations and optional shipping. These requirements
 shape the current slices rather than postponing them for a future generalisation pass.
 
-Alongside that work, finish review/integration of the existing authentication and
-permission changes, then bind approvals to the exact stored action in AUTHZ-02.
 The next new operator-facing deliverable is [PRICING-01](tasks/PRICING-01.md): a usable
 product, retailer and shipping pricing editor with a calculation preview.
 

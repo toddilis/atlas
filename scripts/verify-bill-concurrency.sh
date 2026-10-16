@@ -21,8 +21,8 @@ begin
   insert into accounts(id,org_id,name) values(account,company,'Synthetic retailer');
   insert into products(id,org_id,sku,display_name) values(current_setting('test.pricing_product')::uuid,company,'WIDGET','Synthetic widget');
   insert into shopify_customers(org_id,shopify_customer_id,raw,account_id) values(company,'cust-a','{}',account);
-  insert into shopify_orders(id,org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
-    values(order100,company,'100','cust-a','NZD',0,0,'{}','2026-10-01T09:00:00+13:00');
+  insert into shopify_orders(id,org_id,shopify_order_id,shopify_order_name,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(order100,company,'100','#synthetic-100','cust-a','NZD',0,0,'{}','2026-10-01T09:00:00+13:00');
   v:=save_pricing_version(company,0,current_setting('test.pricing_config')::jsonb,'fixture-operator','Synthetic race version');
   perform activate_pricing_version(company,v,1,'fixture-operator','Synthetic race activation');
   source:=bind_shopify_dispatch_source(company,left(company::text,2)||'-race.myshopify.com');
@@ -58,17 +58,18 @@ parts() { sql -c "select string_agg(d.source_dispatch_key||'='||right(i.invoice_
   join dispatch_allocations l on l.part_id=s.part_id where s.org_id='$1000000-0000-4000-8000-000000000001'"; }
 
 # A and B drafted at the same moment, each claiming to be the order's first part. The order
-# lock admits one; the other is refused as stale and redrafted as a later, freight-free part.
+# lock admits one at a time and only A, the earlier shipment, can carry the freight (D15): B is
+# refused as stale after A commits, or as a later shipment if it takes the lock first. B is
+# then redrafted as the later, freight-free part.
 setup 64
 session 64 a dispatch-a 0.3 | sql -f - >"$WORK/ab-a" 2>&1 & a=$!
 session 64 b_first dispatch-b 0.3 | sql -f - >"$WORK/ab-b" 2>&1 & b=$!
 ra=0; rb=0; wait "$a" || ra=$?; wait "$b" || rb=$?
-if [[ "$ra" = 0 && "$rb" != 0 ]]; then loser="$WORK/ab-b"; retry='b dispatch-b'; expected='dispatch-a=A/40/1000/37950,dispatch-b=B/60/0/55200'
-elif [[ "$ra" != 0 && "$rb" = 0 ]]; then loser="$WORK/ab-a"; retry='a_later dispatch-a'; expected='dispatch-a=B/40/0/36800,dispatch-b=A/60/1000/56350'
-else cat "$WORK/ab-a" "$WORK/ab-b"; echo 'expected exactly one concurrent first part' >&2; exit 1; fi
-grep -q 'stale part order' "$loser" || { cat "$loser"; echo 'the losing first part failed for another reason' >&2; exit 1; }
-# shellcheck disable=SC2086
-session 64 $retry 0 | sql -f - >"$WORK/ab-retry" 2>&1 || { cat "$WORK/ab-retry"; echo 'redrafting the later part failed' >&2; exit 1; }
+[[ "$ra" = 0 && "$rb" != 0 ]] || { cat "$WORK/ab-a" "$WORK/ab-b"; echo 'expected only the earlier shipment to become the first part' >&2; exit 1; }
+grep -Eq 'stale part order|earlier shipment of this order must be invoiced first' "$WORK/ab-b" \
+  || { cat "$WORK/ab-b"; echo 'the losing first part failed for another reason' >&2; exit 1; }
+expected='dispatch-a=A/40/1000/37950,dispatch-b=B/60/0/55200'
+session 64 b dispatch-b 0 | sql -f - >"$WORK/ab-retry" 2>&1 || { cat "$WORK/ab-retry"; echo 'redrafting the later part failed' >&2; exit 1; }
 [[ "$(parts 64)" = "$expected" ]] || { parts 64; echo "concurrent A/B parts differ from $expected" >&2; exit 1; }
 [[ "$(sql -c "select count(distinct left(invoice_number,-1)) from invoices where org_id='64000000-0000-4000-8000-000000000001'")" = 1 ]] \
   || { echo 'A/B parts do not share one order number' >&2; exit 1; }

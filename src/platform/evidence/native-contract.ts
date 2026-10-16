@@ -5,13 +5,15 @@ import { StoredActionIntent } from '../control-plane/bound-actions.js';
 const uuid = z.string().uuid();
 // PostgreSQL JSON timestamps use offsets/variable precision. Parse as dates, retain text.
 const timestamp = z.string().refine(v => Number.isFinite(Date.parse(v)), 'invalid timestamp');
+// Attempt results/evidence are published as digests; full values stay in evidence_history.
+const digest = z.object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), bytes: z.number().int().nonnegative() }).strict().nullable();
 const actionStates = z.enum(['PREPARED', 'AUTHORISED', 'EXECUTING', 'CONFIRMED', 'FAILED', 'UNRESOLVED', 'RECONCILIATION_REQUIRED']);
 const NativeAction = z.object({ id: uuid, org_id: uuid, approval_id: uuid, revision: z.literal(1),
   intent: StoredActionIntent, intent_hash: z.string().regex(/^[a-f0-9]{64}$/), idempotency_key: z.string().min(1),
   state: actionStates, revoked_at: timestamp.nullable(), created_at: timestamp, updated_at: timestamp }).strict();
 const NativeAttempt = z.object({ id: uuid, org_id: uuid, action_id: uuid, attempt_number: z.number().int().positive(),
   state: z.enum(['EXECUTING', 'CONFIRMED', 'FAILED', 'UNRESOLVED', 'RECONCILIATION_REQUIRED']),
-  started_at: timestamp, finished_at: timestamp.nullable(), result: z.unknown(), evidence: z.unknown(), error: z.string().nullable(), actor_id: z.string() }).strict();
+  started_at: timestamp, finished_at: timestamp.nullable(), result: digest, evidence: digest, error: z.string().nullable(), actor_id: z.string() }).strict();
 const NativeApproval = z.object({ id: uuid, org_id: uuid, agent_name: z.string(), action: z.string(), subject_type: z.string(), subject_id: uuid.nullable(),
   payload: StoredActionIntent, proposed_summary: z.string().nullable(), risk: z.enum(['auto', 'notify', 'approve_required']),
   state: z.enum(['pending', 'approved', 'rejected', 'expired']), decided_by: z.string().nullable(), decided_at: timestamp.nullable(),

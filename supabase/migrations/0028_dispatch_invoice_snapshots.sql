@@ -202,6 +202,7 @@ begin
       threshold:=nullif(shipping->'freeThreshold','null');
       if threshold is not null then
         if threshold->>'valueBasis'='order' then raise exception 'order threshold requires authoritative whole-order preview'; end if;
+        if shipping->>'chargingBasis'='first_part' then raise exception 'first-part freight cannot use a per-shipment free threshold'; end if;
         value:=case when (threshold->>'afterDiscount')::boolean then subtotal else undiscounted end;
         if (threshold->>'includesTax')::boolean then value:=value+floor(value*rate/10000); end if;
         if value>=(threshold->>'amount')::numeric then freight:=0; end if;
@@ -257,7 +258,7 @@ begin
   -- the linked customer; other sources need an order account contract before they can bill.
   if not exists(select 1 from dispatch_sources where org_id=p_org_id and id=p_source_id and provider='shopify') then
     raise exception 'order retailer contract required for this dispatch source'; end if;
-  select * into o from shopify_orders where org_id=p_org_id and id::text=d.order_key;
+  select * into o from shopify_orders where org_id=p_org_id and id=d.order_key::uuid;
   if not found then raise exception 'dispatch order unavailable'; end if;
   select account_id into v_account from shopify_customers where org_id=p_org_id and shopify_customer_id=o.shopify_customer_id;
   if v_account is null then raise exception 'order retailer unknown: link the Shopify customer to an account'; end if;
@@ -266,17 +267,20 @@ begin
   select tax_exempt into v_exempt from accounts where org_id=p_org_id and id=v_account;
   if v_exempt is null then raise exception 'account unavailable to business'; end if;
   if p_snapshot#>'{input,taxExempt}' is distinct from to_jsonb(v_exempt) then raise exception 'snapshot tax treatment differs from the account'; end if;
-  -- A fulfillment the legacy path has invoiced is not invoiced again here (and the legacy
-  -- guard below refuses the reverse), both under this order lock.
-  if exists(select 1 from shopify_fulfillments f join fulfillment_events e on e.org_id=p_org_id and e.shopify_fulfillment_id=f.id
-    join invoices li on li.org_id=p_org_id and li.fulfillment_event_id=e.id and li.state<>'void'
-    where f.org_id=p_org_id and f.shopify_fulfillment_id=d.source_dispatch_key) then
-    raise exception 'fulfillment already has a legacy invoice; reconcile first'; end if;
+  -- The legacy path invoices every line of the whole order, so any non-void legacy invoice
+  -- on any fulfillment of this order blocks BILL (the legacy guard below refuses the
+  -- reverse), both under this order lock.
+  if exists(select 1 from fulfillment_events e join invoices li on li.org_id=p_org_id and li.fulfillment_event_id=e.id and li.state<>'void'
+    where e.org_id=p_org_id and e.shopify_order_id=o.id) then
+    raise exception 'order already has a legacy invoice; reconcile first'; end if;
   -- Parts are numbered, and first-part freight assigned, in drafting order under the order lock.
   select count(*) into v_prior from invoice_calculation_snapshots s join dispatches sd on sd.id=s.dispatch_id
     where s.org_id=p_org_id and s.source_id=p_source_id and sd.order_key=d.order_key;
   if p_snapshot#>'{input,priorParts}' is distinct from to_jsonb(v_prior) then raise exception 'stale part order; recalculate'; end if;
   if nullif(btrim(p_order_reference),'') is null then raise exception 'order display reference required'; end if;
+  -- The reference printed on every part is the order's own name, never the caller's.
+  if o.shopify_order_name is null then raise exception 'order display reference unavailable'; end if;
+  if p_order_reference is distinct from o.shopify_order_name then raise exception 'order reference is not the order''s name'; end if;
   -- Lock the pricing timeline through save/activation and reject a preview whose
   -- selected effective version changed before commit.
   perform pg_advisory_xact_lock(hashtextextended(p_org_id::text||':pricing',0));
@@ -292,6 +296,15 @@ begin
   if c.config->>'pricingDateBasis'='order' and (o.placed_at is null or o.placed_at is distinct from (p_snapshot#>>'{input,orderAt}')::timestamptz)
     then raise exception 'authoritative order time required'; end if;
   perform assert_pricing_snapshot(c.config,p_snapshot);
+  -- D15: first-part freight is the first shipment's. Under the order lock, an earlier,
+  -- still-billable shipment of this order must be invoiced before a later one, so the
+  -- freight is neither charged on the wrong shipment nor silently skipped.
+  if p_snapshot#>>'{freight,basis}'='first_part' and exists(select 1 from dispatches sd
+    where sd.org_id=p_org_id and sd.source_id=p_source_id and sd.order_key=d.order_key and sd.id<>d.id
+    and sd.state in ('eligible','blocked','correction_required') and sd.source_occurred_at is not null
+    and (sd.source_occurred_at,sd.source_dispatch_key)<(d.source_occurred_at,d.source_dispatch_key)
+    and not exists(select 1 from dispatch_invoice_parts pp where pp.org_id=p_org_id and pp.dispatch_id=sd.id)) then
+    raise exception 'an earlier shipment of this order must be invoiced first; it carries the order''s freight'; end if;
   -- A carrier quote must be the latest evidence stored for this dispatch, still valid.
   if nullif(p_snapshot#>'{input,carrier}','null'::jsonb) is not null then
     select * into ev from carrier_cost_evidence where org_id=p_org_id and dispatch_id=d.id order by observed_at desc,recorded_at desc limit 1;
@@ -309,7 +322,7 @@ begin
     if not found or dl.quantity::text is distinct from l->>'dispatched' or dl.ordered_quantity::text is distinct from l->>'ordered'
       then raise exception 'snapshot dispatched quantity mismatch'; end if;
     if not exists(select 1 from products where org_id=p_org_id and id::text=l->>'productId' and sku=dl.item_key) then raise exception 'snapshot product mapping mismatch'; end if;
-    if not exists(select 1 from products where org_id=p_org_id and id::text=l->>'productId' and display_name=l->>'description') then raise exception 'snapshot line description must be the product name'; end if;
+    if not exists(select 1 from products where org_id=p_org_id and id::text=l->>'productId' and btrim(display_name)=l->>'description') then raise exception 'snapshot line description must be the product name'; end if;
     if coalesce(l->>'unitPrice','') !~ '^(0|[1-9][0-9]*)$' or coalesce(l->>'lineAmount','') !~ '^(0|[1-9][0-9]*)$'
       or (l->>'lineAmount')::numeric <> (l->>'unitPrice')::numeric * dl.quantity then raise exception 'snapshot line arithmetic mismatch'; end if;
     v_subtotal := v_subtotal+(l->>'lineAmount')::numeric;
@@ -353,26 +366,29 @@ begin
       'calculation_snapshot_ref',jsonb_build_object('company_id',p_org_id,'type','InvoiceCalculationSnapshot','id',v_snapshot_id,'revision',1),
       'document_snapshot_ref',jsonb_build_object('company_id',p_org_id,'type','InvoiceDocumentSnapshot','id',v_snapshot_id,'revision',1),
       'total',jsonb_build_object('amount_minor',v_total::text,'currency',p_snapshot->>'currency','scale',(p_snapshot->>'scale')::integer)));
-  perform publish_platform_event(p_org_id,v_event,'invoice-drafted:'||v_invoice,array['controller.invoice-drafts']);
+  -- No consumer receipts until something projects drafted invoices (none does yet);
+  -- a future consumer backfills with enqueue_event_replay.
+  perform publish_platform_event(p_org_id,v_event,'invoice-drafted:'||v_invoice,'{}');
   return jsonb_build_object('invoiceId',v_invoice,'snapshotId',v_snapshot_id,'reused',false);
 end $$;
 
--- Legacy draft_invoice_atomic invoices one Shopify fulfillment. Refuse it when BILL has
--- already claimed that fulfillment's dispatch. A try-lock fails fast instead of waiting
+-- Legacy draft_invoice_atomic invoices a whole Shopify order from one fulfillment. Refuse it
+-- when BILL has invoiced any shipment of that order. A try-lock fails fast instead of waiting
 -- on a BILL draft of the same order while holding the invoice counter (no deadlock).
 create function guard_legacy_fulfillment_invoice() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
-declare e fulfillment_events%rowtype; v_fulfillment text; v_source uuid;
+declare e fulfillment_events%rowtype; v_source uuid;
 begin
   if new.fulfillment_event_id is null then return new; end if;
   select * into e from fulfillment_events where id=new.fulfillment_event_id;
-  select shopify_fulfillment_id into v_fulfillment from shopify_fulfillments where id=e.shopify_fulfillment_id;
   select id into v_source from dispatch_sources where org_id=new.org_id and provider='shopify';
   if v_source is null then return new; end if;
   if not pg_try_advisory_xact_lock(hashtextextended(v_source::text||':'||e.shopify_order_id::text,0)) then
     raise exception 'order is being invoiced by BILL; retry'; end if;
-  if exists(select 1 from dispatches d join dispatch_invoice_parts p on p.dispatch_id=d.id
-    where d.org_id=new.org_id and d.source_id=v_source and d.source_dispatch_key=v_fulfillment) then
-    raise exception 'fulfillment already invoiced by BILL; reconcile first'; end if;
+  -- The legacy invoice would bill the whole order, so any BILL invoice (calculation snapshot,
+  -- written with its part in one transaction) for this order blocks it.
+  if exists(select 1 from invoice_calculation_snapshots c join dispatches d on d.org_id=c.org_id and d.id=c.dispatch_id
+    where c.org_id=new.org_id and c.source_id=v_source and d.order_key=e.shopify_order_id::text) then
+    raise exception 'order already invoiced by BILL; reconcile first'; end if;
   return new;
 end $$;
 create trigger legacy_fulfillment_invoice_guard before insert on invoices for each row execute function guard_legacy_fulfillment_invoice();
@@ -391,6 +407,43 @@ end $$;
 create trigger protect_billing_invoice before update or delete on invoices for each row execute function protect_billing_snapshot();
 create trigger protect_billing_lines before insert or update or delete on invoice_lines for each row execute function protect_billing_snapshot();
 
+-- BILL owns controller.invoice.drafted; EVENT-01 (0025) leaves it unprojected until this
+-- validator exists. Every publisher, SQL or TS, must match InvoiceDraftedV1 and name this
+-- business's real invoice, part, dispatch and calculation snapshot.
+create function validate_invoice_drafted_event() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
+declare p jsonb:=new.envelope->'payload'; k text;
+begin
+  if new.event_type<>'controller.invoice.drafted' or new.envelope->>'event_version'<>'1' then return new; end if;
+  if jsonb_typeof(p) is distinct from 'object' or (select count(*) from jsonb_object_keys(p))<>8
+  or not (p ?& array['company_id','invoice_id','invoice_revision','dispatch_id','part_id','calculation_snapshot_ref','document_snapshot_ref','total'])
+  or p->>'company_id' is distinct from new.org_id::text
+  or jsonb_typeof(p->'invoice_revision') is distinct from 'number' or (p->>'invoice_revision')!~'^[1-9][0-9]*$'
+  or new.envelope->>'subject_type'<>'Invoice' or new.envelope->>'subject_id' is distinct from p->>'invoice_id'
+  or new.envelope->>'subject_version' is distinct from p->>'invoice_revision' or new.envelope->>'event_class'<>'fact'
+  or jsonb_typeof(p->'total') is distinct from 'object' or (select count(*) from jsonb_object_keys(p->'total'))<>3
+  or coalesce(p#>>'{total,amount_minor}','')!~'^(0|[1-9][0-9]*)$' or coalesce(p#>>'{total,currency}','')!~'^[A-Z]{3}$'
+  or jsonb_typeof(p#>'{total,scale}') is distinct from 'number' or (p#>>'{total,scale}')!~'^[0-6]$'
+  then raise exception 'invalid controller.invoice.drafted payload'; end if;
+  foreach k in array array['calculation_snapshot_ref','document_snapshot_ref'] loop
+    if jsonb_typeof(p->k) is distinct from 'object' or (select count(*) from jsonb_object_keys(p->k))<>4
+    or p#>>array[k,'company_id'] is distinct from new.org_id::text or p#>'{invoice_revision}' is distinct from p#>array[k,'revision']
+    or p#>>array[k,'type'] is distinct from (case k when 'calculation_snapshot_ref' then 'InvoiceCalculationSnapshot' else 'InvoiceDocumentSnapshot' end)
+    then raise exception 'invalid controller.invoice.drafted snapshot reference'; end if;
+  end loop;
+  if not exists(select 1 from invoice_calculation_snapshots c join invoices i on i.org_id=c.org_id and i.id=c.invoice_id
+    where c.org_id=new.org_id and c.id::text=p#>>'{calculation_snapshot_ref,id}' and c.id::text=p#>>'{document_snapshot_ref,id}'
+    and c.invoice_id::text=p->>'invoice_id' and c.part_id::text=p->>'part_id' and c.dispatch_id::text=p->>'dispatch_id'
+    and c.revision=(p->>'invoice_revision')::integer and i.total_cents::text=p#>>'{total,amount_minor}' and i.currency=p#>>'{total,currency}')
+  then raise exception 'controller.invoice.drafted does not match a stored invoice snapshot'; end if;
+  return new;
+end $$;
+create trigger platform_invoice_drafted_validation before insert on platform_events for each row execute function validate_invoice_drafted_event();
+create or replace function supported_platform_event(p_envelope jsonb) returns boolean language sql immutable as $$
+ select p_envelope->>'event_version'='1' and p_envelope->>'event_type' in (
+ 'controller.decision.proposed','controller.action.execution_recorded','controller.outcome.recorded','controller.invoice.drafted',
+ 'platform.action.state_recorded','platform.approval.state_recorded','platform.attempt.state_recorded')
+$$;
+
 do $$ declare t text;r text;f regprocedure; begin
   foreach t in array array['billing_order_groups','invoice_calculation_snapshots','carrier_cost_evidence'] loop
     execute format('alter table %I enable row level security',t); execute format('revoke all on table %I from public',t);
@@ -402,7 +455,8 @@ do $$ declare t text;r text;f regprocedure; begin
   end loop;
   -- draft_invoice_atomic kept the default PUBLIC grant; like every money RPC it is service-only.
   for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname in ('draft_dispatch_invoice',
-    'protect_billing_snapshot','billing_suffix','assert_pricing_snapshot','record_carrier_cost','guard_legacy_fulfillment_invoice','draft_invoice_atomic') loop
+    'protect_billing_snapshot','billing_suffix','assert_pricing_snapshot','record_carrier_cost','guard_legacy_fulfillment_invoice','draft_invoice_atomic',
+    'validate_invoice_drafted_event') loop
     execute format('revoke all on function %s from public',f);
     foreach r in array array['anon','authenticated','service_role'] loop
       if exists(select 1 from pg_roles where rolname=r) then execute format('revoke all on function %s from %I',f,r);

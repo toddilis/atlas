@@ -1,9 +1,30 @@
 # Atlas first build queue
 
+## Current status
+
+Updated 16 October 2026. This section is the live status and supersedes the dated sections below, which are
+history. AUTH-01 + AUTHZ-02 (step 1) merged in #31 on 16 October; #19 and #25 are
+superseded. Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
+and a PR merges only after that approval and green CI. Commit and CI evidence lives in
+each PR. The 1–7 October target (D13) was not met; it is now step 4.
+
+| Order | Task | Owner | PR | State | Next step |
+| --- | --- | --- | --- | --- | --- |
+| 2 | EVENT-01 + EVIDENCE-01 | Claude (#33 session) | #30 | Addressing review findings | Next to merge |
+| 3 | PRICING-01 + BILL-01 | Claude (#33 session) | #28 (contains #30) | Addressing review findings; D15 freight implemented | Merge after #30 |
+| 3b | GoSweetSpot carrier cost + JOBS-01 core + jobs console | Claude (#33 session) | #35 (contains #28) | Draft | Merge after #28 |
+| 4 | Pricing editor + approve → print journey | Claude | — | Not started | After steps 2–3 |
+| — | BUILD-02 automation | — | #27 (continues #21, #26) | Parked, off the critical path | Revisit after step 4 |
+| — | Integration rehearsal / coordination | — | #32, #29 | Superseded by this sequence | Close |
+
+After step 4: FLOW-01 bank reconciliation (needs a Wise/ASB export sample), UI-01,
+JOBS-01, TODAY-01, AI-01, CLOSE-01. Business inputs still needed are listed in
+[VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
+
+## Standing backlog and historical snapshots
+
 For the full delivery sequence, inventory and later modules, read the
-[segmented build plan](SEGMENTED_ROADMAP.md). DATA-01 and AUTHZ-01 have merged.
-[PRICING-01](tasks/PRICING-01.md) is the next new operator-facing feature; protected
-editing requires AUTH-01 browser acceptance. See the current integration status below.
+[segmented build plan](SEGMENTED_ROADMAP.md). Current status is the section above.
 
 All slices follow the [multi-business product contract](../product/PLATFORM_PRODUCT.md)
 and PLAN D12. VICE's module sequence is the first-customer delivery path, not mandatory
@@ -106,9 +127,10 @@ Open PR inventory checked during this revision: #19 authentication, #20 bootstra
 #21 fixture build coordinator (based on bootstrap), #22 entitlement, #23 dispatch data
 (based on entitlement). No merge/completion is implied. Recheck before implementation.
 
-## Current integration status — 27 September 2026
+## Integration status snapshot — 27 September 2026
 
-This section supersedes historical readiness labels above. User review was accepted in
+This snapshot superseded the backlog labels above it; the current status at the top of this
+file supersedes this snapshot. User review was accepted in
 the task with "Reviewed, green lit"; passing candidate checks remain mandatory.
 
 | Task | Current evidence and state | Next boundary |

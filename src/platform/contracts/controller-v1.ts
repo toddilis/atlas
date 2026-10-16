@@ -95,8 +95,10 @@ export const ApprovalV1 = z.object({
     ctx.addIssue({ code: 'custom', message: 'Edited decision requires edit evidence' });
 });
 
+// Each recorded state of one execution (attempt) is a new revision, so a later state
+// (e.g. UNRESOLVED -> CONFIRMED) is an ordered successor rather than a same-version conflict.
 export const ExecutionV1 = z.object({
-  ...base, execution_id: id, action_id: id, action_revision: revision,
+  ...base, execution_id: id, revision, action_id: id, action_revision: revision,
   attempt_number: revision, idempotency_key: id, connection_id: id.nullable(),
   state: z.enum(['EXECUTING', 'CONFIRMED', 'FAILED', 'UNRESOLVED', 'RECONCILIATION_REQUIRED']),
   started_at: timestamp, finished_at: timestamp.nullable(), provider_reference: id.nullable(),
@@ -185,7 +187,7 @@ export const ControllerEventV1 = EventEnvelopeV1.superRefine((event, ctx) => {
   const subjects: Record<string, [string, string, string | null]> = {
     'controller.decision.proposed': ['Decision', 'decision_id', 'revision'],
     'controller.action.prepared': ['Action', 'action_id', 'revision'],
-    'controller.action.execution_recorded': ['Execution', 'execution_id', null],
+    'controller.action.execution_recorded': ['Execution', 'execution_id', 'revision'],
     'controller.outcome.recorded': ['Outcome', 'outcome_id', null],
     'controller.invoice.drafted': ['Invoice', 'invoice_id', 'invoice_revision'],
   };

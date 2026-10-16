@@ -35,8 +35,9 @@ export const PricingConfigSchema = z.object({
   discounts: z.array(z.object({ ...scope, id, order: z.number().int().nonnegative(), discount }).strict()),
   shipping: z.object({ enabled: z.boolean(), rules: z.array(z.object({
     id, accountId: id.nullable(), destination: id.nullable(), priority: z.number().int(), mode: shippingMode,
-    // per_dispatch charges every part; first_part charges only an order's first drafted part,
-    // so a part never depends on dispatches that have not happened yet.
+    // per_dispatch charges every part; first_part charges only the part of an order's first
+    // shipment (SQL requires earlier shipments to be invoiced first), so a part never
+    // depends on dispatches that have not happened yet.
     chargingBasis: z.enum(['per_dispatch', 'first_part']),
     freeThreshold: z.object({ amount: money, valueBasis: z.enum(['order', 'dispatch']), afterDiscount: z.boolean(), includesTax: z.boolean() }).strict().nullable(),
   }).strict()) }).strict(),
@@ -55,6 +56,8 @@ export const PricingConfigSchema = z.object({
   if (v.bindings.some(b => !v.books.some(book => book.id === b.bookId))) fail('unknown price book');
   unique([...v.negotiated, ...v.tiers, ...v.discounts].map(r => r.id), 'product rule identity');
   unique(v.shipping.rules.map(r => r.id), 'shipping rule identity');
+  // A first-part rule's freight stands for the whole order; a per-shipment threshold would judge it on one shipment.
+  if (v.shipping.rules.some(r => r.chargingBasis === 'first_part' && r.freeThreshold !== null)) fail('first-part freight cannot use a free threshold yet');
   // A retailer-specific rule outranks a general one; two rules of the same scope conflict.
   const scoped = (r: { accountId: string | null; productId: string }) => `${r.accountId ?? '*'}|${r.productId}`;
   unique(v.negotiated.map(scoped), 'negotiated prices (conflicting)');
@@ -98,6 +101,16 @@ function one<T>(values: T[], label: string): T | undefined {
 function localDate(timestamp: string, timezone: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(timestamp));
   return ['year', 'month', 'day'].map(k => parts.find(p => p.type === k)!.value).join('-');
+}
+
+/** The shipping rule that applies to an input, or null when the capability is disabled. */
+export function selectShippingRule(config: PricingConfig, input: Pick<PricingInput, 'accountId' | 'destination'>) {
+  if (!config.shipping.enabled) return null;
+  const rules = config.shipping.rules.filter(r => (r.accountId === null || r.accountId === input.accountId) && (r.destination === null || r.destination === input.destination));
+  const priority = Math.max(...rules.map(r => r.priority));
+  const rule = one(rules.filter(r => r.priority === priority), 'shipping rules');
+  if (!rule) throw new Error('pricing: shipping rule missing');
+  return rule;
 }
 
 /** Shared implementation for explained preview and invoice snapshots. No IO or provider assumptions. */
@@ -157,10 +170,7 @@ export function calculatePricing(rawConfig: unknown, rawInput: unknown) {
   if (!config.shipping.enabled && (input.carrier || input.freightOverride)) throw new Error('pricing: shipping inputs supplied to disabled capability');
   if (config.shipping.enabled) {
     if (!input.dispatchKey) throw new Error('pricing: shipping requires dispatch identity');
-    const rules = config.shipping.rules.filter(r => (r.accountId === null || r.accountId === input.accountId) && (r.destination === null || r.destination === input.destination));
-    const priority = Math.max(...rules.map(r => r.priority));
-    const rule = one(rules.filter(r => r.priority === priority), 'shipping rules');
-    if (!rule) throw new Error('pricing: shipping rule missing');
+    const rule = selectShippingRule(config, input)!;
     shippingRule = rule.id; shippingBasis = rule.chargingBasis;
     const carrier = input.carrier;
     if (carrier && (carrier.businessId !== input.businessId || carrier.shipmentKey !== input.dispatchKey || carrier.currency !== config.currency || Date.parse(carrier.observedAt) > Date.parse(input.evaluatedAt))) throw new Error('pricing: invalid carrier evidence binding');
