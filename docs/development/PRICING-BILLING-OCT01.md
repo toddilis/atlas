@@ -194,7 +194,8 @@ back. `src/integrations/gosweetspot/client.ts`:
 The response is accepted only in the documented shipment shape (`Consignments` with
 `ConsignmentId`, `Connote`, `Cost`); any other shape records nothing.
 
-Still to confirm with VICE's account: that the GET returns that shape (one webhook sample
-instead shows `TotalCost`); that GoSweetSpot writes its connotes to the Shopify fulfillment as
-tracking numbers; and the site id, key storage and cost currency. Nothing schedules the sync
+GoSweetSpot writes its connotes to the Shopify fulfillment as tracking numbers (confirmed by
+VICE, 16 October), which is the link the lookup matches on. Still to confirm with VICE's
+account: that the GET returns that shape (one webhook sample instead shows `TotalCost`), and
+the site id, key storage and cost currency. Nothing schedules the sync
 yet (JOBS-01), and no live call has been made.
