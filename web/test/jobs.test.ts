@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adviceFor, isActionOutcome, nextStep, ACTION_OUTCOMES, actionOutcomeFor, runsByJob, summarize, type JobRow } from '../lib/jobs';
+import { adviceFor, isActionOutcome, isManualCost, nextStep, ACTION_OUTCOMES, actionOutcomeFor, runsByJob, summarize, type JobRow } from '../lib/jobs';
 
 const now = new Date('2026-10-16T12:00:00Z');
 const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
@@ -82,14 +82,18 @@ test('every database refusal of a retry or dismissal maps to a fixed operator me
     ['only blocked, quarantined or dismissed jobs can be retried', 'not_stopped'],
     ['only blocked or quarantined jobs can be dismissed', 'not_stopped'],
     ['dismiss reason required', 'reason'],
+    ['cost reason required', 'reason'],
+    ['only dismissed jobs can take a manual carrier cost', 'not_stopped'],
+    ['carrier cost must be an amount with at most two decimals', 'cost_format'],
+    ['order currency unknown', 'currency'],
     ['job no longer needed', 'not_needed'],
     ['retry reason required', 'reason'],
     ['job not found', 'not_found'],
     ['connection reset', 'failed'],
   ];
   for (const [message, outcome] of cases) assert.equal(actionOutcomeFor(message), outcome, message);
-  assert.ok(ACTION_OUTCOMES.retried.ok && ACTION_OUTCOMES.dismissed.ok);
-  assert.ok(Object.entries(ACTION_OUTCOMES).every(([k, v]) => ['retried', 'dismissed'].includes(k) || !v.ok));
+  assert.ok(ACTION_OUTCOMES.retried.ok && ACTION_OUTCOMES.dismissed.ok && ACTION_OUTCOMES.cost_recorded.ok);
+  assert.ok(Object.entries(ACTION_OUTCOMES).every(([k, v]) => ['retried', 'dismissed', 'cost_recorded'].includes(k) || !v.ok));
 });
 
 test('only known action outcomes are shown from the URL', () => {
@@ -105,4 +109,9 @@ test('dismissed jobs are listed apart, never overdue, and say what dismissal lea
   assert.equal(s.counts.dismissed, 1);
   assert.deepEqual(s.overdue, []);
   assert.match(nextStep(job('d', 'dismissed'), now), /will not retry it.*cannot be drafted until a cost is recorded/);
+});
+
+test('a typed carrier cost is accepted only as digits with at most two decimals', () => {
+  for (const ok of ['0', '12', '12.5', '12.50', ' 18.40 ', '999999999.99']) assert.equal(isManualCost(ok), true, ok);
+  for (const bad of ['', '12.345', '-1', '1,50', '$12', '1e3', '.5', '12.', 'NaN', '1234567890']) assert.equal(isManualCost(bad), false, bad);
 });

@@ -15,7 +15,7 @@ begin
   foreach org in array array['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222']::uuid[] loop
     src := bind_shopify_dispatch_source(org, 'jobs-'||left(org::text,4)||'.myshopify.com');
     foreach k in array case when org = '11111111-1111-4111-8111-111111111111'
-      then array['blocked','quarantined','failed','pending'] else array['other'] end loop
+      then array['blocked','quarantined','failed','pending','courier'] else array['other'] end loop
       n := n + 1;
       insert into shopify_orders(org_id,shopify_order_id,shopify_order_name,currency,subtotal_cents,total_cents,raw,placed_at)
         values(org,'jobs-'||k,'#'||n,'NZD',0,0,'{}',now()) returning id into o;
@@ -24,13 +24,14 @@ begin
         values(org,'ship-'||k,o,'success',array['TRK-'||upper(k)],'{}',now(),d);
       insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id,state,attempts,next_attempt_at,last_error,updated_at)
         values(org,'carrier-cost:'||d,'carrier_cost_sync',src,d,
-          case when k='other' then 'blocked' else k end,
-          case k when 'quarantined' then 8 when 'blocked' then 2 when 'failed' then 1 else 0 end,
-          case k when 'blocked' then now()+interval '5 hours' when 'failed' then now()+interval '2 minutes'
+          case when k in ('other','courier') then 'blocked' else k end,
+          case k when 'quarantined' then 8 when 'blocked' then 2 when 'failed' then 1 when 'courier' then 1 else 0 end,
+          case k when 'blocked' then now()+interval '5 hours' when 'courier' then now()+interval '5 hours' when 'failed' then now()+interval '2 minutes'
             when 'pending' then now()-interval '30 minutes' else now() end,
           case k when 'blocked' then 'GOSWEETSPOT_SITE_ID must be set'
             when 'quarantined' then 'gosweetspot: response does not cover every tracking number of the dispatch'
             when 'failed' then 'gosweetspot: shipments lookup failed with HTTP 503'
+            when 'courier' then 'gosweetspot: response does not cover every tracking number of the dispatch'
             when 'other' then 'OTHER-BUSINESS-SECRET-ERROR' end,
           now()-(n-1000)*interval '1 minute');
       if k = 'blocked' then
@@ -44,7 +45,9 @@ end $$;
 -- Console operators may retry and dismiss stopped jobs in the fixture business only (boot seeds these grants).
 insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','jobs.retry','notify'),
- ('11111111-1111-4111-8111-111111111111','operator','jobs.dismiss','notify');
+ ('11111111-1111-4111-8111-111111111111','operator','jobs.dismiss','notify'),
+ -- Not seeded at boot; a business turns manual carrier costs on deliberately, as here.
+ ('11111111-1111-4111-8111-111111111111','operator','carriers.record_manual_cost','notify');
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';

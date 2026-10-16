@@ -327,3 +327,62 @@ Evidence:
   - service-only access.
 - The browser acceptance dismisses the seeded blocked job with a reason. It checks the job
   moves to Dismissed with the warning and its history, then undoes it with Retry now.
+
+## 16 October: manual carrier cost for dismissed jobs
+
+**Decision (owner request, 16 October).** A parcel that never went through GoSweetSpot (a
+hand courier, say) can have its actual carrier cost entered by an operator, so its order's
+first part can still be drafted under D15.
+
+This is the one deliberate exception to "a draft never uses a typed-in cost". The typed
+amount becomes stored carrier evidence through a separate, attributed operator action. It
+never becomes a draft input. Draft callers still cannot supply a cost.
+
+How it works:
+
+- **Where.** Dismissed carrier cost jobs have an **Enter the carrier cost by hand** form,
+  which asks for:
+  - the amount, excluding tax, in the order's own currency;
+  - an optional reference;
+  - a required reason.
+  The form posts to `/jobs/cost`, and the database function is `record_manual_carrier_cost`
+  (0032, service-only).
+- **Checks.** The database requires:
+  - the operator's `carriers.record_manual_cost` grant. Boot does **not** seed it; a
+    business turns it on deliberately, and until then the form explains it is off;
+  - the action pause to be off;
+  - a dismissed job, unchanged since the page loaded;
+  - a dispatch that is still eligible, in an unbilled order, with no unexpired cost;
+  - an amount of digits with at most two decimals. The amount stays a string until the
+    database converts it to minor units.
+- **What is stored.** It is written through `record_carrier_cost` as connection
+  `manual:operator` with a unique quote key. The currency comes from the Shopify order and
+  the tax basis is exclusive. It stays valid for 365 days, because it is an actual cost,
+  not a quote. Its evidence holds the operator, reason, reference and the amount as typed.
+- **After recording.** The job becomes `succeeded`, and the action is recorded as an
+  `operator_cost` row in `job_runs` and a `carriers.record_manual_cost` row in `audit_log`
+  (subject: the dispatch). The draft treats it like any latest stored carrier cost; its
+  snapshot names `manual:operator`, so the invoice calculation shows that the cost was
+  entered by hand.
+
+Evidence:
+
+- `verify-jobs.sql` tests:
+  - no grant, malformed amounts (`12.345`, `-1`, `1,50`, `1e3`, `.5`, ten digits), no
+    reason, a stale view, paused, wrong state, and an already-costed dispatch;
+  - that the stored evidence is exact and is the dispatch's latest;
+  - the job state, its history and the audit row;
+  - that discovery does not re-sync it;
+  - service-only access.
+- The browser acceptance dismisses a seeded courier job, has the browser refuse `12.345`,
+  then records `18.40` with a reference. The stored evidence was NZD 1840 minor units,
+  `manual:operator`, with the operator email, reason and reference.
+
+Limits:
+
+- A full draft that uses a manual cost has not been run in CI, because the precomputed
+  draft fixtures cannot match a cost stamped at entry time. The draft's stored-cost check
+  has no connection-specific rule.
+- Once recorded, a manual cost cannot be corrected in the console. A wrong amount needs a
+  new evidence record, through a correction path that does not exist yet.
+- Cost entry is offered only for dismissed jobs, not for blocked or quarantined ones.

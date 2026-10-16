@@ -3269,6 +3269,19 @@ export type Database = {
         Args: { p_decision_revision: number; p_org_id: string; p_record: Json }
         Returns: string
       }
+      record_manual_carrier_cost: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_cost: string
+          p_expected_updated_at: string
+          p_job_key: string
+          p_org_id: string
+          p_reason: string
+          p_reference: string
+        }
+        Returns: string
+      }
       record_stripe_payment: {
         Args: {
           p_amount_cents: number

@@ -99,7 +99,7 @@ test('operator sees blocked and quarantined jobs with their reason, and no other
   await expect(page.getByTestId('overdue')).toContainText('1 job is overdue by more than 10 minutes');
 
   const attention = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job');
-  await expect(attention).toHaveCount(2);
+  await expect(attention).toHaveCount(3);
   const quarantined = attention.nth(0);
   await expect(quarantined).toContainText('quarantined');
   await expect(quarantined).toContainText('Order #1002');
@@ -172,7 +172,7 @@ test('operator dismisses a job that will never succeed, and undoes it by retryin
   await blocked.getByRole('button', { name: 'Dismiss' }).click();
   await expect(page).toHaveURL(/\/jobs\?outcome=dismissed$/);
   await expect(page.getByTestId('action-notice')).toContainText('Job dismissed. Atlas will not retry it.');
-  await expect(page.getByRole('region', { name: 'Needs a person' })).toContainText('Nothing is blocked.');
+  await expect(page.getByRole('region', { name: 'Needs a person' }).getByText('TRK-BLOCKED')).toHaveCount(0);
   const dismissed = page.getByRole('region', { name: 'Dismissed' }).getByTestId('job').filter({ hasText: 'TRK-BLOCKED' });
   await expect(dismissed).toContainText('dismissed');
   await expect(dismissed).toContainText('cannot be drafted until a cost is recorded');
@@ -187,4 +187,30 @@ test('operator dismisses a job that will never succeed, and undoes it by retryin
   await expect(page).toHaveURL(/\/jobs\?outcome=retried$/);
   await expect(page.getByRole('region', { name: 'Dismissed' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Queued and running' }).getByTestId('job').filter({ hasText: 'TRK-BLOCKED' })).toContainText('Not tried yet');
+});
+
+test('operator records a hand-courier cost for a dismissed job, attributed to them', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/jobs');
+  const job = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job').filter({ hasText: 'TRK-COURIER' });
+  await job.getByLabel('Reason', { exact: true }).fill('Sent by hand courier, not GoSweetSpot');
+  await job.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(page).toHaveURL(/\/jobs\?outcome=dismissed$/);
+
+  const dismissed = page.getByRole('region', { name: 'Dismissed' }).getByTestId('job').filter({ hasText: 'TRK-COURIER' });
+  const form = dismissed.getByTestId('manual-cost');
+  await expect(form).toContainText('Carrier cost (NZD, excl. tax)');
+  await form.getByLabel('Carrier cost (NZD, excl. tax)').fill('12.345');
+  await form.getByLabel('Why by hand').fill('Hand courier across town');
+  await form.getByRole('button', { name: 'Record carrier cost' }).click();
+  await expect(page).toHaveURL(/\/jobs\?outcome=dismissed$/); // the browser refuses three decimals before posting
+  await form.getByLabel('Carrier cost (NZD, excl. tax)').fill('18.40');
+  await form.getByLabel('Reference (optional)').fill('COURIER-RCPT-0042');
+  await form.getByRole('button', { name: 'Record carrier cost' }).click();
+  await expect(page).toHaveURL(/\/jobs\?outcome=cost_recorded$/);
+  await expect(page.getByTestId('action-notice')).toContainText('Carrier cost recorded and attributed to you.');
+  await expect(page.getByRole('region', { name: 'Dismissed' })).toHaveCount(0);
+  await expect(page.getByText('TRK-COURIER')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/jobs-cost-recorded.png', fullPage: true });
 });

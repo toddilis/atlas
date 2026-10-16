@@ -167,3 +167,51 @@ begin
   perform pg_temp.jobs_assert(not has_function_privilege('authenticated','dismiss_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute')
     and has_function_privilege('service_role','dismiss_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute'),'dismiss is service-only');
 end $$;
+
+-- Manual carrier cost (0032): grant (not seeded), pause, amount format, stale view, only
+-- dismissed jobs, still needed; stored as manual carrier evidence with full attribution.
+do $$
+declare
+  company uuid:='67000000-0000-4000-8000-000000000001'; actor uuid:='67000000-0000-4000-8000-0000000000aa';
+  j scheduled_jobs; p scheduled_jobs; ev carrier_cost_evidence; v uuid; amount text;
+begin
+  select * into j from scheduled_jobs where org_id=company and job_key=(select job_key from job_runs where org_id=company and outcome='operator_dismiss' limit 1);
+  update scheduled_jobs set state='dismissed' where org_id=company and job_key=j.job_key returning * into j;
+  perform pg_temp.jobs_assert(not exists(select 1 from carrier_cost_evidence where org_id=company and dispatch_id=j.dispatch_id),'fixture dispatch has no cost yet');
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','hand courier','12.50',null),'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','carriers.record_manual_cost','notify');
+  foreach amount in array array['12.345','-1','1,50','abc','','1e3','.5','1234567890'] loop
+    perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','hand courier',amount,null),'%%at most two decimals%%');
+  end loop;
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','x','12.50',null),'%%cost reason required%%');
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at-interval '1 second',actor,'ops@example.test','hand courier','12.50',null),'%%job changed since it was loaded%%');
+  perform set_action_pause(company,true,'probe','probe pause');
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','hand courier','12.50',null),'%%business actions paused%%');
+  perform set_action_pause(company,false,'probe','probe resume');
+  select * into p from scheduled_jobs where org_id=company and state<>'dismissed' limit 1;
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','hand courier','12.50',null),'%%only dismissed jobs%%');
+
+  v:=record_manual_carrier_cost(company,j.job_key,j.updated_at,actor,'ops@example.test',' Hand courier, receipt in Xero ','12.50',' INV-778 ');
+  select * into ev from carrier_cost_evidence where id=v;
+  perform pg_temp.jobs_assert(ev.dispatch_id=j.dispatch_id and ev.cost_minor=1250 and ev.currency='NZD' and ev.tax_basis='exclusive'
+    and ev.carrier_connection='manual:operator' and ev.expires_at=ev.observed_at+interval '365 days'
+    and ev.evidence->>'reason'='Hand courier, receipt in Xero' and ev.evidence->>'reference'='INV-778'
+    and ev.evidence#>>'{entered_by,email}'='ops@example.test','manual cost stored as attributable carrier evidence');
+  perform pg_temp.jobs_assert((select id from carrier_cost_evidence where org_id=company and dispatch_id=j.dispatch_id order by observed_at desc,recorded_at desc limit 1)=v,
+    'the draft would use the manual cost (latest evidence for the dispatch)');
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and job_key=j.job_key),'job resolved');
+  perform pg_temp.jobs_assert((select count(*)=1 from job_runs where org_id=company and job_key=j.job_key and outcome='operator_cost'
+    and detail->>'cost_minor'='1250' and detail->>'evidence_id'=v::text),'manual cost in job history');
+  perform pg_temp.jobs_assert((select count(*)=1 from audit_log where org_id=company and action='carriers.record_manual_cost'
+    and subject_id=j.dispatch_id and detail->>'cost_minor'='1250' and detail->>'actor_email'='ops@example.test'),'manual cost audited');
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','again','9.00',null),'%%job changed since it was loaded%%');
+  perform discover_carrier_cost_jobs(company);
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and job_key=j.job_key),'a recorded manual cost is not re-synced');
+
+  -- A dismissed job whose dispatch already has a cost is refused.
+  select * into p from scheduled_jobs s where org_id=company and exists(select 1 from carrier_cost_evidence e where e.dispatch_id=s.dispatch_id and e.carrier_connection<>'manual:operator') limit 1;
+  update scheduled_jobs set state='dismissed' where org_id=company and job_key=p.job_key returning * into p;
+  perform pg_temp.jobs_reject(format('select record_manual_carrier_cost(%L,%L,%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','hand courier','5.00',null),'%%job no longer needed%%');
+  perform pg_temp.jobs_assert(not has_function_privilege('authenticated','record_manual_carrier_cost(uuid,text,timestamptz,uuid,text,text,text,text)','execute')
+    and has_function_privilege('service_role','record_manual_carrier_cost(uuid,text,timestamptz,uuid,text,text,text,text)','execute'),'manual cost is service-only');
+end $$;

@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 interface DispatchInfo {
   sourceDispatchKey: string;
   orderName: string | null;
+  currency: string | null;
   trackingNumbers: string[];
 }
 
@@ -28,7 +29,7 @@ async function loadJobs() {
     sb.from('scheduled_jobs').select('job_key', { count: 'exact', head: true }).eq('org_id', org).eq('state', 'succeeded'),
     sb.from('job_runs').select('job_key, attempt, outcome, finished_at, detail')
       .eq('org_id', org).order('finished_at', { ascending: false }).limit(300),
-    sb.from('tool_grants').select('tool_name, enabled').eq('org_id', org).eq('agent_name', 'operator').in('tool_name', ['jobs.retry', 'jobs.dismiss']),
+    sb.from('tool_grants').select('tool_name, enabled').eq('org_id', org).eq('agent_name', 'operator').in('tool_name', ['jobs.retry', 'jobs.dismiss', 'carriers.record_manual_cost']),
     sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
   ]);
   for (const r of [jobs, succeeded, runs, grants, controls]) if (r.error) throw r.error;
@@ -43,6 +44,9 @@ async function loadJobs() {
       : !granted('jobs.retry') && !granted('jobs.dismiss') ? 'Retrying and dismissing jobs are switched off for this business (operator grants missing or revoked).'
       : !granted('jobs.retry') ? 'Retrying jobs is switched off for this business (the operator jobs.retry grant is missing or revoked).'
       : !granted('jobs.dismiss') ? 'Dismissing jobs is switched off for this business (the operator jobs.dismiss grant is missing or revoked).' : null,
+    cost: !paused && granted('carriers.record_manual_cost'),
+    costNote: paused ? 'Business actions are paused, so no carrier cost can be recorded by hand until they are resumed.'
+      : !granted('carriers.record_manual_cost') ? 'Entering a carrier cost by hand is off for this business. It is turned on deliberately with the operator carriers.record_manual_cost grant.' : null,
   };
   const rows = (jobs.data ?? []) as JobRow[];
   const dispatchIds = [...new Set(rows.map(j => j.dispatch_id))];
@@ -50,19 +54,20 @@ async function loadJobs() {
   if (dispatchIds.length) {
     const [d, f] = await Promise.all([
       sb.from('dispatches').select('id, source_dispatch_key').eq('org_id', org).in('id', dispatchIds),
-      sb.from('shopify_fulfillments').select('dispatch_id, tracking_numbers, order:shopify_orders(shopify_order_name)')
+      sb.from('shopify_fulfillments').select('dispatch_id, tracking_numbers, order:shopify_orders(shopify_order_name, currency)')
         .eq('org_id', org).in('dispatch_id', dispatchIds),
     ]);
     if (d.error) throw d.error;
     if (f.error) throw f.error;
     const fulfillments = new Map(((f.data ?? []) as unknown as Array<{
-      dispatch_id: string; tracking_numbers: string[]; order: { shopify_order_name: string | null } | null;
+      dispatch_id: string; tracking_numbers: string[]; order: { shopify_order_name: string | null; currency: string | null } | null;
     }>).map(x => [x.dispatch_id, x]));
     for (const row of (d.data ?? []) as Array<{ id: string; source_dispatch_key: string }>) {
       const ful = fulfillments.get(row.id);
       dispatches.set(row.id, {
         sourceDispatchKey: row.source_dispatch_key,
         orderName: ful?.order?.shopify_order_name ?? null,
+        currency: ful?.order?.currency ?? null,
         trackingNumbers: ful?.tracking_numbers ?? [],
       });
     }
@@ -70,7 +75,7 @@ async function loadJobs() {
   return { rows, succeeded: succeeded.count ?? 0, runs: (runs.data ?? []) as JobRunRow[], dispatches, actions };
 }
 
-interface Actions { retry: boolean; dismiss: boolean; note: string | null }
+interface Actions { retry: boolean; dismiss: boolean; note: string | null; cost: boolean; costNote: string | null }
 
 const STATE_TONE: Record<JobState, BadgeTone> = {
   pending: 'zinc', running: 'blue', succeeded: 'green', failed: 'amber', blocked: 'red', quarantined: 'red', dismissed: 'zinc',
@@ -153,7 +158,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             <Section title="Dismissed" empty="">
               {summary.dismissed.map(job => (
                 <JobCard key={job.job_key} job={job} now={now} dispatch={dispatches.get(job.dispatch_id)} runs={history.get(job.job_key) ?? []}
-                  actions={{ ...actions, dismiss: false }} />
+                  actions={{ ...actions, dismiss: false }} manualCost />
               ))}
             </Section>
           ) : null}
@@ -174,9 +179,9 @@ function Section({ title, empty, children }: { title: string; empty: string; chi
   );
 }
 
-function JobCard({ job, now, dispatch, runs, compact = false, actions }: {
+function JobCard({ job, now, dispatch, runs, compact = false, actions, manualCost = false }: {
   job: JobRow; now: Date; dispatch: DispatchInfo | undefined; runs: JobRunRow[]; compact?: boolean;
-  actions?: Actions;
+  actions?: Actions; manualCost?: boolean;
 }) {
   const advice = adviceFor(job.last_error);
   return (
@@ -235,6 +240,8 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions }: {
         </div>
       ) : null}
 
+      {manualCost && actions ? <ManualCostForm job={job} currency={dispatch?.currency ?? null} actions={actions} /> : null}
+
       {runs.length > 0 && !compact ? (
         <details className="mt-3">
           <summary className="text-xs font-semibold text-zinc-500 uppercase tracking-wide cursor-pointer">
@@ -244,9 +251,9 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions }: {
             {runs.map((run, i) => (
               <li key={i} className="flex gap-3">
                 <span className="tabular-nums text-zinc-500 whitespace-nowrap">{formatDateTime(run.finished_at)}</span>
-                <span className="whitespace-nowrap">{run.outcome === 'operator_retry' ? 'retried by operator' : run.outcome === 'operator_dismiss' ? 'dismissed by operator' : <>#{run.attempt} {run.outcome}</>}</span>
+                <span className="whitespace-nowrap">{run.outcome === 'operator_retry' ? 'retried by operator' : run.outcome === 'operator_dismiss' ? 'dismissed by operator' : run.outcome === 'operator_cost' ? 'cost entered by operator' : <>#{run.attempt} {run.outcome}</>}</span>
                 <span className="font-mono text-zinc-600 dark:text-zinc-400 break-words">
-                  {run.outcome === 'operator_retry' || run.outcome === 'operator_dismiss'
+                  {run.outcome === 'operator_retry' || run.outcome === 'operator_dismiss' || run.outcome === 'operator_cost'
                     ? `${String(run.detail?.actor_email ?? '')}: ${String(run.detail?.reason ?? '')}`
                     : typeof run.detail?.error === 'string' ? run.detail.error : ''}
                 </span>
@@ -256,5 +263,42 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions }: {
         </details>
       ) : null}
     </article>
+  );
+}
+
+/** A dismissed parcel that never went through the carrier adapter can have its actual cost
+ * entered by hand. The database decides whether it is allowed and stores it as attributed
+ * carrier evidence; this form only collects the amount as typed. */
+function ManualCostForm({ job, currency, actions }: { job: JobRow; currency: string | null; actions: Actions }) {
+  const id = (name: string) => `${name}-${job.job_key}`;
+  return (
+    <div className="mt-4 rounded border border-zinc-200 dark:border-zinc-800 p-4 space-y-2" data-testid="manual-cost">
+      <div className="text-sm font-semibold">Enter the carrier cost by hand</div>
+      {actions.costNote ? (
+        <div className="text-sm text-zinc-500" data-testid="manual-cost-unavailable">{actions.costNote}</div>
+      ) : !currency ? (
+        <div className="text-sm text-zinc-500">This order&apos;s currency is unknown, so no cost can be entered for it.</div>
+      ) : (
+        <form method="post" action="/jobs/cost" className="grid gap-2 sm:grid-cols-[10rem_1fr]">
+          <input type="hidden" name="job_key" value={job.job_key} />
+          <input type="hidden" name="expected_updated_at" value={job.updated_at} />
+          <label htmlFor={id('cost')} className="text-sm text-zinc-600 dark:text-zinc-400 self-center">Carrier cost ({currency}, excl. tax)</label>
+          <input id={id('cost')} name="cost" required inputMode="decimal" pattern="[0-9]{1,9}(\.[0-9]{1,2})?" placeholder="12.50"
+            className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm w-40" />
+          <label htmlFor={id('reference')} className="text-sm text-zinc-600 dark:text-zinc-400 self-center">Reference (optional)</label>
+          <input id={id('reference')} name="reference" maxLength={200} placeholder="Courier receipt or bill number"
+            className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm" />
+          <label htmlFor={id('cost-reason')} className="text-sm text-zinc-600 dark:text-zinc-400 self-center">Why by hand</label>
+          <input id={id('cost-reason')} name="reason" required minLength={3} maxLength={500} placeholder="How the parcel was sent (recorded)"
+            className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm" />
+          <div className="sm:col-start-2 flex items-center gap-3">
+            <button type="submit" className="rounded border border-zinc-400 dark:border-zinc-600 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              Record carrier cost
+            </button>
+            <span className="text-xs text-zinc-500">Recorded under your name. If this is the order&apos;s first part, its invoice uses this cost for freight.</span>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }

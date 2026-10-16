@@ -120,16 +120,24 @@ export function runsByJob(runs: JobRunRow[]): Map<string, JobRunRow[]> {
   return byJob;
 }
 
-/** Outcome codes of the console's job actions (retry, dismiss), carried in the redirect
+/** A carrier cost as typed by an operator: digits with at most two decimals, the same
+ * rule record_manual_carrier_cost enforces. Checked here only to answer quickly. */
+export const MANUAL_COST_PATTERN = '^[0-9]{1,9}(\\.[0-9]{1,2})?$';
+export const isManualCost = (value: string) => new RegExp(MANUAL_COST_PATTERN).test(value.trim());
+
+/** Outcome codes of the console's job actions (retry, dismiss, manual cost), carried in the redirect
  * back to /jobs. Only these fixed messages are shown; nothing from the URL is echoed. */
 export const ACTION_OUTCOMES = {
   retried: { ok: true, text: 'Job queued. The worker picks it up on its next pass, within about a minute.' },
   dismissed: { ok: true, text: 'Job dismissed. Atlas will not retry it. To undo, retry it from Dismissed below.' },
+  cost_recorded: { ok: true, text: 'Carrier cost recorded and attributed to you. The order\'s first part can now be drafted with it.' },
+  cost_format: { ok: false, text: 'Enter the carrier cost as an amount such as 12.50 (at most two decimals, no currency sign). Nothing changed.' },
+  currency: { ok: false, text: 'The order\'s currency is unknown, so no cost can be recorded for it. Nothing changed.' },
   paused: { ok: false, text: 'Business actions are paused, so nothing changed. Resume them first.' },
   not_allowed: { ok: false, text: 'This action is switched off for this business (its operator grant is missing or revoked). Nothing changed.' },
   changed: { ok: false, text: 'This job changed after the page loaded. Nothing changed; check its current state below.' },
   not_stopped: { ok: false, text: 'This job is no longer in a state that allows this action, so nothing changed.' },
-  not_needed: { ok: false, text: 'This dispatch no longer needs a carrier cost (it has one, or its order is invoiced). Nothing was retried.' },
+  not_needed: { ok: false, text: 'This dispatch no longer needs a carrier cost (it has one, or its order is invoiced). Nothing changed.' },
   reason: { ok: false, text: 'Give a short reason (at least 3 characters). Nothing changed.' },
   not_found: { ok: false, text: 'That job no longer exists. Nothing changed.' },
   failed: { ok: false, text: 'The action could not be recorded. Nothing changed; try again.' },
@@ -140,7 +148,9 @@ const ACTION_ERRORS: Array<[RegExp, ActionOutcome]> = [
   [/business actions paused/, 'paused'],
   [/tool entitlement missing or revoked|agent disabled/, 'not_allowed'],
   [/job changed since it was loaded/, 'changed'],
-  [/only blocked/, 'not_stopped'],
+  [/only (blocked|dismissed)/, 'not_stopped'],
+  [/at most two decimals/, 'cost_format'],
+  [/order currency unknown/, 'currency'],
   [/job no longer needed/, 'not_needed'],
   [/reason required/, 'reason'],
   [/job not found/, 'not_found'],
