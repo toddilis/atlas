@@ -1,5 +1,16 @@
 # Deploying Atlas
 
+> **Revalidate before first deploy (2026-10-16).** This runbook predates decisions
+> D8–D10 (PLAN.md §3): the pilot VICE receivables flow is **bank-transfer settlement
+> (Wise/ASB) with printed/occasionally emailed invoices — Stripe issuance is not part of
+> the pilot path**. The Stripe webhook/secret steps below remain valid only for the
+> legacy wholesale loop; the Shopify webhook re-pointing remains required for order/
+> fulfillment sync. Whether migrations 0011→current have been applied to the live
+> Supabase project is not verifiable from this repo — confirm against the project before
+> deploying anything that assumes them. Reconcile with
+> `docs/product/VICE_RECEIVABLES.md` and the current integration status in
+> `docs/development/BUILD_QUEUE.md` first.
+
 Two deployables (decision D1/D7 in `PLAN.md`):
 
 | Piece | Where | What runs |
