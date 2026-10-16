@@ -6,7 +6,9 @@ trap 'rm -rf "$WORK"' EXIT
 sql() { psql "$DATABASE_URL" -X -qAt -v ON_ERROR_STOP=1 "$@"; }
 org='50000000-0000-4000-8000-000000000001'
 sql -c "insert into orgs(id,slug,display_name) values('$org','events-race','Synthetic events race');" >/dev/null
-publish="select publish_platform_event('$org',jsonb_build_object('event_id','race','event_type','controller.invoice.drafted','event_version',1,'company_id','$org','connection_id',null,'occurred_at','2026-10-01T00:00:00Z','observed_at','2026-10-01T00:00:00Z','producer','fixture','subject_type','Invoice','subject_id','race','subject_version',1,'correlation_id','race','causation_id',null,'source_refs','[]'::jsonb,'evidence_refs','[]'::jsonb,'event_class','fact','payload','{\"value\":\"synthetic\"}'::jsonb),'same-source',array['race']);"
+# A valid ExecutionV1 fact: publication validates the payload, so the race uses a real one.
+payload="jsonb_build_object('contract_version',1,'company_id','$org','created_at','2026-10-01T00:00:00Z','execution_id','race','revision',1,'action_id','race-action','action_revision',1,'attempt_number',1,'idempotency_key','race:1','connection_id',null,'state','EXECUTING','started_at','2026-10-01T00:00:00Z','finished_at',null,'provider_reference',null,'result','unknown','evidence_refs','[]'::jsonb,'error_code',null,'reconciliation_owner',null)"
+publish="select publish_platform_event('$org',jsonb_build_object('event_id','race','event_type','controller.action.execution_recorded','event_version',1,'company_id','$org','connection_id',null,'occurred_at','2026-10-01T00:00:00Z','observed_at','2026-10-01T00:00:00Z','producer','fixture','subject_type','Execution','subject_id','race','subject_version',1,'correlation_id','race','causation_id',null,'source_refs','[]'::jsonb,'evidence_refs','[]'::jsonb,'event_class','fact','payload',$payload),'same-source',array['race']);"
 sql -c "begin; $publish select pg_sleep(0.3); commit;" >"$WORK/pub-a" 2>&1 & a=$!
 sql -c "$publish" >"$WORK/pub-b" 2>&1 & b=$!
 wait "$a"; wait "$b"

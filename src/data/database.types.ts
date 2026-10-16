@@ -3028,6 +3028,11 @@ export type Database = {
         }
         Returns: undefined
       }
+      native_evidence_digest: { Args: { p_value: Json }; Returns: Json }
+      native_evidence_publication: {
+        Args: { p_kind: string; p_record: Json }
+        Returns: Json
+      }
       next_invoice_number: { Args: { p_org_id: string }; Returns: string }
       overdue_days: {
         Args: { p_anchor: string; p_as_of: string; p_tz?: string }
@@ -3064,6 +3069,15 @@ export type Database = {
       project_shopify_dispatch: {
         Args: { p_connection_key: string; p_org_id: string; p_payload: Json }
         Returns: string
+      }
+      publish_native_evidence: {
+        Args: {
+          p_action: string
+          p_company: string
+          p_kind: string
+          p_record: Json
+        }
+        Returns: undefined
       }
       publish_platform_event: {
         Args: {
