@@ -13,12 +13,13 @@ create function pg_temp.effects(company uuid) returns text language sql as $$
 -- F7: the service-role draft refuses a forged snapshot before claiming the dispatch, and the
 -- refusal leaves no part, allocation, order group, invoice, snapshot or event behind.
 create function pg_temp.draft_refused(company uuid,dispatch uuid,version uuid,snapshot jsonb,pattern text) returns void language plpgsql as $$
-declare d dispatches%rowtype; before text:=pg_temp.effects(company);
+declare d dispatches%rowtype; before text:=pg_temp.effects(company); reference text;
 begin
   select * into d from dispatches where id=dispatch;
+  select shopify_order_name into reference from shopify_orders where org_id=company and id::text=d.order_key;
   execute 'set local role service_role';
   perform pg_temp.pricing_reject(format('select draft_dispatch_invoice(%L,%L,%L,%L,%L,%L,%L)',
-    company,d.source_id,dispatch,d.source_revision,version,snapshot,'#synthetic'),pattern);
+    company,d.source_id,dispatch,d.source_revision,version,snapshot,reference),pattern);
   execute 'reset role';
   perform pg_temp.pricing_assert(pg_temp.effects(company)=before,'refused draft left an effect: '||pattern);
 end $$;
@@ -46,7 +47,7 @@ declare
   late_v1 jsonb:=current_setting('test.pricing_late_v1')::jsonb; late_v2 jsonb:=current_setting('test.pricing_late_v2')::jsonb;
   exempt jsonb:=current_setting('test.pricing_exempt')::jsonb; swap jsonb:=current_setting('test.pricing_swap')::jsonb;
   forged jsonb; variant jsonb; quote jsonb; version_id uuid; next_version uuid; source uuid; plain uuid;
-  da uuid; db uuid; dc uuid; de uuid; dx uuid; dy uuid; dz uuid; ds uuid; ra jsonb; rb jsonb; rc jsonb; retry jsonb; saved jsonb; part record;
+  da uuid; db uuid; dc uuid; de uuid; dx uuid; dy uuid; dz uuid; dw uuid; ds uuid; ra jsonb; rb jsonb; rc jsonb; retry jsonb; saved jsonb; part record;
   order600 uuid:=gen_random_uuid(); order700 uuid:=gen_random_uuid(); order800 uuid:=gen_random_uuid(); fz uuid; fe uuid;
   revision timestamptz:='2026-10-02T09:00:00+13:00'; late_revision timestamptz:='2026-10-04T09:00:00+13:00';
   lines jsonb:='[{"source_line_key":"original","order_line_key":"order-line","item_key":"WIDGET","quantity":40,"ordered_quantity":100}]';
@@ -55,7 +56,8 @@ begin
   insert into orgs(id,slug,display_name) values(company,'pricing-fixture','Synthetic pricing');
   insert into accounts(id,org_id,name) values(account,company,'Synthetic retailer');
   insert into accounts(id,org_id,name,tax_exempt) values(other,company,'Synthetic export retailer',true);
-  insert into products(id,org_id,sku,display_name) values(product,company,'WIDGET','Synthetic widget');
+  -- The stored name carries stray whitespace; the snapshot holds it trimmed, as the calculator does.
+  insert into products(id,org_id,sku,display_name) values(product,company,'WIDGET','Synthetic widget ');
   -- Shopify orders name their retailer through the linked customer.
   insert into shopify_customers(org_id,shopify_customer_id,raw,account_id) values
     (company,'cust-a','{}',account),(company,'cust-b','{}',other),(company,'cust-x','{}',null);
@@ -85,6 +87,9 @@ begin
   -- A destination rule can be neither applied nor skipped without an authoritative destination.
   variant:=jsonb_set(c,'{shipping,rules}',(c#>'{shipping,rules}')||'[{"id":"remote","accountId":null,"destination":"remote","priority":10,"mode":{"kind":"fixed","amount":"2500"},"chargingBasis":"first_part","freeThreshold":null}]');
   perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',variant,a),'%%authoritative dispatch destination%%');
+  -- First-part freight stands for the whole order: a one-shipment threshold cannot waive it.
+  variant:=jsonb_set(c,'{shipping,rules,0,freeThreshold}','{"amount":"1","valueBasis":"dispatch","afterDiscount":true,"includesTax":false}');
+  perform pg_temp.pricing_reject(format('select assert_pricing_snapshot(%L,%L)',variant,a),'%%cannot use a per-shipment free threshold%%');
   -- Invoice-dated standard terms take the draft's own date, never a supplied one.
   variant:=jsonb_set(c,'{terms,anchor}','"invoice"');
   forged:=jsonb_set(jsonb_set(a,'{input,terms}','{"kind":"following_month_day","day":20,"anchor":"invoice","invoiceAt":"2026-12-15T10:00:00+13:00"}'),
@@ -163,6 +168,15 @@ begin
   forged:=jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(a,'{input,priorParts}','1'),'{freight,amount}','"0"'),'{freight,explanation}',
     to_jsonb((a#>>'{freight,explanation}')||'; later part carries no freight')),'{tax,amount}','"4800"'),'{total}','"36800"');
   perform pg_temp.draft_refused(company,da,version_id,forged,'%%stale part order%%');
+  -- D15: the order's freight is its first shipment's. The later shipment cannot be invoiced,
+  -- as the first part or otherwise, while the earlier one is still billable.
+  perform pg_temp.draft_refused(company,db,version_id,pg_temp.bind(current_setting('test.pricing_b_first')::jsonb,db),'%%earlier shipment of this order must be invoiced first%%');
+  -- The printed order reference is the order's own name, never a caller's.
+  perform pg_temp.pricing_reject(format('select pg_temp.draft(%L,%L,%L,%L,%L)',company,da,version_id,a,'#typed-in'),'%%not the order''s name%%');
+  update shopify_orders set shopify_order_name=null where id=order100;
+  perform pg_temp.pricing_reject(format('select pg_temp.draft(%L,%L,%L,%L,%L)',company,da,version_id,a,'#synthetic-100'),'%%order display reference unavailable%%');
+  update shopify_orders set shopify_order_name='#synthetic-100' where id=order100;
+  perform pg_temp.pricing_assert(pg_temp.effects(company)='0/0/0/0/0/0','refused drafts left no effect');
 
   -- 40/60 dispatch -> invoice parts A and B. Only the first part carries freight (D15 rule).
   ra:=pg_temp.draft(company,da,version_id,a,'#synthetic-100');
@@ -213,6 +227,13 @@ begin
     values(company,fe,order100,account,'wholesale',revision) returning id into fe;
   perform pg_temp.pricing_reject(format('select * from draft_invoice_atomic(%L,%L,%L,%L,%L)',company,account,fe,'NZD',
     '[{"product_id":"'||product||'","description":"Synthetic widget","quantity":40,"unit_price_cents":800}]'),'%%already invoiced by BILL%%');
+  -- The legacy path bills the whole order, so a fulfillment BILL never saw is refused too.
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at)
+    values(company,'legacy-only',order100,'success','{}',revision) returning id into fe;
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+    values(company,fe,order100,account,'wholesale',revision) returning id into fe;
+  perform pg_temp.pricing_reject(format('select * from draft_invoice_atomic(%L,%L,%L,%L,%L)',company,account,fe,'NZD',
+    '[{"product_id":"'||product||'","description":"Synthetic widget","quantity":40,"unit_price_cents":800}]'),'%%already invoiced by BILL%%');
   insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at)
     values(company,'dispatch-z',order800,'success','{}',revision) returning id into fz;
   insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
@@ -221,6 +242,10 @@ begin
     jsonb_build_array(jsonb_build_object('product_id',product,'description','Synthetic widget','quantity',40,'unit_price_cents',800)))),'legacy invoice created first');
   dz:=project_dispatch(company,source,'dispatch-z',order800::text,revision,'succeeded',null,lines,null,'{}',revision);
   perform pg_temp.draft_refused(company,dz,version_id,pg_temp.bind(jsonb_set(jsonb_set(a,'{input,orderKey}',to_jsonb(order800::text)),'{input,dispatchKey}','"dispatch-z"'),dz),
+    '%%already has a legacy invoice%%');
+  -- Any later shipment of a legacy-invoiced order is refused too, not only the invoiced fulfillment.
+  dw:=project_dispatch(company,source,'dispatch-w',order800::text,revision,'succeeded',null,lines,null,'{}',revision);
+  perform pg_temp.draft_refused(company,dw,version_id,pg_temp.bind(jsonb_set(jsonb_set(a,'{input,orderKey}',to_jsonb(order800::text)),'{input,dispatchKey}','"dispatch-w"'),dw),
     '%%already has a legacy invoice%%');
   perform pg_temp.pricing_assert(not has_function_privilege('anon','draft_invoice_atomic(uuid,uuid,uuid,character,jsonb)','execute')
     and not has_function_privilege('authenticated','draft_invoice_atomic(uuid,uuid,uuid,character,jsonb)','execute'),'legacy draft is service-only');

@@ -62,6 +62,8 @@ test('threshold below, at and above uses declared discounted taxed dispatch basi
   assert.equal(calculatePricing(c,i).freight.amount, '1000');
   c.shipping.rules[0]!.freeThreshold!.amount = '36800'; assert.equal(calculatePricing(c,i).freight.amount, '0');
   c.shipping.rules[0]!.freeThreshold!.amount = '36799'; assert.equal(calculatePricing(c,i).freight.amount, '0');
+  // First-part freight stands for the whole order, so a one-shipment threshold cannot waive it.
+  c.shipping.rules[0]!.chargingBasis = 'first_part'; assert.throws(() => calculatePricing(c,i), /first-part freight cannot use a free threshold/);
 });
 test('ambiguous rules and missing products are explicit exceptions', () => {
   const c = config(); const i = input(); c.tiers.push({ ...c.tiers[0]!, id: 'conflict' }); assert.throws(() => calculatePricing(c,i), /conflicting/);

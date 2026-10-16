@@ -19,7 +19,6 @@ const part=(edit:(i:PricingInput)=>void)=>{
 };
 const a=part(i=>{i.carrier=quote('dispatch-a','2026-10-02T09:30:00+13:00');});
 const b=part(i=>{i.dispatchKey='dispatch-b'; i.lines[0]!.dispatched=60; i.priorParts=1;});
-const aLater=part(i=>{i.priorParts=1;});
 const bFirst=part(i=>{i.dispatchKey='dispatch-b'; i.lines[0]!.dispatched=60; i.carrier=quote('dispatch-b','2026-10-02T09:30:00+13:00');});
 // Scheduled price change after parts A/B were dispatched, and a later order dispatched under it.
 // late_v1 is the stale preview a caller could still hold for that later dispatch.
@@ -32,7 +31,7 @@ const exempt=part(i=>{i.accountId=other; i.orderKey=order500; i.dispatchKey='dis
 // The other retailer's price for order 100's first part: a valid calculation for the wrong retailer.
 const swap=part(i=>{i.accountId=other; i.taxExempt=true; i.carrier=quote('dispatch-a','2026-10-02T09:30:00+13:00');});
 const fixtures={company,account,other_account:other,product,order_100:order100,order_200:order200,order_500:order500,config:c,config_v2:c2,
-  a:calculatePricing(c,a),b:calculatePricing(c,b),a_later:calculatePricing(c,aLater),b_first:calculatePricing(c,bFirst),
+  a:calculatePricing(c,a),b:calculatePricing(c,b),b_first:calculatePricing(c,bFirst),
   late_v1:calculatePricing(c,late),late_v2:calculatePricing(c2,late),exempt:calculatePricing(c,exempt),swap:calculatePricing(c,swap)};
 for(const [name,value] of Object.entries(fixtures)) {
   const text=typeof value==='string' ? value : JSON.stringify(value);
