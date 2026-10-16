@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "zod": [
+        "./node_modules/zod"
       ]
     }
   },

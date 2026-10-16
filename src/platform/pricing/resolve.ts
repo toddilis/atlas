@@ -7,6 +7,9 @@
 // without the supabase client.
 
 import { supabase, orgId } from '../../data/supabase.js';
+// Versioned configuration is the new preview/BILL-01 path. Legacy callers remain
+// explicit until migrated; never fall back from a failed versioned calculation.
+export { calculatePricing, previewPricing } from './versioned.js';
 import type {
   AccountPriceBookBinding,
   PriceBook,

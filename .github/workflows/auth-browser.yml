@@ -16,7 +16,11 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      # verify-migrations.sh generates pricing fixtures with the root TypeScript calculator.
+      - run: npm ci
       - run: npm --prefix web ci
       - run: node web/test/auth/environment.mjs
       - run: docker compose -f web/test/auth/compose.yml up -d --wait
