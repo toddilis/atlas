@@ -295,5 +295,35 @@ Evidence:
 
 Limits:
 
-- There is no dismiss action for a job that will never succeed.
-- Refused retries are shown to the operator but not written to `audit_log`.
+- Refused actions are shown to the operator but not written to `audit_log`.
+
+## 16 October: operator dismissal for jobs that will never succeed
+
+Blocked and quarantined cards also have **Dismiss**. It uses the same reason box and posts
+to `/jobs/dismiss`; both actions share `web/lib/job-action.ts`. `dismiss_scheduled_job`
+(0031, service-only) applies the same checks as retry, against its own
+`operator → jobs.dismiss` grant (seeded at boot): pause, grant, an unchanged job, a reason
+and the operator's identity. Only blocked or quarantined jobs can be dismissed.
+
+A dismissed job:
+
+- keeps its last error;
+- is never claimed;
+- is not re-armed by discovery;
+- records no carrier cost. If its dispatch is the order's first part, that part still
+  cannot be drafted until a cost is recorded; the page says so.
+
+Each dismissal is recorded as an `operator_dismiss` row in `job_runs` and a `jobs.dismiss`
+row in `audit_log`. Dismissed jobs are listed under **Dismissed**, where **Retry now** undoes
+the dismissal (`retry_scheduled_job` now also accepts `dismissed`).
+
+Evidence:
+
+- `verify-jobs.sql` tests:
+  - the refusals: no grant, wrong state, no reason, a stale view, paused;
+  - the recorded evidence;
+  - that a dismissed job is never claimed or re-armed and records no cost;
+  - undo by retry;
+  - service-only access.
+- The browser acceptance dismisses the seeded blocked job with a reason. It checks the job
+  moves to Dismissed with the warning and its history, then undoes it with Retry now.

@@ -23,9 +23,10 @@ export async function bootAgents(): Promise<void> {
     { agentName: 'controller', toolName: 'shopify.list_customers',  risk: 'auto' },
     { agentName: 'controller', toolName: 'shopify.list_products',   risk: 'auto' },
     { agentName: 'controller', toolName: 'shopify.list_fulfillments', risk: 'auto' },
-    // Console operators may retry blocked or quarantined background jobs (0030). Seeded
-    // once; revoking it (enabled=false) switches the console's Retry button off.
+    // Console operators may retry or dismiss stopped background jobs (0030, 0031). Seeded
+    // once; revoking a grant (enabled=false) switches that console action off.
     { agentName: 'operator', toolName: 'jobs.retry', risk: 'notify' },
+    { agentName: 'operator', toolName: 'jobs.dismiss', risk: 'notify' },
   ]);
 
   booted = true;

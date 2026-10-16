@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adviceFor, isRetryOutcome, nextStep, RETRY_OUTCOMES, retryOutcomeFor, runsByJob, summarize, type JobRow } from '../lib/jobs';
+import { adviceFor, isActionOutcome, nextStep, ACTION_OUTCOMES, actionOutcomeFor, runsByJob, summarize, type JobRow } from '../lib/jobs';
 
 const now = new Date('2026-10-16T12:00:00Z');
 const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
@@ -21,7 +21,7 @@ test('quarantined then blocked jobs need a person; retrying and queued are separ
   assert.deepEqual(s.needsAttention.map(j => j.job_key), ['q', 'b-new', 'b-old']);
   assert.deepEqual(s.retrying.map(j => j.job_key), ['f']);
   assert.deepEqual(s.inProgress.map(j => j.job_key).sort(), ['p', 'r']);
-  assert.deepEqual(s.counts, { pending: 1, running: 1, succeeded: 0, failed: 1, blocked: 2, quarantined: 1 });
+  assert.deepEqual(s.counts, { pending: 1, running: 1, succeeded: 0, failed: 1, blocked: 2, quarantined: 1, dismissed: 0 });
   assert.deepEqual(s.overdue, []);
   assert.equal(s.lastRunAt, null);
 });
@@ -73,24 +73,36 @@ test('attempt history is grouped per job, newest first', () => {
   assert.equal(runs.get('b')?.length, 1);
 });
 
-test('every database refusal of a retry maps to a fixed operator message', () => {
+test('every database refusal of a retry or dismissal maps to a fixed operator message', () => {
   const cases: Array<[string, string]> = [
     ['business actions paused', 'paused'],
     ['tool entitlement missing or revoked', 'not_allowed'],
     ['agent disabled', 'not_allowed'],
     ['job changed since it was loaded', 'changed'],
-    ['only blocked or quarantined jobs can be retried', 'not_stopped'],
+    ['only blocked, quarantined or dismissed jobs can be retried', 'not_stopped'],
+    ['only blocked or quarantined jobs can be dismissed', 'not_stopped'],
+    ['dismiss reason required', 'reason'],
     ['job no longer needed', 'not_needed'],
     ['retry reason required', 'reason'],
     ['job not found', 'not_found'],
     ['connection reset', 'failed'],
   ];
-  for (const [message, outcome] of cases) assert.equal(retryOutcomeFor(message), outcome, message);
-  assert.equal(RETRY_OUTCOMES.retried.ok, true);
-  assert.ok(Object.entries(RETRY_OUTCOMES).every(([k, v]) => k === 'retried' || !v.ok));
+  for (const [message, outcome] of cases) assert.equal(actionOutcomeFor(message), outcome, message);
+  assert.ok(ACTION_OUTCOMES.retried.ok && ACTION_OUTCOMES.dismissed.ok);
+  assert.ok(Object.entries(ACTION_OUTCOMES).every(([k, v]) => ['retried', 'dismissed'].includes(k) || !v.ok));
 });
 
-test('only known retry outcomes are shown from the URL', () => {
-  assert.equal(isRetryOutcome('retried'), true);
-  for (const v of ['<script>', 'toString', '__proto__', '', undefined, ['retried']]) assert.equal(isRetryOutcome(v), false, String(v));
+test('only known action outcomes are shown from the URL', () => {
+  assert.equal(isActionOutcome('retried'), true);
+  assert.equal(isActionOutcome('dismissed'), true);
+  for (const v of ['<script>', 'toString', '__proto__', '', undefined, ['retried']]) assert.equal(isActionOutcome(v), false, String(v));
+});
+
+test('dismissed jobs are listed apart, never overdue, and say what dismissal leaves undone', () => {
+  const s = summarize([job('d', 'dismissed', { next_attempt_at: at(-600), attempts: 3 }), job('b', 'blocked', { next_attempt_at: at(60) })], [], now);
+  assert.deepEqual(s.dismissed.map(j => j.job_key), ['d']);
+  assert.deepEqual(s.needsAttention.map(j => j.job_key), ['b']);
+  assert.equal(s.counts.dismissed, 1);
+  assert.deepEqual(s.overdue, []);
+  assert.match(nextStep(job('d', 'dismissed'), now), /will not retry it.*cannot be drafted until a cost is recorded/);
 });

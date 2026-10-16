@@ -3061,6 +3061,17 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: number
       }
+      dismiss_scheduled_job: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_updated_at: string
+          p_job_key: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
+      }
       draft_dispatch_invoice: {
         Args: {
           p_dispatch_id: string

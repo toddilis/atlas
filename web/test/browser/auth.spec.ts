@@ -135,10 +135,10 @@ test('operator retries a stopped job with a reason; a stale page cannot retry it
   };
   await quarantined.getByRole('button', { name: 'Retry now' }).click();
   await expect(page).toHaveURL(/\/jobs$/); // the browser refuses an empty reason before posting
-  await quarantined.getByLabel('Reason for retrying').fill('Booked the missing consignment in GoSweetSpot');
+  await quarantined.getByLabel('Reason', { exact: true }).fill('Booked the missing consignment in GoSweetSpot');
   await quarantined.getByRole('button', { name: 'Retry now' }).click();
-  await expect(page).toHaveURL(/\/jobs\?retry=retried$/);
-  await expect(page.getByTestId('retry-notice')).toContainText('Job queued.');
+  await expect(page).toHaveURL(/\/jobs\?outcome=retried$/);
+  await expect(page.getByTestId('action-notice')).toContainText('Job queued.');
   await expect(page.getByRole('region', { name: 'Needs a person' }).getByText('TRK-QUARANTINED')).toHaveCount(0);
   const queued = page.getByRole('region', { name: 'Queued and running' }).getByTestId('job').filter({ hasText: 'TRK-QUARANTINED' });
   await expect(queued).toContainText('pending');
@@ -154,11 +154,37 @@ test('operator retries a stopped job with a reason; a stale page cannot retry it
     }
     document.body.appendChild(form); form.submit();
   }, stale);
-  await expect(page).toHaveURL(/\/jobs\?retry=changed$/);
-  await expect(page.getByTestId('retry-notice')).toContainText('This job changed after the page loaded. Nothing was retried');
+  await expect(page).toHaveURL(/\/jobs\?outcome=changed$/);
+  await expect(page.getByTestId('action-notice')).toContainText('This job changed after the page loaded. Nothing changed');
 
   // Another site cannot post the action with the operator's cookies.
   const crossSite = await page.request.post('/jobs/retry', { headers: { Origin: 'https://attacker.invalid' }, form: stale });
   expect(crossSite.status()).toBe(403);
   await page.screenshot({ path: 'test-results/jobs-retried.png', fullPage: true });
+});
+
+test('operator dismisses a job that will never succeed, and undoes it by retrying', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/jobs');
+  const blocked = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job').filter({ hasText: 'TRK-BLOCKED' });
+  await blocked.getByLabel('Reason', { exact: true }).fill('Parcel went by hand courier, not GoSweetSpot');
+  await blocked.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(page).toHaveURL(/\/jobs\?outcome=dismissed$/);
+  await expect(page.getByTestId('action-notice')).toContainText('Job dismissed. Atlas will not retry it.');
+  await expect(page.getByRole('region', { name: 'Needs a person' })).toContainText('Nothing is blocked.');
+  const dismissed = page.getByRole('region', { name: 'Dismissed' }).getByTestId('job').filter({ hasText: 'TRK-BLOCKED' });
+  await expect(dismissed).toContainText('dismissed');
+  await expect(dismissed).toContainText('cannot be drafted until a cost is recorded');
+  await expect(dismissed.getByRole('button', { name: 'Dismiss' })).toHaveCount(0);
+  await dismissed.getByText(/Attempt history/).click();
+  await expect(dismissed).toContainText('dismissed by operator');
+  await expect(dismissed).toContainText('operator@example.test: Parcel went by hand courier, not GoSweetSpot');
+  await page.screenshot({ path: 'test-results/jobs-dismissed.png', fullPage: true });
+
+  await dismissed.getByLabel('Reason', { exact: true }).fill('It was booked in GoSweetSpot after all');
+  await dismissed.getByRole('button', { name: 'Retry now' }).click();
+  await expect(page).toHaveURL(/\/jobs\?outcome=retried$/);
+  await expect(page.getByRole('region', { name: 'Dismissed' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Queued and running' }).getByTestId('job').filter({ hasText: 'TRK-BLOCKED' })).toContainText('Not tried yet');
 });

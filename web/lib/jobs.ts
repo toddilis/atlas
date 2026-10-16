@@ -1,7 +1,7 @@
 // Background job view model for the console (JOBS-01, migration 0029). Pure functions,
 // no IO: the page loads rows, this decides what an operator needs to see and do.
 
-export type JobState = 'pending' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'quarantined';
+export type JobState = 'pending' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'quarantined' | 'dismissed';
 
 export interface JobRow {
   job_key: string;
@@ -68,6 +68,8 @@ export function nextStep(job: JobRow, now: Date): string {
         : 'Running now.';
     case 'succeeded':
       return 'Done.';
+    case 'dismissed':
+      return 'Dismissed by an operator; Atlas will not retry it. No carrier cost was recorded, so if this dispatch is its order\'s first part, that part cannot be drafted until a cost is recorded.';
     default:
       if (at <= 0) return `Due now (attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}).`;
       return `Next attempt in ${duration(at)} (attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}).`;
@@ -79,13 +81,14 @@ export interface JobsSummary {
   needsAttention: JobRow[];
   retrying: JobRow[];
   inProgress: JobRow[];
+  dismissed: JobRow[];
   /** Jobs that should have been picked up by now but were not. */
   overdue: JobRow[];
   lastRunAt: string | null;
 }
 
 export function summarize(jobs: JobRow[], runs: JobRunRow[], now: Date): JobsSummary {
-  const counts: Record<JobState, number> = { pending: 0, running: 0, succeeded: 0, failed: 0, blocked: 0, quarantined: 0 };
+  const counts: Record<JobState, number> = { pending: 0, running: 0, succeeded: 0, failed: 0, blocked: 0, quarantined: 0, dismissed: 0 };
   for (const job of jobs) counts[job.state] = (counts[job.state] ?? 0) + 1;
   const newest = (a: JobRow, b: JobRow) => b.updated_at.localeCompare(a.updated_at);
   const cutoff = now.getTime() - STALE_AFTER_MS;
@@ -98,6 +101,7 @@ export function summarize(jobs: JobRow[], runs: JobRunRow[], now: Date): JobsSum
     ],
     retrying: jobs.filter(j => j.state === 'failed').sort((a, b) => a.next_attempt_at.localeCompare(b.next_attempt_at)),
     inProgress: jobs.filter(j => j.state === 'pending' || j.state === 'running').sort((a, b) => a.next_attempt_at.localeCompare(b.next_attempt_at)),
+    dismissed: jobs.filter(j => j.state === 'dismissed').sort(newest),
     overdue: jobs.filter(j =>
       (['pending', 'failed', 'blocked'].includes(j.state) && new Date(j.next_attempt_at).getTime() < cutoff)
       || (j.state === 'running' && j.lease_until != null && new Date(j.lease_until).getTime() < cutoff)),
@@ -116,33 +120,34 @@ export function runsByJob(runs: JobRunRow[]): Map<string, JobRunRow[]> {
   return byJob;
 }
 
-/** Outcome codes of the console's retry action, carried in the redirect back to /jobs.
- * Only these fixed messages are shown; nothing from the URL is echoed. */
-export const RETRY_OUTCOMES = {
+/** Outcome codes of the console's job actions (retry, dismiss), carried in the redirect
+ * back to /jobs. Only these fixed messages are shown; nothing from the URL is echoed. */
+export const ACTION_OUTCOMES = {
   retried: { ok: true, text: 'Job queued. The worker picks it up on its next pass, within about a minute.' },
-  paused: { ok: false, text: 'Business actions are paused, so nothing was retried. Resume them first.' },
-  not_allowed: { ok: false, text: 'Retrying jobs is switched off for this business (the operator jobs.retry grant is missing or revoked). Nothing was retried.' },
-  changed: { ok: false, text: 'This job changed after the page loaded. Nothing was retried; check its current state below.' },
-  not_stopped: { ok: false, text: 'This job is no longer blocked or stopped, so there was nothing to retry.' },
+  dismissed: { ok: true, text: 'Job dismissed. Atlas will not retry it. To undo, retry it from Dismissed below.' },
+  paused: { ok: false, text: 'Business actions are paused, so nothing changed. Resume them first.' },
+  not_allowed: { ok: false, text: 'This action is switched off for this business (its operator grant is missing or revoked). Nothing changed.' },
+  changed: { ok: false, text: 'This job changed after the page loaded. Nothing changed; check its current state below.' },
+  not_stopped: { ok: false, text: 'This job is no longer in a state that allows this action, so nothing changed.' },
   not_needed: { ok: false, text: 'This dispatch no longer needs a carrier cost (it has one, or its order is invoiced). Nothing was retried.' },
-  reason: { ok: false, text: 'Give a short reason for the retry (at least 3 characters). Nothing was retried.' },
-  not_found: { ok: false, text: 'That job no longer exists. Nothing was retried.' },
-  failed: { ok: false, text: 'The retry could not be recorded. Nothing changed; try again.' },
+  reason: { ok: false, text: 'Give a short reason (at least 3 characters). Nothing changed.' },
+  not_found: { ok: false, text: 'That job no longer exists. Nothing changed.' },
+  failed: { ok: false, text: 'The action could not be recorded. Nothing changed; try again.' },
 } as const;
-export type RetryOutcome = keyof typeof RETRY_OUTCOMES;
+export type ActionOutcome = keyof typeof ACTION_OUTCOMES;
 
-const RETRY_ERRORS: Array<[RegExp, RetryOutcome]> = [
+const ACTION_ERRORS: Array<[RegExp, ActionOutcome]> = [
   [/business actions paused/, 'paused'],
   [/tool entitlement missing or revoked|agent disabled/, 'not_allowed'],
   [/job changed since it was loaded/, 'changed'],
-  [/only blocked or quarantined/, 'not_stopped'],
+  [/only blocked/, 'not_stopped'],
   [/job no longer needed/, 'not_needed'],
-  [/retry reason required/, 'reason'],
+  [/reason required/, 'reason'],
   [/job not found/, 'not_found'],
 ];
-export function retryOutcomeFor(errorMessage: string): RetryOutcome {
-  return RETRY_ERRORS.find(([pattern]) => pattern.test(errorMessage))?.[1] ?? 'failed';
+export function actionOutcomeFor(errorMessage: string): ActionOutcome {
+  return ACTION_ERRORS.find(([pattern]) => pattern.test(errorMessage))?.[1] ?? 'failed';
 }
-export function isRetryOutcome(value: unknown): value is RetryOutcome {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(RETRY_OUTCOMES, value);
+export function isActionOutcome(value: unknown): value is ActionOutcome {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(ACTION_OUTCOMES, value);
 }

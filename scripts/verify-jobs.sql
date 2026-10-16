@@ -111,7 +111,7 @@ begin
     and detail->>'job_key'=j.job_key and detail->>'actor_id'=actor::text and (detail->>'previous_attempts')::int=8),'retry audited');
   perform pg_temp.jobs_reject(call,'%%job changed since it was loaded%%');
   select * into p from scheduled_jobs where org_id=company and job_key=j.job_key;
-  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','again'),'%%only blocked or quarantined%%');
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','again'),'%%only blocked, quarantined or dismissed%%');
 
   -- A blocked job whose dispatch has since been costed is refused, not re-run.
   select * into p from scheduled_jobs where org_id=company and job_key<>j.job_key and dispatch_id in (select dispatch_id from scheduled_jobs where org_id=company) limit 1;
@@ -123,4 +123,47 @@ begin
   perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,p.job_key,p.updated_at,actor,'ops@example.test','fixed'),'%%tool entitlement missing or revoked%%');
   perform pg_temp.jobs_assert(not has_function_privilege('authenticated','retry_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute')
     and has_function_privilege('service_role','retry_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute'),'retry is service-only');
+end $$;
+
+-- Operator dismissal (0031): never claimed or re-armed, records no cost, undone by retry.
+do $$
+declare
+  company uuid:='67000000-0000-4000-8000-000000000001'; actor uuid:='67000000-0000-4000-8000-0000000000aa';
+  j scheduled_jobs; c scheduled_jobs; n int:=0;
+begin
+  select * into j from scheduled_jobs where org_id=company and job_key=(select job_key from job_runs where org_id=company and outcome='operator_retry' limit 1);
+  perform pg_temp.jobs_reject(format('select dismiss_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','not ours'),'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.dismiss','notify');
+  perform pg_temp.jobs_reject(format('select dismiss_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','not ours'),'%%only blocked or quarantined jobs can be dismissed%%');
+  update scheduled_jobs set state='blocked',attempts=3,last_error='gosweetspot: response does not cover every tracking number of the dispatch'
+    where org_id=company and job_key=j.job_key returning * into j;
+  perform pg_temp.jobs_reject(format('select dismiss_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','no'),'%%dismiss reason required%%');
+  perform pg_temp.jobs_reject(format('select dismiss_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at-interval '1 second',actor,'ops@example.test','not ours'),'%%job changed since it was loaded%%');
+  perform set_action_pause(company,true,'probe','probe pause');
+  perform pg_temp.jobs_reject(format('select dismiss_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','not ours'),'%%business actions paused%%');
+  perform set_action_pause(company,false,'probe','probe resume');
+
+  perform pg_temp.jobs_assert(dismiss_scheduled_job(company,j.job_key,j.updated_at,actor,'ops@example.test',' Sent by hand courier ')='dismissed','dismissed');
+  perform pg_temp.jobs_assert((select state='dismissed' and last_error like 'gosweetspot:%' from scheduled_jobs where org_id=company and job_key=j.job_key),'reason kept with the dismissed job');
+  perform pg_temp.jobs_assert((select count(*)=1 from job_runs where org_id=company and job_key=j.job_key and outcome='operator_dismiss'
+    and detail->>'reason'='Sent by hand courier' and detail->>'previous_state'='blocked'),'dismissal in job history');
+  perform pg_temp.jobs_assert((select count(*)=1 from audit_log where org_id=company and action='jobs.dismiss' and detail->>'job_key'=j.job_key
+    and detail->>'actor_email'='ops@example.test' and (detail->>'previous_attempts')::int=3),'dismissal audited');
+  -- Never claimed, never re-armed by discovery, and no carrier cost was recorded.
+  update scheduled_jobs set next_attempt_at=now()-interval '1 day' where org_id=company and job_key=j.job_key returning * into j;
+  loop
+    c:=claim_scheduled_job(company,'carrier_cost_sync'); exit when c.job_key is null;
+    perform pg_temp.jobs_assert(c.job_key<>j.job_key,'dismissed job is never claimed');
+    perform finish_scheduled_job(company,c.job_key,c.lease_token,'blocked','{"error":"probe"}');
+    n:=n+1; exit when n>10;
+  end loop;
+  perform discover_carrier_cost_jobs(company);
+  perform pg_temp.jobs_assert((select state='dismissed' from scheduled_jobs where org_id=company and job_key=j.job_key),'discovery does not re-arm a dismissal');
+  perform pg_temp.jobs_assert(not exists(select 1 from carrier_cost_evidence where org_id=company and dispatch_id=j.dispatch_id),'dismissal records no cost');
+  -- Undo: retry brings it back from dismissed (the retry grant was revoked above).
+  update tool_grants set enabled=true where org_id=company and agent_name='operator' and tool_name='jobs.retry';
+  perform pg_temp.jobs_assert(retry_scheduled_job(company,j.job_key,j.updated_at,actor,'ops@example.test','was booked after all')='pending','retry undoes dismissal');
+  perform pg_temp.jobs_assert((select count(*)=1 from job_runs where org_id=company and job_key=j.job_key and outcome='operator_retry' and detail->>'previous_state'='dismissed'),'undo recorded');
+  perform pg_temp.jobs_assert(not has_function_privilege('authenticated','dismiss_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute')
+    and has_function_privilege('service_role','dismiss_scheduled_job(uuid,text,timestamptz,uuid,text,text)','execute'),'dismiss is service-only');
 end $$;
