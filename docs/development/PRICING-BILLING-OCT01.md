@@ -183,8 +183,18 @@ cost evidence and records it with `record_carrier_cost`:
 - The pricing probe's carrier quotes come from this mapping, so the database accepts exactly
   what it produces.
 
-Not built, pending facts: how Atlas receives the shipment response for shipments booked in
-GoSweetSpot (booking through the API, a webhook or an export), the base URL and API key
-handling for VICE's account, and where the connection settings are stored. The documentation
-hosts were unreachable from the build environment, so field names follow the public search
-summaries of the GoSweetSpot API docs and should be checked against a real response.
+VICE books shipments in the GoSweetSpot website (confirmed 15 October), so Atlas reads them
+back. `src/integrations/gosweetspot/client.ts`:
+
+- `fetchShipmentsByConnote` calls `GET https://api.gosweetspot.com/api/shipments?shipments=<connotes>`
+  with the `access_key` and `site_id` headers.
+- `syncGoSweetSpotCost` takes a dispatch's Shopify tracking numbers, looks up the matching
+  shipments and records their cost.
+
+The response is accepted only in the documented shipment shape (`Consignments` with
+`ConsignmentId`, `Connote`, `Cost`); any other shape records nothing.
+
+Still to confirm with VICE's account: that the GET returns that shape (one webhook sample
+instead shows `TotalCost`); that GoSweetSpot writes its connotes to the Shopify fulfillment as
+tracking numbers; and the site id, key storage and cost currency. Nothing schedules the sync
+yet (JOBS-01), and no live call has been made.
