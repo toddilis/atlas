@@ -204,5 +204,39 @@ Settings are server environment (`.env.example`): `GOSWEETSPOT_ACCESS_KEY` is a 
 (worker/API host secret store only, never `NEXT_PUBLIC_`, never logged), plus
 `GOSWEETSPOT_SITE_ID`, `GOSWEETSPOT_COST_CURRENCY` (VICE: `NZD`) and
 `GOSWEETSPOT_COST_VALIDITY_DAYS` (default 30). Missing settings fail closed.
-`syncGoSweetSpotCostFromEnv` runs the lookup with them. Nothing schedules the sync
-yet (JOBS-01), and no live call has been made.
+`syncGoSweetSpotCostFromEnv` runs the lookup with them. No live call has been made.
+
+## 16 October: JOBS-01 core runs the cost sync
+
+The worker now runs the sync on each tick without anyone calling an endpoint (0029,
+`src/platform/jobs/carrier-cost.ts`). This is the JOBS-01 core plus its first job kind. It
+does not cover Shopify ingestion scheduling, approval-expiry sweeps or rollups.
+
+- `discover_carrier_cost_jobs` records one `scheduled_jobs` row per business for each
+  eligible Shopify dispatch that meets all of these conditions:
+  - its fulfillment has tracking numbers;
+  - its order has no invoice snapshot yet;
+  - it has no unexpired carrier cost.
+  Discovery is idempotent. A succeeded job is re-armed when its cost has expired and the
+  order is still unbilled.
+- `claim_scheduled_job` leases one due job (skip locked, 5 minutes). If a worker crashes,
+  its lease expires; the expiry is recorded in `job_runs` and the job is claimed again.
+  `finish_scheduled_job` accepts only the current lease holder. It sets the outcome as
+  follows:
+  - transient errors retry with a backoff of 2, 4, 8 … minutes, capped at 6 hours;
+  - errors a person must fix are `blocked`, with their reason in `last_error`, and are tried
+    again after 6 hours. These are missing settings, an unreadable response, an uncovered
+    tracking number and HTTP 401/403;
+  - after 8 attempts the job is `quarantined`.
+  `job_runs` is append-only and holds one row per attempt.
+- The sync is an optional module: it runs only when `GOSWEETSPOT_ACCESS_KEY` is set. A
+  business without GoSweetSpot gets no jobs.
+- Evidence: `scripts/verify-jobs.sql` in the database CI job tests discovery, leases, stale
+  finishes, backoff, blocked reasons, crash recovery, quarantine, re-arming, append-only
+  runs and service-only grants. `test/carrier_cost_jobs.test.ts` tests the runner and the
+  classification.
+- Limits:
+  - No operator view shows blocked or quarantined jobs yet (TODAY-01). Operators read them
+    from `scheduled_jobs`.
+  - Live use still needs VICE's GoSweetSpot site id and one real response, to confirm the
+    cost field.

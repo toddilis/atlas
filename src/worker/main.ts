@@ -13,6 +13,8 @@ import { log } from '../platform/log.js';
 import { bootPlatform } from '../platform/orchestration/boot.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
+import { carrierCostSyncEnabled, runCarrierCostJobs } from '../platform/jobs/carrier-cost.js';
+import { orgId } from '../data/supabase.js';
 
 const INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS ?? 60_000);
 
@@ -52,6 +54,14 @@ async function tick(): Promise<void> {
     });
   } catch (e) {
     log.error('worker.tick_failed', { error: (e as Error).message });
+  }
+  // JOBS-01: carrier cost sync for first invoice parts, when GoSweetSpot is configured.
+  // Failures a person must fix are recorded on the job as blocked with their reason.
+  if (!carrierCostSyncEnabled()) return;
+  try {
+    log.info('worker.carrier_cost_jobs', await runCarrierCostJobs(orgId()));
+  } catch (e) {
+    log.error('worker.carrier_cost_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
   }
 }
 
