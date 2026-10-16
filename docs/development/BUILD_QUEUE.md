@@ -10,8 +10,9 @@ each PR. The 1–7 October target (D13) was not met; it is now step 4.
 | Order | Task | Owner | PR | State | Next step |
 | --- | --- | --- | --- | --- | --- |
 | 1 | AUTH-01 + AUTHZ-02 | Claude (queue session) | #31 (continues #19, #25) | Green, incl. browser; awaiting review | Merge; close #19 and #25 |
-| 2 | EVENT-01 + EVIDENCE-01 | Claude (#33 session) | #30 (contains #31) | Green; review findings open | Address findings; merge after #31 |
-| 3 | PRICING-01 + BILL-01 | Claude (#33 session) | #28 (contains #30) | Green; review findings open | Address findings; merge after #30 |
+| 2 | EVENT-01 + EVIDENCE-01 | Claude (#33 session) | #30 (contains #31) | Addressing review findings | Merge after #31 |
+| 3 | PRICING-01 + BILL-01 | Claude (#33 session) | #28 (contains #30) | Addressing review findings; D15 freight implemented | Merge after #30 |
+| 3b | GoSweetSpot carrier cost + JOBS-01 core + jobs console | Claude (#33 session) | #35 (contains #28) | Draft | Merge after #28 |
 | 4 | Pricing editor + approve → print journey | Claude | — | Not started | After steps 1–3 |
 | — | BUILD-02 automation | — | #27 (continues #21, #26) | Parked, off the critical path | Revisit after step 4 |
 | — | Integration rehearsal / coordination | — | #32, #29 | Superseded by this sequence | Close |
