@@ -2,6 +2,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import { log } from '../log.js';
 import type { AppendedEvent, EventType } from './types.js';
 import { EVENT_COLUMNS, toAppendedEvent } from './row.js';
+import { isProjectionReplay, withProjectionReplay } from './context.js';
 
 export type Projector = (event: AppendedEvent) => Promise<void>;
 
@@ -54,6 +55,12 @@ export async function dispatchTracked(
   event: AppendedEvent,
   priorAttempts: number,
 ): Promise<ProjectionOutcome> {
+  // An event appended or redispatched during a rebuild would have its agents skipped,
+  // so leave its live row outstanding for normal recovery instead of marking it done.
+  if (isProjectionReplay()) {
+    log.info('event_projections.deferred_from_replay', { event_id: event.id, type: event.type });
+    return { projected: false, error: 'deferred to live recovery: projection replay context' };
+  }
   const sb = supabase();
   const attempts = priorAttempts + 1;
   try {
@@ -195,7 +202,21 @@ export async function replay(opts: { limit?: number; fromSeq?: number } = {}): P
 
   for (const row of rows) {
     summary.scanned += 1;
-    const outcome = await dispatchTracked(toAppendedEvent(row.event), row.attempts);
+    // Historical rebuilds must never dispatch agents or business effects. Ordinary
+    // recovery retains the live path and existing action identities.
+    let outcome: ProjectionOutcome;
+    if (opts.fromSeq != null) {
+      // Never alter the live completion/attempt state during a historical rebuild.
+      // Otherwise a blocked rebuild could requeue the event for live agent dispatch.
+      try {
+        await withProjectionReplay(() => dispatch(toAppendedEvent(row.event)));
+        outcome = { projected: true };
+      } catch (error) {
+        outcome = { projected: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    } else {
+      outcome = await dispatchTracked(toAppendedEvent(row.event), row.attempts);
+    }
     if (outcome.projected) {
       summary.projected += 1;
     } else if (row.attempts + 1 >= MAX_PROJECTION_ATTEMPTS) {
