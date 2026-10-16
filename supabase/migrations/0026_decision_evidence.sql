@@ -29,6 +29,18 @@ create table evidence_outcomes (
  foreign key(org_id,decision_id,decision_revision) references evidence_decisions(org_id,decision_id,revision)
 );
 
+-- Provider results/evidence are arbitrary external data recorded after an effect has
+-- happened. evidence_history keeps them whole; events carry only a digest, so their
+-- content (e.g. a provider's own company_id) or size can never fail that recording.
+create function native_evidence_digest(p_value jsonb) returns jsonb language sql immutable set search_path=pg_catalog,public as $$
+ select case when p_value is null or p_value='null'::jsonb then 'null'::jsonb
+   else jsonb_build_object('sha256',encode(sha256(convert_to(p_value::text,'UTF8')),'hex'),'bytes',octet_length(p_value::text)) end
+$$;
+create function native_evidence_publication(p_kind text,p_record jsonb) returns jsonb language sql immutable set search_path=pg_catalog,public as $$
+ select case when p_kind='attempt' then p_record||jsonb_build_object('result',native_evidence_digest(p_record->'result'),
+   'evidence',native_evidence_digest(p_record->'evidence')) else p_record end
+$$;
+
 -- Strict internal native adapter validation is derived from actual persisted AUTH
 -- rows. A caller cannot invent an action/attempt or relabel another company's row.
 create function validate_native_evidence_event() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
@@ -39,7 +51,7 @@ begin
    if not found or h.capture_kind<>'transition' or new.event_type<>'platform.'||h.record_kind||'.state_recorded'
    or new.envelope->>'event_class'<>'fact' or new.envelope->>'subject_type'<>'EvidenceRecord' or new.envelope->>'subject_version'<>'1'
    or new.envelope->>'correlation_id'<>h.action_id::text
-   or p is distinct from jsonb_build_object('record_kind',h.record_kind,'record_id',h.record_id,'record',h.record)
+   or p is distinct from jsonb_build_object('record_kind',h.record_kind,'record_id',h.record_id,'record',native_evidence_publication(h.record_kind,h.record))
    then raise exception 'invalid native evidence event'; end if;
  end if;
  return new;
@@ -73,6 +85,11 @@ begin
      'expected_outcomes','observed_outcomes','confounders','evaluation','evidence_refs','measured_at','unknown_reason'];
    texts:=array['company_id','outcome_id','decision_id','status','evaluation']; times:=array['created_at','measured_at'];
    arrays:=array['action_ids','metrics_before','metrics_after','expected_outcomes','observed_outcomes','confounders','evidence_refs'];
+ when 'execution' then
+   keys:=array['contract_version','company_id','created_at','execution_id','revision','action_id','action_revision','attempt_number','idempotency_key',
+     'connection_id','state','started_at','finished_at','provider_reference','result','evidence_refs','error_code','reconciliation_owner'];
+   texts:=array['company_id','execution_id','action_id','idempotency_key','state','result'];
+   times:=array['created_at','started_at','finished_at']; arrays:=array['evidence_refs'];
  else raise exception 'unsupported evidence contract'; end case;
  if not (p_record ?& keys) or exists(select 1 from jsonb_object_keys(p_record) x where not (x=any(keys) or (p_kind='reference' and x='revision')))
  then raise exception 'missing or unknown % fields',p_kind; end if;
@@ -80,13 +97,13 @@ begin
    if jsonb_typeof(p_record->k) is distinct from 'string' or length(p_record->>k)=0 then raise exception 'invalid % text %',p_kind,k; end if;
  end loop;
  foreach k in array times loop
-   if p_kind='outcome' and k='measured_at' and p_record->k='null'::jsonb then continue; end if;
+   if ((p_kind='outcome' and k='measured_at') or (p_kind='execution' and k='finished_at')) and p_record->k='null'::jsonb then continue; end if;
    if jsonb_typeof(p_record->k) is distinct from 'string' or (p_record->>k)!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'
    then raise exception 'invalid evidence timestamp %',k; end if;
    perform (p_record->>k)::timestamptz;
  end loop;
  if p_record ? 'company_id' and p_record->>'company_id' is distinct from p_org_id::text then raise exception 'cross-company contract'; end if;
- if p_kind in ('observation','decision','outcome') and p_record->'contract_version' is distinct from '1'::jsonb then raise exception 'unsupported evidence contract version'; end if;
+ if p_kind in ('observation','decision','outcome','execution') and p_record->'contract_version' is distinct from '1'::jsonb then raise exception 'unsupported evidence contract version'; end if;
  if p_record ? 'revision' then
    if jsonb_typeof(p_record->'revision') is distinct from 'number' then raise exception 'numeric revision required'; end if;
    n:=(p_record->>'revision')::numeric;
@@ -120,6 +137,27 @@ begin
    if p_record->>'status' not in ('known','unknown') or p_record->>'evaluation' not in ('improved','worsened','unchanged','inconclusive','unavailable')
    or (p_record->'unknown_reason'<>'null'::jsonb and (jsonb_typeof(p_record->'unknown_reason') is distinct from 'string' or length(p_record->>'unknown_reason')=0))
    then raise exception 'invalid outcome semantics'; end if;
+ elsif p_kind='execution' then
+   -- Mirrors ExecutionV1 in controller-v1.ts.
+   foreach k in array array['action_revision','attempt_number'] loop
+     if jsonb_typeof(p_record->k) is distinct from 'number' then raise exception 'invalid execution %',k; end if;
+     n:=(p_record->>k)::numeric;
+     if n<1 or n>9007199254740991 or trunc(n)<>n then raise exception 'invalid execution %',k; end if;
+   end loop;
+   foreach k in array array['connection_id','provider_reference','error_code','reconciliation_owner'] loop
+     if p_record->k<>'null'::jsonb and (jsonb_typeof(p_record->k) is distinct from 'string' or length(p_record->>k)=0)
+     then raise exception 'invalid execution %',k; end if;
+   end loop;
+   if p_record->>'state' not in ('EXECUTING','CONFIRMED','FAILED','UNRESOLVED','RECONCILIATION_REQUIRED')
+   or p_record->>'result' not in ('document_generated','provider_accepted','delivery_confirmed','no_effect','unknown')
+   then raise exception 'invalid execution state/result'; end if;
+   if p_record->'finished_at'<>'null'::jsonb and (p_record->>'finished_at')::timestamptz<(p_record->>'started_at')::timestamptz
+   then raise exception 'execution finish precedes start'; end if;
+   if (p_record->>'state'='CONFIRMED' and (jsonb_array_length(p_record->'evidence_refs')=0 or p_record->>'result' not in ('document_generated','delivery_confirmed')))
+   or (p_record->>'state' in ('UNRESOLVED','RECONCILIATION_REQUIRED') and p_record->'reconciliation_owner'='null'::jsonb)
+   or (p_record->>'state'='FAILED' and (p_record->>'result'<>'no_effect' or p_record->'error_code'='null'::jsonb))
+   or (p_record->>'state' in ('CONFIRMED','FAILED') and p_record->'finished_at'='null'::jsonb)
+   then raise exception 'invalid execution semantics'; end if;
  end if;
 end $$;
 revoke all on function assert_evidence_record_v1(uuid,text,jsonb) from public,anon,authenticated,service_role;
@@ -175,9 +213,11 @@ begin
  if not found then raise exception 'decision not found'; end if;
  select * into a from approved_actions where org_id=p_org_id and id=p_action_id;
  if not found then raise exception 'action not found'; end if;
+ -- A snapshot without its own revision (e.g. invoice_action_snapshot's {invoice, lines})
+ -- is bound by the exact material-snapshot equality below instead of by revision number.
  if not exists(select 1 from jsonb_array_elements(d.record->'subject_refs') r
    where r->>'id'=a.intent->>'subject_id' and lower(r->>'type')=lower(a.intent->>'subject_type')
-   and (not (r ? 'revision') or r->'revision'=a.intent#>'{subject_snapshot,revision}'))
+   and (not (r ? 'revision') or not (a.intent->'subject_snapshot' ? 'revision') or r->'revision'=a.intent#>'{subject_snapshot,revision}'))
  then raise exception 'decision/action subject mismatch'; end if;
  if d.state_snapshot->'subject_snapshot' is distinct from a.intent->'subject_snapshot' then raise exception 'decision/action material snapshot mismatch'; end if;
  insert into evidence_action_links(org_id,decision_id,decision_revision,action_id) values(p_org_id,p_decision_id,p_revision,p_action_id) on conflict do nothing;
@@ -213,10 +253,29 @@ begin
  return v_id;
 end $$;
 
+-- Records one actual AUTH row and publishes it in the caller's transaction. Internal:
+-- no role may call it directly, or a caller could fabricate native history.
+create function publish_native_evidence(p_company uuid,p_action uuid,p_kind text,p_record jsonb) returns void
+language plpgsql security definer set search_path=pg_catalog,public as $$
+declare h uuid; ts text;
+begin
+ insert into evidence_history(org_id,action_id,record_kind,record_id,record) values(p_company,p_action,p_kind,(p_record->>'id')::uuid,p_record) returning id into h;
+ ts:=to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
+ -- No consumer receipts: nothing projects native evidence yet, and undrained receipts
+ -- would only accumulate. A future consumer backfills with enqueue_event_replay.
+ perform publish_platform_event(p_company,jsonb_build_object('event_id',h::text,'event_type','platform.'||p_kind||'.state_recorded',
+ 'event_version',1,'company_id',p_company,'connection_id',null,'occurred_at',ts,'observed_at',ts,'producer','evidence.authz-adapter',
+ 'subject_type','EvidenceRecord','subject_id',h::text,'subject_version',1,'correlation_id',p_action::text,'causation_id',null,
+ 'source_refs',jsonb_build_array(jsonb_build_object('company_id',p_company,'type',p_kind,'id',p_record->>'id')),
+ 'evidence_refs',jsonb_build_array(jsonb_build_object('company_id',p_company,'type','EvidenceRecord','id',h)),
+ 'event_class','fact','payload',jsonb_build_object('record_kind',p_kind,'record_id',p_record->>'id','record',native_evidence_publication(p_kind,p_record))),
+ h::text,'{}');
+end $$;
+
 -- Forward hooks capture actual AUTH state, not a fabricated Controller-v1 action.
 -- Publication failure aborts the originating action/attempt/approval transaction.
 create function capture_action_evidence() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
-declare a uuid; kind text; h uuid; company uuid; rec jsonb; ts text; approval_rec jsonb;
+declare a uuid; kind text; company uuid; rec jsonb; approval_rec jsonb;
 begin
  rec:=to_jsonb(new); company:=(rec->>'org_id')::uuid;
  if tg_table_name='approved_actions' then a:=new.id; kind:='action';
@@ -225,19 +284,12 @@ begin
    if a is null then return new; end if;
  end if;
  if tg_op='UPDATE' and (to_jsonb(old)-'updated_at')=(rec-'updated_at') then return new; end if;
- insert into evidence_history(org_id,action_id,record_kind,record_id,record) values(company,a,kind,(rec->>'id')::uuid,rec) returning id into h;
- ts:=to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
- perform publish_platform_event(company,jsonb_build_object('event_id',h::text,'event_type','platform.'||kind||'.state_recorded',
- 'event_version',1,'company_id',company,'connection_id',null,'occurred_at',ts,'observed_at',ts,'producer','evidence.authz-adapter',
- 'subject_type','EvidenceRecord','subject_id',h::text,'subject_version',1,'correlation_id',a::text,'causation_id',null,
- 'source_refs',jsonb_build_array(jsonb_build_object('company_id',company,'type',kind,'id',rec->>'id')),
- 'evidence_refs',jsonb_build_array(jsonb_build_object('company_id',company,'type','EvidenceRecord','id',h)),
- 'event_class','fact','payload',jsonb_build_object('record_kind',kind,'record_id',rec->>'id','record',rec)),h::text,array['evidence.authz']);
- -- The approval row predates the action INSERT; preserve that actual initial row too.
+ -- The approval row predates the action INSERT; record and publish that actual initial row first.
  if tg_table_name='approved_actions' and tg_op='INSERT' then
    select to_jsonb(p) into approval_rec from approvals p where p.org_id=company and p.id=new.approval_id;
-   insert into evidence_history(org_id,action_id,record_kind,record_id,record) values(company,a,'approval',new.approval_id,approval_rec);
+   perform publish_native_evidence(company,a,'approval',approval_rec);
  end if;
+ perform publish_native_evidence(company,a,kind,rec);
  return new;
 end $$;
 create trigger approved_action_evidence after insert or update on approved_actions for each row execute function capture_action_evidence();
@@ -287,4 +339,7 @@ do $$ declare t text; f record; begin
  ('record_evidence_observation','record_evidence_decision','link_decision_action','record_evidence_outcome','capture_action_evidence','validate_native_evidence_event','read_decision_evidence') loop
  execute format('revoke all on function %s from public,anon,authenticated',f.signature);
  execute format('grant execute on function %s to service_role',f.signature); end loop;
+ for f in select oid::regprocedure signature from pg_proc where pronamespace='public'::regnamespace and proname in
+ ('publish_native_evidence','native_evidence_publication','native_evidence_digest') loop
+ execute format('revoke all on function %s from public,anon,authenticated,service_role',f.signature); end loop;
 end $$;

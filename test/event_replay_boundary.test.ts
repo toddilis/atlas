@@ -2,10 +2,11 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { replay, registerProjector } from '../src/platform/events/projector.js';
+import { dispatchTracked, replay, registerProjector } from '../src/platform/events/projector.js';
+import { toAppendedEvent } from '../src/platform/events/row.js';
 import { registerAgent } from '../src/platform/agent/registry.js';
 import { controllerAgent } from '../src/agents/controller/index.js';
-import { isProjectionReplay } from '../src/platform/events/context.js';
+import { isProjectionReplay, withProjectionReplay } from '../src/platform/events/context.js';
 import { registerTool, invokeTool } from '../src/platform/tools/registry.js';
 
 const company = '52000000-0000-4000-8000-000000000001';
@@ -43,4 +44,13 @@ test('actual historical replay rebuilds reads, skips real Controller, and fences
   assert.equal(result.failed, 1);
   assert.equal(isProjectionReplay(), false);
   assert.deepEqual(new Set(requests), new Set(['/rest/v1/agents', '/rest/v1/event_log', '/rest/v1/event_projections']));
+});
+// Timeout: a live bookkeeping write would be refused by the fixture server and never answered.
+test('an event appended or redispatched during a rebuild stays outstanding for live recovery', { timeout: 5000 }, async () => {
+  const before = requests.length;
+  const outcome = await withProjectionReplay(() => dispatchTracked(toAppendedEvent(event), 0));
+  assert.equal(outcome.projected, false);
+  assert.match(outcome.error ?? '', /deferred to live recovery/);
+  // No live bookkeeping write: normal recovery still delivers the event to its agents.
+  assert.deepEqual(requests.slice(before), []);
 });

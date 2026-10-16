@@ -47,10 +47,13 @@ begin
  end if;
 end $$;
 
+-- Only types whose payload SQL validates at publication may be projected. Others stay
+-- durable but quarantined until their owner adds a validator: controller.action.prepared
+-- (no SQL ActionV1 validator yet) and controller.invoice.drafted (owned by BILL).
 create function supported_platform_event(p_envelope jsonb) returns boolean language sql immutable as $$
  select p_envelope->>'event_version'='1' and p_envelope->>'event_type' in (
- 'controller.decision.proposed','controller.action.prepared','controller.action.execution_recorded','controller.outcome.recorded',
- 'controller.invoice.drafted','platform.action.state_recorded','platform.approval.state_recorded','platform.attempt.state_recorded')
+ 'controller.decision.proposed','controller.action.execution_recorded','controller.outcome.recorded',
+ 'platform.action.state_recorded','platform.approval.state_recorded','platform.attempt.state_recorded')
 $$;
 
 create function publish_platform_event(p_org_id uuid,p_envelope jsonb,p_source_key text,p_consumers text[] default '{}')
@@ -81,12 +84,19 @@ begin
    when 'controller.action.prepared' then v_kind:='Action'; v_key:='action_id';
    when 'controller.action.execution_recorded' then v_kind:='Execution'; v_key:='execution_id';
    else v_kind:='Outcome'; v_key:='outcome_id'; end case;
-   v_revision:=case when v_kind in ('Decision','Action') then p_envelope#>>'{payload,revision}' else '1' end;
+   -- An execution records each state of one attempt as a new revision; outcomes are
+   -- append-only (a correction is a new outcome), so they stay at version 1.
+   v_revision:=case when v_kind in ('Decision','Action','Execution') then p_envelope#>>'{payload,revision}' else '1' end;
    if p_envelope#>>'{payload,company_id}' is distinct from p_org_id::text or p_envelope#>>'{payload,contract_version}' is distinct from '1'
    or p_envelope->>'subject_type' is distinct from v_kind or p_envelope->>'subject_id' is distinct from p_envelope->'payload'->>v_key
    or p_envelope->>'subject_version' is distinct from v_revision
    or p_envelope->>'event_class' is distinct from (case when v_kind='Decision' then 'proposal' else 'fact' end)
    then raise exception 'Controller event subject/payload mismatch'; end if;
+   -- SQL callers cannot bypass the TS readers: validate the payload itself (0026).
+   if v_kind='Decision' then perform assert_evidence_record_v1(p_org_id,'decision',p_envelope->'payload');
+   elsif v_kind='Execution' then perform assert_evidence_record_v1(p_org_id,'execution',p_envelope->'payload');
+   elsif v_kind='Outcome' then perform assert_evidence_record_v1(p_org_id,'outcome',p_envelope->'payload');
+   end if;
  end if;
  v_id:=p_envelope->>'event_id';
  -- JSON text distinguishes null from every possible connection ID.
@@ -140,9 +150,14 @@ begin
  update event_receipts set state='quarantined',reason='attempt limit; inspect and explicitly resume',lease_token=null,lease_until=null,updated_at=clock_timestamp()
  where org_id=p_org_id and consumer=p_consumer and generation=p_generation and attempts>=10
  and (state in ('pending','failed') or (state='processing' and lease_until<=clock_timestamp()));
- select * into r from event_receipts where org_id=p_org_id and consumer=p_consumer and generation=p_generation and attempts<10
- and ((state in ('pending','failed') and next_attempt_at<=clock_timestamp()) or (state='processing' and lease_until<=clock_timestamp()))
- order by next_attempt_at,event_id for update skip locked limit 1;
+ -- Equal next_attempt_at (e.g. a replay enqueued at once) falls back to subject version
+ -- and then publication order, so a predecessor is claimed before its successors.
+ select r0.* into r from event_receipts r0
+ join platform_events pe on pe.org_id=r0.org_id and pe.event_id=r0.event_id
+ join event_log l on l.id=pe.log_id
+ where r0.org_id=p_org_id and r0.consumer=p_consumer and r0.generation=p_generation and r0.attempts<10
+ and ((r0.state in ('pending','failed') and r0.next_attempt_at<=clock_timestamp()) or (r0.state='processing' and r0.lease_until<=clock_timestamp()))
+ order by r0.next_attempt_at,(pe.envelope->>'subject_version')::numeric,l.seq for update of r0 skip locked limit 1;
  if not found then return null; end if;
  update event_receipts set state='processing',attempts=attempts+1,lease_token=gen_random_uuid(),
  lease_until=clock_timestamp()+interval '60 seconds',updated_at=clock_timestamp()
@@ -155,6 +170,7 @@ end $$;
 create function apply_event_projection(p_org_id uuid,p_consumer text,p_generation text,p_event_id text,p_lease_token uuid) returns text
 language plpgsql security definer set search_path=pg_catalog,public as $$
 declare r event_receipts%rowtype; e platform_events%rowtype; m event_read_models%rowtype; v bigint; s text; v_reason text;
+ v_attempts integer; v_next timestamptz; v_wait timestamptz;
 begin
  select * into r from event_receipts where org_id=p_org_id and consumer=p_consumer and generation=p_generation and event_id=p_event_id for update;
  if not found then raise exception 'receipt not found'; end if;
@@ -170,15 +186,28 @@ begin
    s:='quarantined'; v_reason:='conflicting same-version identity/content';
  elsif found and v<=m.subject_version then s:='ignored';
  elsif v<>coalesce(m.subject_version,0)+1 then
-   s:=case when r.attempts>=10 then 'quarantined' else 'failed' end; v_reason:='missing predecessor; reconcile source before retry';
+   select min(pr.next_attempt_at) into v_wait from event_receipts pr
+   join platform_events pp on pp.org_id=pr.org_id and pp.event_id=pr.event_id
+   where pr.org_id=p_org_id and pr.consumer=p_consumer and pr.generation=p_generation and pr.event_id<>p_event_id
+   and pr.state in ('pending','processing','failed') and pp.connection_key=e.connection_key
+   and pp.envelope->>'subject_type'=e.envelope->>'subject_type' and pp.envelope->>'subject_id'=e.envelope->>'subject_id'
+   and (pp.envelope->>'subject_version')::numeric<v;
+   if v_wait is not null then
+     -- The predecessor is still queued in this generation: wait for its next attempt
+     -- without spending one. Bounded, because the predecessor applies or quarantines.
+     s:='pending'; v_reason:='waiting for queued predecessor'; v_attempts:=r.attempts-1;
+     v_next:=greatest(v_wait,clock_timestamp())+interval '1 second';
+   else
+     s:=case when r.attempts>=10 then 'quarantined' else 'failed' end; v_reason:='missing predecessor; reconcile source before retry';
+   end if;
  else
    insert into event_read_models values(p_org_id,p_consumer,p_generation,e.connection_key,e.envelope->>'subject_type',e.envelope->>'subject_id',v,p_event_id,e.envelope->'payload',clock_timestamp())
    on conflict(org_id,consumer,generation,connection_key,subject_type,subject_id) do update
      set subject_version=excluded.subject_version,event_id=excluded.event_id,payload=excluded.payload,updated_at=excluded.updated_at;
    s:='applied';
  end if;
- update event_receipts set state=s,reason=v_reason,lease_token=null,lease_until=null,
-   next_attempt_at=clock_timestamp()+make_interval(secs=>least(3600,power(2,r.attempts)::integer)),updated_at=clock_timestamp()
+ update event_receipts set state=s,reason=v_reason,lease_token=null,lease_until=null,attempts=coalesce(v_attempts,r.attempts),
+   next_attempt_at=coalesce(v_next,clock_timestamp()+make_interval(secs=>least(3600,power(2,r.attempts)::integer))),updated_at=clock_timestamp()
  where org_id=p_org_id and consumer=p_consumer and generation=p_generation and event_id=p_event_id;
  return s;
 end $$;

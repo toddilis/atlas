@@ -2,7 +2,7 @@ import { supabase, orgId } from '../../data/supabase.js';
 import { log } from '../log.js';
 import type { AppendedEvent, EventType } from './types.js';
 import { EVENT_COLUMNS, toAppendedEvent } from './row.js';
-import { withProjectionReplay } from './context.js';
+import { isProjectionReplay, withProjectionReplay } from './context.js';
 
 export type Projector = (event: AppendedEvent) => Promise<void>;
 
@@ -55,6 +55,12 @@ export async function dispatchTracked(
   event: AppendedEvent,
   priorAttempts: number,
 ): Promise<ProjectionOutcome> {
+  // An event appended or redispatched during a rebuild would have its agents skipped,
+  // so leave its live row outstanding for normal recovery instead of marking it done.
+  if (isProjectionReplay()) {
+    log.info('event_projections.deferred_from_replay', { event_id: event.id, type: event.type });
+    return { projected: false, error: 'deferred to live recovery: projection replay context' };
+  }
   const sb = supabase();
   const attempts = priorAttempts + 1;
   try {

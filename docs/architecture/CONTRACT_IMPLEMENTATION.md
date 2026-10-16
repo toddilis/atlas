@@ -46,7 +46,7 @@ and fact/proposal classification. Initial wire names are `controller.decision.pr
 The Contract Map's PascalCase names are conceptual names. DecisionProposed maps to
 `controller.decision.proposed`; ActionPrepared to `controller.action.prepared`.
 Execution lifecycle concepts share `controller.action.execution_recorded` with explicit
-state; outcome recording uses `controller.outcome.recorded`. Do not substitute the
+state and a per-execution `revision` (the event's `subject_version`, PLAN D16); outcome recording uses `controller.outcome.recorded`. Do not substitute the
 existing `controller.invoice.issued` for confirmed delivery. Existing Shopify/Stripe
 events remain adapter facts until a trusted normalization step maps them.
 DemandSpikeDetected is the sole conceptual demand-spike name; its future wire schema

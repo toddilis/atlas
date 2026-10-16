@@ -44,6 +44,16 @@ test('registered schema, exact scope and decision payload', () => {
   assert.throws(() => parsePublishedEvent({ ...event, payload: { ...fixture.decision, state_snapshot_ref: { company_id: 'other', id: 'x', type: 'Snapshot' } } }, company), /cross-company/);
   assert.throws(() => parsePublishedEvent({ ...event, event_class: 'fact' }, company));
 });
+test('each recorded state of one execution is its next subject version', () => {
+  const confirmed = fixture.executions[0];
+  const executing = { ...confirmed, revision: 1, state: 'EXECUTING', result: 'unknown', finished_at: null, evidence_refs: [] };
+  const recorded = (payload: typeof confirmed) => ({ ...event, event_id: `exec-${payload.revision}`, event_type: 'controller.action.execution_recorded',
+    subject_type: 'Execution', subject_id: payload.execution_id, subject_version: payload.revision, event_class: 'fact', payload });
+  assert.equal(parsePublishedEvent(recorded(executing), company).subject_version, 1);
+  assert.equal(parsePublishedEvent(recorded(confirmed), company).subject_version, 2);
+  // The later state cannot reuse the first state's version.
+  assert.throws(() => parsePublishedEvent({ ...recorded(confirmed), subject_version: 1 }, company), /subject does not match/);
+});
 test('replay cannot publish evidence or fresh continuation', async () => {
   const before = calls.length;
   await assert.rejects(withProjectionReplay(() => publishEvent(event, 'one')), /forbidden during projection replay/);
