@@ -19,7 +19,7 @@ interface StatementRow {
 }
 
 async function loadStatements(): Promise<StatementRow[]> {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   const { data, error } = await sb
     .from('statements')
     .select(
