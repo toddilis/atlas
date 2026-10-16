@@ -14,7 +14,7 @@ with isolation verified before shared-business use. Portability is not deferred 
 ## What happens next
 
 DATA-01, AUTHZ-01 and the architecture foundation are merged. The current order of
-work and each PR's state are in the [build queue's current status](BUILD_QUEUE.md#current-status--15-october-2026):
+work and each PR's state are in the [build queue's current status](BUILD_QUEUE.md#current-status):
 authentication and exact-action approvals, then events/evidence, then pricing and
 invoice parts, then the pricing editor and approve → print journey (PLAN D13/D14).
 
