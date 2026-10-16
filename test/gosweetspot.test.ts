@@ -55,3 +55,14 @@ test('an HTTP error or an unexpected response shape records no cost', async () =
   await assert.rejects(fetchShipmentsByConnote({ accessKey: '', siteId: '1' }, ['BOX1'], fake(200, []).fetcher), /access key/);
   await assert.rejects(fetchShipmentsByConnote(credentials, [], fake(200, []).fetcher), /no consignment numbers/);
 });
+import { gosweetspotEnv } from '../src/integrations/gosweetspot/client.js';
+
+test('GoSweetSpot settings come from the server environment and fail closed without leaking the key', () => {
+  const env = { GOSWEETSPOT_ACCESS_KEY: ' secret-value ', GOSWEETSPOT_SITE_ID: '12345', GOSWEETSPOT_COST_CURRENCY: 'NZD' };
+  assert.deepEqual(gosweetspotEnv(env), { credentials: { accessKey: 'secret-value', siteId: '12345' }, connection: { currency: 'NZD', validityDays: 30 } });
+  for (const [missing, message] of [['GOSWEETSPOT_ACCESS_KEY', /ACCESS_KEY must be set/], ['GOSWEETSPOT_SITE_ID', /SITE_ID must be set/], ['GOSWEETSPOT_COST_CURRENCY', /COST_CURRENCY/]] as const) {
+    assert.throws(() => gosweetspotEnv({ ...env, [missing]: undefined }), message);
+  }
+  assert.throws(() => gosweetspotEnv({ ...env, GOSWEETSPOT_COST_VALIDITY_DAYS: '0' }), /VALIDITY_DAYS/);
+  try { gosweetspotEnv({ ...env, GOSWEETSPOT_COST_CURRENCY: 'nzd' }); } catch (e) { assert.doesNotMatch(String(e), /secret-value/); }
+});
