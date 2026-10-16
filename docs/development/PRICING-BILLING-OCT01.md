@@ -236,7 +236,31 @@ does not cover Shopify ingestion scheduling, approval-expiry sweeps or rollups.
   runs and service-only grants. `test/carrier_cost_jobs.test.ts` tests the runner and the
   classification.
 - Limits:
-  - No operator view shows blocked or quarantined jobs yet (TODAY-01). Operators read them
-    from `scheduled_jobs`.
+  - A quarantined job has no retry button yet. Re-arming it needs a console action
+    behind the tool-grant boundary.
   - Live use still needs VICE's GoSweetSpot site id and one real response, to confirm the
     cost field.
+
+## 16 October: console view of background jobs
+
+`/jobs` in the console (linked in the header and from home) is a read-only view for the
+signed-in operator, scoped to the business by `ATLAS_ORG_ID`. It shows:
+
+- counts by state;
+- **Needs a person**: quarantined jobs first, then blocked ones. Each shows the order,
+  dispatch and tracking numbers, the recorded reason, what to do about it, the next attempt
+  and the attempt history;
+- **Retrying** and **Queued and running**;
+- an overdue warning when due work has not been picked up for more than 10 minutes, which
+  means the worker is down or GoSweetSpot has been switched off;
+- an empty state, and the console's existing error page when a read fails.
+
+The view logic is in `web/lib/jobs.ts`, with unit tests in `web/test/jobs.test.ts`. The
+browser acceptance seeds one job of each state plus another business's blocked job. It
+checks what the operator sees and that the other business's job never appears.
+
+Limits:
+
+- There are no actions yet: no retry, dismiss or re-arm.
+- A quarantined job stays stopped until it is re-armed in the database.
+- Freshness is inferred from job runs. It is not a worker heartbeat.

@@ -25,6 +25,11 @@ export default function HomePage() {
           title="Statements"
           description="Customer-facing previews of monthly account statements with aging breakdown."
         />
+        <Tile
+          href="/jobs"
+          title="Background jobs"
+          description="Work the worker could not finish on its own, with the reason and what to do."
+        />
       </div>
     </div>
   );

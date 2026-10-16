@@ -88,3 +88,35 @@ test('genuinely expired access token with revoked refresh session cannot regain 
   await page.goto('/');
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test('operator sees blocked and quarantined jobs with their reason, and no other business\'s jobs', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.getByRole('link', { name: 'Jobs', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Background jobs' })).toBeVisible();
+  await expect(page.getByTestId('last-run')).toContainText(/Last worker run \d+m ago/);
+  // The seeded pending job has been due for 30 minutes with no worker running.
+  await expect(page.getByTestId('overdue')).toContainText('1 job is overdue by more than 10 minutes');
+
+  const attention = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job');
+  await expect(attention).toHaveCount(2);
+  const quarantined = attention.nth(0);
+  await expect(quarantined).toContainText('quarantined');
+  await expect(quarantined).toContainText('Order #1002');
+  await expect(quarantined).toContainText('TRK-QUARANTINED');
+  await expect(quarantined).toContainText('Stopped after 8 attempts. Atlas will not retry it on its own.');
+  await expect(quarantined).toContainText('Check the shipment was booked in GoSweetSpot under that tracking number.');
+  const blocked = attention.nth(1);
+  await expect(blocked).toContainText('GOSWEETSPOT_SITE_ID must be set');
+  await expect(blocked).toContainText('Set this GoSweetSpot setting on the worker host.');
+  await expect(blocked).toContainText(/Next attempt in 4 h \d+ min \(attempt 3 of 8\)/);
+  await blocked.getByText('Attempt history (2)').click();
+  await expect(blocked).toContainText('HTTP 502');
+
+  const retrying = page.getByRole('region', { name: 'Retrying' }).getByTestId('job');
+  await expect(retrying).toHaveCount(1);
+  await expect(retrying).toContainText('HTTP 503');
+  await expect(page.getByRole('region', { name: 'Queued and running' }).getByTestId('job')).toHaveCount(1);
+  await expect(page.getByText('OTHER-BUSINESS-SECRET-ERROR')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/jobs.png', fullPage: true });
+});
