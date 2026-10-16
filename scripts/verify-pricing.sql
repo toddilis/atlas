@@ -175,6 +175,11 @@ begin
     and not exists(select 1 from invoice_lines where invoice_id=(rb->>'invoiceId')::uuid and description='Freight'),'freight on the first part only');
   perform pg_temp.pricing_assert((select count(distinct left(invoice_number,-1))=1 and count(*)=2 from invoices where org_id=company),'A/B share one order number');
   perform pg_temp.pricing_assert((select count(*)=2 from platform_events where org_id=company and event_type='controller.invoice.drafted'),'one drafted event per part');
+  perform pg_temp.pricing_assert(not exists(select 1 from event_receipts where org_id=company),'drafted events leave no receipts nothing drains');
+  -- The drafted event must match a stored invoice snapshot: a forged total is refused.
+  perform pg_temp.pricing_reject(format('select publish_platform_event(%L,%L::jsonb,%L,%L)',company,
+    jsonb_set(jsonb_set((select envelope from platform_events where org_id=company and event_type='controller.invoice.drafted' limit 1),
+      '{event_id}','"forged-draft"'),'{payload,total,amount_minor}','"1"'),'forged-draft','{}'),'%does not match a stored invoice snapshot%');
   raise notice 'BILL 40/60: order #synthetic-100, 100 ordered, dispatched 40 then 60; NZD from the stored rows';
   raise notice '  % % % % % % % % %',rpad('invoice',10),rpad('dispatch',10),lpad('qty',3),lpad('unit',6),lpad('products',8),lpad('freight',7),lpad('tax',6),lpad('total',8),'due';
   for part in select i.invoice_number,d.source_dispatch_key,l.quantity,s.snapshot,i.total_cents,(i.due_at at time zone 'Pacific/Auckland')::date due

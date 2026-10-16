@@ -353,7 +353,9 @@ begin
       'calculation_snapshot_ref',jsonb_build_object('company_id',p_org_id,'type','InvoiceCalculationSnapshot','id',v_snapshot_id,'revision',1),
       'document_snapshot_ref',jsonb_build_object('company_id',p_org_id,'type','InvoiceDocumentSnapshot','id',v_snapshot_id,'revision',1),
       'total',jsonb_build_object('amount_minor',v_total::text,'currency',p_snapshot->>'currency','scale',(p_snapshot->>'scale')::integer)));
-  perform publish_platform_event(p_org_id,v_event,'invoice-drafted:'||v_invoice,array['controller.invoice-drafts']);
+  -- No consumer receipts until something projects drafted invoices (none does yet);
+  -- a future consumer backfills with enqueue_event_replay.
+  perform publish_platform_event(p_org_id,v_event,'invoice-drafted:'||v_invoice,'{}');
   return jsonb_build_object('invoiceId',v_invoice,'snapshotId',v_snapshot_id,'reused',false);
 end $$;
 
@@ -391,6 +393,43 @@ end $$;
 create trigger protect_billing_invoice before update or delete on invoices for each row execute function protect_billing_snapshot();
 create trigger protect_billing_lines before insert or update or delete on invoice_lines for each row execute function protect_billing_snapshot();
 
+-- BILL owns controller.invoice.drafted; EVENT-01 (0025) leaves it unprojected until this
+-- validator exists. Every publisher, SQL or TS, must match InvoiceDraftedV1 and name this
+-- business's real invoice, part, dispatch and calculation snapshot.
+create function validate_invoice_drafted_event() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
+declare p jsonb:=new.envelope->'payload'; k text;
+begin
+  if new.event_type<>'controller.invoice.drafted' or new.envelope->>'event_version'<>'1' then return new; end if;
+  if jsonb_typeof(p) is distinct from 'object' or (select count(*) from jsonb_object_keys(p))<>8
+  or not (p ?& array['company_id','invoice_id','invoice_revision','dispatch_id','part_id','calculation_snapshot_ref','document_snapshot_ref','total'])
+  or p->>'company_id' is distinct from new.org_id::text
+  or jsonb_typeof(p->'invoice_revision') is distinct from 'number' or (p->>'invoice_revision')!~'^[1-9][0-9]*$'
+  or new.envelope->>'subject_type'<>'Invoice' or new.envelope->>'subject_id' is distinct from p->>'invoice_id'
+  or new.envelope->>'subject_version' is distinct from p->>'invoice_revision' or new.envelope->>'event_class'<>'fact'
+  or jsonb_typeof(p->'total') is distinct from 'object' or (select count(*) from jsonb_object_keys(p->'total'))<>3
+  or coalesce(p#>>'{total,amount_minor}','')!~'^(0|[1-9][0-9]*)$' or coalesce(p#>>'{total,currency}','')!~'^[A-Z]{3}$'
+  or jsonb_typeof(p#>'{total,scale}') is distinct from 'number' or (p#>>'{total,scale}')!~'^[0-6]$'
+  then raise exception 'invalid controller.invoice.drafted payload'; end if;
+  foreach k in array array['calculation_snapshot_ref','document_snapshot_ref'] loop
+    if jsonb_typeof(p->k) is distinct from 'object' or (select count(*) from jsonb_object_keys(p->k))<>4
+    or p#>>array[k,'company_id'] is distinct from new.org_id::text or p#>'{invoice_revision}' is distinct from p#>array[k,'revision']
+    or p#>>array[k,'type'] is distinct from (case k when 'calculation_snapshot_ref' then 'InvoiceCalculationSnapshot' else 'InvoiceDocumentSnapshot' end)
+    then raise exception 'invalid controller.invoice.drafted snapshot reference'; end if;
+  end loop;
+  if not exists(select 1 from invoice_calculation_snapshots c join invoices i on i.org_id=c.org_id and i.id=c.invoice_id
+    where c.org_id=new.org_id and c.id::text=p#>>'{calculation_snapshot_ref,id}' and c.id::text=p#>>'{document_snapshot_ref,id}'
+    and c.invoice_id::text=p->>'invoice_id' and c.part_id::text=p->>'part_id' and c.dispatch_id::text=p->>'dispatch_id'
+    and c.revision=(p->>'invoice_revision')::integer and i.total_cents::text=p#>>'{total,amount_minor}' and i.currency=p#>>'{total,currency}')
+  then raise exception 'controller.invoice.drafted does not match a stored invoice snapshot'; end if;
+  return new;
+end $$;
+create trigger platform_invoice_drafted_validation before insert on platform_events for each row execute function validate_invoice_drafted_event();
+create or replace function supported_platform_event(p_envelope jsonb) returns boolean language sql immutable as $$
+ select p_envelope->>'event_version'='1' and p_envelope->>'event_type' in (
+ 'controller.decision.proposed','controller.action.execution_recorded','controller.outcome.recorded','controller.invoice.drafted',
+ 'platform.action.state_recorded','platform.approval.state_recorded','platform.attempt.state_recorded')
+$$;
+
 do $$ declare t text;r text;f regprocedure; begin
   foreach t in array array['billing_order_groups','invoice_calculation_snapshots','carrier_cost_evidence'] loop
     execute format('alter table %I enable row level security',t); execute format('revoke all on table %I from public',t);
@@ -402,7 +441,8 @@ do $$ declare t text;r text;f regprocedure; begin
   end loop;
   -- draft_invoice_atomic kept the default PUBLIC grant; like every money RPC it is service-only.
   for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname in ('draft_dispatch_invoice',
-    'protect_billing_snapshot','billing_suffix','assert_pricing_snapshot','record_carrier_cost','guard_legacy_fulfillment_invoice','draft_invoice_atomic') loop
+    'protect_billing_snapshot','billing_suffix','assert_pricing_snapshot','record_carrier_cost','guard_legacy_fulfillment_invoice','draft_invoice_atomic',
+    'validate_invoice_drafted_event') loop
     execute format('revoke all on function %s from public',f);
     foreach r in array array['anon','authenticated','service_role'] loop
       if exists(select 1 from pg_roles where rolname=r) then execute format('revoke all on function %s from %I',f,r);

@@ -93,9 +93,11 @@ begin
    jsonb_build_object('contract_version',1,'company_id',o,'decision_id','synthetic-decision','revision',1)),'skeletal',array['ordered']);
  exception when others then denied:=true; end;
  if not denied then raise exception 'skeletal decision payload accepted'; end if;
- perform publish_platform_event(o,jsonb_set(jsonb_set(pg_temp.event_fixture(o,'drafted'),'{event_type}','"controller.invoice.drafted"'),
+ -- BILL (0028) validates controller.invoice.drafted, so a malformed one is refused outright.
+ denied:=false; begin perform publish_platform_event(o,jsonb_set(jsonb_set(pg_temp.event_fixture(o,'drafted'),'{event_type}','"controller.invoice.drafted"'),
    '{payload}','{"total_cents":-5,"garbage":true}'),'drafted',array['ordered']);
- if (select state from event_receipts where org_id=o and event_id='drafted')<>'quarantined' then raise exception 'unvalidated invoice.drafted projected'; end if;
+ exception when others then denied:=true; end;
+ if not denied then raise exception 'malformed invoice.drafted accepted'; end if;
  -- An execution's later state is its next revision, not a same-version conflict.
  perform publish_platform_event(o,pg_temp.execution_fixture(o,'exec-executing',1,'EXECUTING'),'exec-1',array['executions']);
  perform publish_platform_event(o,pg_temp.execution_fixture(o,'exec-confirmed',2,'CONFIRMED'),'exec-2',array['executions']);
