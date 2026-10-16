@@ -96,6 +96,9 @@ issue invoices, email customers or access live bank data during development.
    not establish an available feed, file format, access or connection authority.
 6. The activation cutoff and handling of orders already invoiced before that cutoff;
    per-customer print/email preferences and invoice recipient mappings.
+7. Whether a later shipment may be invoiced while the order's first shipment is stuck
+   (blocked or awaiting correction). Atlas currently makes it wait, so the first
+   shipment's freight is never charged to the wrong part.
 
 ## Adaptable pricing requirement
 

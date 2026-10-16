@@ -2,22 +2,21 @@
 
 ## Current status
 
-Updated 16 October 2026 (#29 and #32 closed as superseded). This section is the live status and supersedes the dated sections below, which are
-history. AUTH-01 + AUTHZ-02 (step 1) merged in #31 on 16 October; #19 and #25 are
-superseded. Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
+Updated 16 October 2026. This section is the live status and supersedes the dated sections below, which are
+history. Steps 1–3b merged on 16 October: AUTH-01 + AUTHZ-02 (#31), EVENT-01 + EVIDENCE-01 (#30),
+PRICING-01 + BILL-01 (#28) and the GoSweetSpot carrier cost sync with the JOBS-01 core (#35). Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
 and a PR merges only after that approval and green CI. Commit and CI evidence lives in
 each PR. The 1–7 October target (D13) was not met; it is now step 4.
 
 | Order | Task | Owner | PR | State | Next step |
 | --- | --- | --- | --- | --- | --- |
-| 2 | EVENT-01 + EVIDENCE-01 | Claude (#33 session) | #30 | Review findings fixed; awaiting Todd's review | Merge, then #28 |
-| 3 | PRICING-01 + BILL-01 | Claude (#33 session) | #28 (contains #30) | Review findings fixed; D15 freight implemented; awaiting Todd's review | Merge after #30 |
-| 3b | GoSweetSpot carrier cost + JOBS-01 core + jobs console | Claude (#33 session) | #35 (contains #28) | Draft; under review | Fix findings, then merge after #28 |
-| 4 | Pricing editor + approve → print journey | Claude | — | Not started | After steps 2–3 |
+| 3b | GoSweetSpot carrier cost: live check | Todd | — (#35 merged) | Needs VICE's GoSweetSpot site id and one real `api/shipments` response | Confirm the cost field, then switch the sync on |
+| 3b | Manual carrier cost grant | Todd | — (#35 merged) | Off by default; not seeded at boot | Decide whether VICE turns it on |
+| 4 | Pricing editor + approve → print journey | Claude | — | Ready: steps 1–3b merged | Start next |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
 After step 4: FLOW-01 bank reconciliation (needs a Wise/ASB export sample), UI-01,
-JOBS-01, TODAY-01, AI-01, CLOSE-01. Business inputs still needed are listed in
+the rest of JOBS-01, TODAY-01, AI-01, CLOSE-01. Business inputs still needed are listed in
 [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
 
 ## Standing backlog and historical snapshots
