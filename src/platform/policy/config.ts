@@ -22,7 +22,8 @@ interface JsonRules {
 
 function toBig(v: string | number): bigint {
   if (typeof v === 'bigint') return v;
-  if (typeof v === 'number') return BigInt(Math.trunc(v));
+  if (typeof v === 'number' && !Number.isSafeInteger(v)) throw new Error('policy money must be safe integer cents or a decimal string');
+  if (typeof v === 'string' && !/^-?(0|[1-9][0-9]*)$/.test(v)) throw new Error('policy money must be integer decimal cents');
   return BigInt(v);
 }
 

@@ -97,6 +97,92 @@ export type Database = {
           },
         ]
       }
+      action_attempts: {
+        Row: {
+          action_id: string
+          actor_id: string
+          attempt_number: number
+          error: string | null
+          evidence: Json | null
+          finished_at: string | null
+          id: string
+          org_id: string
+          result: Json | null
+          started_at: string
+          state: string
+        }
+        Insert: {
+          action_id: string
+          actor_id: string
+          attempt_number: number
+          error?: string | null
+          evidence?: Json | null
+          finished_at?: string | null
+          id?: string
+          org_id: string
+          result?: Json | null
+          started_at?: string
+          state: string
+        }
+        Update: {
+          action_id?: string
+          actor_id?: string
+          attempt_number?: number
+          error?: string | null
+          evidence?: Json | null
+          finished_at?: string | null
+          id?: string
+          org_id?: string
+          result?: Json | null
+          started_at?: string
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_attempts_org_id_action_id_fkey"
+            columns: ["org_id", "action_id"]
+            referencedRelation: "approved_actions"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "action_attempts_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      action_controls: {
+        Row: {
+          changed_at: string
+          changed_by: string
+          org_id: string
+          paused: boolean
+          reason: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by: string
+          org_id: string
+          paused?: boolean
+          reason: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string
+          org_id?: string
+          paused?: boolean
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "action_controls_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_activity: {
         Row: {
           agent_name: string
@@ -250,6 +336,61 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "approvals_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      approved_actions: {
+        Row: {
+          approval_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          intent: NonNullable<Json>
+          intent_hash: string
+          org_id: string
+          revision: number
+          revoked_at: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          approval_id: string
+          created_at?: string
+          id?: string
+          idempotency_key: string
+          intent: NonNullable<Json>
+          intent_hash: string
+          org_id: string
+          revision?: number
+          revoked_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          approval_id?: string
+          created_at?: string
+          id?: string
+          idempotency_key?: string
+          intent?: NonNullable<Json>
+          intent_hash?: string
+          org_id?: string
+          revision?: number
+          revoked_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approved_actions_approval_id_fkey"
+            columns: ["approval_id"]
+            referencedRelation: "approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approved_actions_org_id_fkey"
             columns: ["org_id"]
             referencedRelation: "orgs"
             referencedColumns: ["id"]
@@ -2100,9 +2241,23 @@ export type Database = {
     }
     Functions: {
       age_bucket: { Args: { p_overdue_days: number }; Returns: string }
+      assert_action_authority: {
+        Args: { p_agent: string; p_org_id: string; p_tool: string }
+        Returns: undefined
+      }
       bind_shopify_dispatch_source: {
         Args: { p_connection_key: string; p_org_id: string }
         Returns: string
+      }
+      claim_bound_action: {
+        Args: {
+          p_actor: string
+          p_approval_id: string
+          p_org_id: string
+          p_policy_snapshot: Json
+          p_subject_snapshot: Json
+        }
+        Returns: Json
       }
       claim_dispatch: {
         Args: {
@@ -2118,7 +2273,30 @@ export type Database = {
         Args: { p_rate_bps: number; p_subtotal_cents: number }
         Returns: number
       }
+      create_bound_approval: {
+        Args: {
+          p_expires_at: string
+          p_intent: Json
+          p_org_id: string
+          p_summary?: string
+        }
+        Returns: string
+      }
+      current_action_policy: {
+        Args: { p_org_id: string; p_tool: string }
+        Returns: Json
+      }
       dearmor: { Args: { "": string }; Returns: string }
+      decide_bound_approval: {
+        Args: {
+          p_actor: string
+          p_approval_id: string
+          p_disposition: string
+          p_org_id: string
+          p_reason?: string
+        }
+        Returns: undefined
+      }
       draft_invoice_atomic: {
         Args: {
           p_account_id: string
@@ -2134,6 +2312,18 @@ export type Database = {
           total_cents: number
           was_existing: boolean
         }[]
+      }
+      finish_bound_action: {
+        Args: {
+          p_action_id: string
+          p_error?: string
+          p_evidence: Json
+          p_execution_id: string
+          p_org_id: string
+          p_result: Json
+          p_state: string
+        }
+        Returns: undefined
       }
       gen_random_uuid: { Args: Record<PropertyKey, never>; Returns: string }
       gen_salt: { Args: { "": string }; Returns: string }
@@ -2151,6 +2341,14 @@ export type Database = {
           line_count: number
           statement_id: string
         }[]
+      }
+      invoice_action_snapshot: {
+        Args: { p_invoice_id: string; p_org_id: string }
+        Returns: Json
+      }
+      issue_bound_invoice: {
+        Args: { p_action_id: string; p_execution_id: string; p_org_id: string }
+        Returns: Json
       }
       issue_invoice_atomic: {
         Args: {
@@ -2202,6 +2400,16 @@ export type Database = {
         Args: { p_connection_key: string; p_org_id: string; p_payload: Json }
         Returns: string
       }
+      reconcile_bound_action: {
+        Args: {
+          p_action_id: string
+          p_actor: string
+          p_evidence: Json
+          p_org_id: string
+          p_state: string
+        }
+        Returns: undefined
+      }
       record_stripe_payment: {
         Args: {
           p_amount_cents: number
@@ -2219,7 +2427,25 @@ export type Database = {
           rsp_was_existing: boolean
         }[]
       }
+      revoke_bound_action: {
+        Args: {
+          p_action_id: string
+          p_actor: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
       seed_chart_of_accounts: { Args: { p_org_id: string }; Returns: undefined }
+      set_action_pause: {
+        Args: {
+          p_actor: string
+          p_org_id: string
+          p_paused: boolean
+          p_reason: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       agent_kind: "worker" | "analytical" | "orchestrator"
