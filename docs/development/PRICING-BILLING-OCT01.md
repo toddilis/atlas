@@ -166,3 +166,240 @@ Still open: part suffixes follow drafting order; the printed document is a place
 (account id, no supplier details or invoice date); explanation text in a snapshot is not
 re-derived; every draft takes the org-wide pricing lock; backdated activations and SQL-side
 configuration validation at save are not addressed.
+
+## GoSweetSpot carrier cost adapter
+
+`src/integrations/gosweetspot/consignment.ts` maps a GoSweetSpot shipment response to carrier
+cost evidence and records it with `record_carrier_cost`:
+
+- It uses only the documented response fields: each consignment's `ConsignmentId`, `Connote` and
+  `Cost` (dollars, excluding tax).
+- A dispatch's consignments are those whose connote is one of its Shopify fulfillment tracking
+  numbers. Every tracking number must be covered, so a partial response records nothing. A
+  dispatch shipped as several consignments records their summed cost once.
+- Costs convert to cents exactly; more than two decimals is refused, never rounded.
+- The site, its cost currency and how long a recorded cost may be used are business
+  configuration. No currency is assumed.
+- The pricing probe's carrier quotes come from this mapping, so the database accepts exactly
+  what it produces.
+
+VICE books shipments in the GoSweetSpot website (confirmed 15 October), so Atlas reads them
+back. `src/integrations/gosweetspot/client.ts`:
+
+- `fetchShipmentsByConnote` calls `GET https://api.gosweetspot.com/api/shipments?shipments=<connotes>`
+  with the `access_key` and `site_id` headers.
+- `syncGoSweetSpotCost` takes a dispatch's Shopify tracking numbers, looks up the matching
+  shipments and records their cost.
+
+The response is accepted only in the documented shipment shape (`Consignments` with
+`ConsignmentId`, `Connote`, `Cost`); any other shape records nothing.
+
+GoSweetSpot writes its connotes to the Shopify fulfillment as tracking numbers (confirmed by
+VICE, 16 October), which is the link the lookup matches on. Still to confirm with VICE's
+account: that the GET returns that shape (one webhook sample instead shows `TotalCost`), and
+the site id. VICE's GoSweetSpot costs are in NZD (confirmed 16 October); that is VICE's
+connection setting, not a platform default.
+
+Settings are server environment (`.env.example`): `GOSWEETSPOT_ACCESS_KEY` is a server secret
+(worker/API host secret store only, never `NEXT_PUBLIC_`, never logged), plus
+`GOSWEETSPOT_SITE_ID`, `GOSWEETSPOT_COST_CURRENCY` (VICE: `NZD`) and
+`GOSWEETSPOT_COST_VALIDITY_DAYS` (default 30). Missing settings fail closed.
+`syncGoSweetSpotCostFromEnv` runs the lookup with them. No live call has been made.
+
+## 16 October: JOBS-01 core runs the cost sync
+
+The worker now runs the sync on each tick without anyone calling an endpoint (0029,
+`src/platform/jobs/carrier-cost.ts`). This is the JOBS-01 core plus its first job kind. It
+does not cover Shopify ingestion scheduling, approval-expiry sweeps or rollups.
+
+- `discover_carrier_cost_jobs` records one `scheduled_jobs` row per business for each
+  eligible Shopify dispatch that meets all of these conditions:
+  - its fulfillment has tracking numbers;
+  - its order has no invoice snapshot yet;
+  - it has no unexpired carrier cost.
+  Discovery is idempotent. A succeeded job is re-armed when its cost has expired and the
+  order is still unbilled. The precondition is one SQL function, `carrier_cost_job_needed`,
+  shared by discovery, claims, retry and manual cost. A pending, failed, blocked or
+  quarantined job whose dispatch no longer needs a cost (it has one, its order is invoiced,
+  or it is no longer eligible) is closed as done with a `not_needed` run, so it neither
+  calls GoSweetSpot again nor waits for a person.
+- `claim_scheduled_job` leases one due job (skip locked, 5 minutes). It claims nothing while
+  business actions are paused, and closes a due job that is no longer needed instead of
+  leasing it. If a worker crashes, its lease expires; the expiry is recorded in `job_runs`
+  and the job is claimed again. A GoSweetSpot lookup times out after 30 seconds, well inside
+  the lease, and a run that cannot be finished does not stop the other due jobs.
+- Each sync records a new observation: its quote key is the consignment ids plus the
+  observation time. A re-sync after a cost expires therefore adds evidence instead of
+  conflicting with the expired row. A consignment reported with a zero cost is treated as
+  not yet priced (retried), never as free freight; identical duplicate consignments count
+  once and conflicting ones are blocked.
+  `finish_scheduled_job` accepts only the current lease holder. It sets the outcome as
+  follows:
+  - transient errors retry with a backoff of 2, 4, 8 … minutes, capped at 6 hours;
+  - errors a person must fix are `blocked`, with their reason in `last_error`, and are tried
+    again after 6 hours. These are missing settings, an unreadable response, an uncovered
+    tracking number and HTTP 401/403;
+  - after 8 attempts the job is `quarantined`.
+  `job_runs` is append-only and holds one row per attempt.
+- The sync is an optional module: it runs only when `GOSWEETSPOT_ACCESS_KEY` is set. A
+  business without GoSweetSpot gets no jobs.
+- Evidence: `scripts/verify-jobs.sql` in the database CI job tests discovery, leases, stale
+  finishes, backoff, blocked reasons, crash recovery, quarantine, re-arming, append-only
+  runs and service-only grants. `test/carrier_cost_jobs.test.ts` tests the runner and the
+  classification.
+- Limits:
+  - Operators retry quarantined or blocked jobs from the console (see the next sections).
+  - Live use still needs VICE's GoSweetSpot site id and one real response, to confirm the
+    cost field.
+
+## 16 October: console view of background jobs
+
+`/jobs` in the console (linked in the header and from home) is a read-only view for the
+signed-in operator, scoped to the business by `ATLAS_ORG_ID`. It shows:
+
+- counts by state;
+- **Needs a person**: quarantined jobs first, then blocked ones. Each shows the order,
+  dispatch and tracking numbers, the recorded reason, what to do about it, the next attempt
+  and the attempt history;
+- **Retrying** and **Queued and running**;
+- an overdue warning when due work has not been picked up for more than 10 minutes, which
+  means the worker is down or GoSweetSpot has been switched off;
+- an empty state, and the console's existing error page when a read fails.
+
+The view logic is in `web/lib/jobs.ts`, with unit tests in `web/test/jobs.test.ts`. The
+browser acceptance seeds one job of each state plus another business's blocked job. It
+checks what the operator sees and that the other business's job never appears.
+
+Limits:
+
+- Freshness is inferred from job runs. It is not a worker heartbeat.
+
+## 16 October: operator retry for stopped jobs
+
+Each job under **Needs a person** has a **Retry now** form that asks what was fixed. The
+form posts to `/jobs/retry`, which checks the operator's session, the allowlist and same
+origin, then calls `retry_scheduled_job` (0030, service-only). The database:
+
+- enforces the action pause and the operator's `operator → jobs.retry` tool grant. Boot
+  seeds the grant once; setting `enabled=false` revokes it and the page then explains that
+  retry is switched off;
+- refuses a retry when:
+  - the job changed since the page loaded (a stale tab or a double submit);
+  - the job is no longer blocked or quarantined;
+  - the reason or operator identity is missing;
+  - the dispatch no longer needs a cost (it has an unexpired cost, the order is invoiced,
+    or the dispatch is no longer eligible);
+- otherwise sets the job back to `pending` with its attempts reset, and records it in two
+  places:
+  - an `operator_retry` row in `job_runs`;
+  - a `jobs.retry` row in `audit_log`, with the operator, reason, previous state, previous
+    attempts and previous error.
+
+The console shows a fixed message for each outcome. Nothing from the URL is echoed back.
+
+Evidence:
+
+- `verify-jobs.sql` tests every refusal, the recorded evidence and the service-only grant.
+- The browser acceptance:
+  - retries the seeded quarantined job with a reason and sees it queued;
+  - replays the old form and gets "changed";
+  - checks a cross-site post is refused (403).
+
+Limits:
+
+- Refused actions are shown to the operator but not written to `audit_log`.
+
+## 16 October: operator dismissal for jobs that will never succeed
+
+Blocked and quarantined cards also have **Dismiss**. It uses the same reason box and posts
+to `/jobs/dismiss`; both actions share `web/lib/job-action.ts`. `dismiss_scheduled_job`
+(0031, service-only) applies the same checks as retry, against its own
+`operator → jobs.dismiss` grant (seeded at boot): pause, grant, an unchanged job, a reason
+and the operator's identity. Only blocked or quarantined jobs can be dismissed.
+
+A dismissed job:
+
+- keeps its last error;
+- is never claimed;
+- is not re-armed by discovery;
+- records no carrier cost. If its dispatch is the order's first part, that part still
+  cannot be drafted until a cost is recorded; the page says so.
+
+Each dismissal is recorded as an `operator_dismiss` row in `job_runs` and a `jobs.dismiss`
+row in `audit_log`. Dismissed jobs are listed under **Dismissed**, where **Retry now** undoes
+the dismissal (`retry_scheduled_job` now also accepts `dismissed`).
+
+Evidence:
+
+- `verify-jobs.sql` tests:
+  - the refusals: no grant, wrong state, no reason, a stale view, paused;
+  - the recorded evidence;
+  - that a dismissed job is never claimed or re-armed and records no cost;
+  - undo by retry;
+  - service-only access.
+- The browser acceptance dismisses the seeded blocked job with a reason. It checks the job
+  moves to Dismissed with the warning and its history, then undoes it with Retry now.
+
+## 16 October: manual carrier cost for dismissed jobs
+
+**Decision (owner request, 16 October).** A parcel that never went through GoSweetSpot (a
+hand courier, say) can have its actual carrier cost entered by an operator, so its order's
+first part can still be drafted under D15.
+
+This is the one deliberate exception to "a draft never uses a typed-in cost". The typed
+amount becomes stored carrier evidence through a separate, attributed operator action. It
+never becomes a draft input. Draft callers still cannot supply a cost.
+
+How it works:
+
+- **Where.** Dismissed carrier cost jobs have an **Enter the carrier cost by hand** form,
+  which asks for:
+  - the amount, excluding tax, in the order's own currency;
+  - an optional reference;
+  - a required reason.
+  The form posts to `/jobs/cost`, and the database function is `record_manual_carrier_cost`
+  (0032, service-only).
+- **Checks.** The database requires:
+  - the business's `carriers.record_manual_cost` operator grant. Boot does **not** seed it;
+    a business turns it on deliberately, and until then the form explains it is off. Once
+    on, any signed-in operator of that business may use it: it is not per person. A grant
+    set to `approve_required` is refused, because no approval step exists for it yet;
+  - the action pause to be off;
+  - a dismissed job, unchanged since the page loaded;
+  - a dispatch that is still eligible, in an unbilled order, with no unexpired cost;
+  - an amount of digits with at most two decimals. The amount stays a string until the
+    database converts it to minor units.
+- **What is stored.** It is written through `record_carrier_cost` as connection
+  `manual:operator` with a unique quote key. The currency comes from the Shopify order and
+  the tax basis is exclusive. It stays valid for 365 days, because it is an actual cost,
+  not a quote. Its evidence holds the operator, reason, reference and the amount as typed.
+- **After recording.** The job becomes `succeeded`, and the action is recorded as an
+  `operator_cost` row in `job_runs` and a `carriers.record_manual_cost` row in `audit_log`
+  (subject: the dispatch). The draft treats it like any latest stored carrier cost; its
+  snapshot names `manual:operator`, so the invoice calculation shows that the cost was
+  entered by hand.
+
+Evidence:
+
+- `verify-pricing.sql` drafts a later order's first part from a manual cost end to end:
+  the part bills 10.00 freight and its snapshot names `manual:operator`.
+- `verify-jobs.sql` tests:
+  - a grant that requires approval;
+  - no grant, malformed amounts (`12.345`, `-1`, `1,50`, `1e3`, `.5`, ten digits), no
+    reason, a stale view, paused, wrong state, and an already-costed dispatch;
+  - that the stored evidence is exact and is the dispatch's latest;
+  - the job state, its history and the audit row;
+  - that discovery does not re-sync it;
+  - service-only access.
+- The browser acceptance dismisses a seeded courier job, has the browser refuse `12.345`,
+  then records `18.40` with a reference. The stored evidence was NZD 1840 minor units,
+  `manual:operator`, with the operator email, reason and reference.
+
+Limits:
+
+- A full draft that uses a manual cost has not been run in CI, because the precomputed
+  draft fixtures cannot match a cost stamped at entry time. The draft's stored-cost check
+  has no connection-specific rule.
+- Once recorded, a manual cost cannot be corrected in the console. A wrong amount needs a
+  new evidence record, through a correction path that does not exist yet.
+- Cost entry is offered only for dismissed jobs, not for blocked or quarantined ones.

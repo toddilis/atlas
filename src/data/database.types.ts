@@ -1659,6 +1659,46 @@ export type Database = {
           },
         ]
       }
+      job_runs: {
+        Row: {
+          attempt: number
+          detail: NonNullable<Json>
+          finished_at: string
+          id: string
+          job_key: string
+          org_id: string
+          outcome: string
+          started_at: string
+        }
+        Insert: {
+          attempt: number
+          detail?: NonNullable<Json>
+          finished_at?: string
+          id?: string
+          job_key: string
+          org_id: string
+          outcome: string
+          started_at: string
+        }
+        Update: {
+          attempt?: number
+          detail?: NonNullable<Json>
+          finished_at?: string
+          id?: string
+          job_key?: string
+          org_id?: string
+          outcome?: string
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_runs_org_id_job_key_fkey"
+            columns: ["org_id", "job_key"]
+            referencedRelation: "scheduled_jobs"
+            referencedColumns: ["org_id", "job_key"]
+          },
+        ]
+      }
       ledger_accounts: {
         Row: {
           active: boolean
@@ -2296,6 +2336,68 @@ export type Database = {
           },
         ]
       }
+      scheduled_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          dispatch_id: string
+          job_key: string
+          kind: string
+          last_error: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          org_id: string
+          source_id: string
+          state: string
+          updated_at: string
+          close_unneeded_job: undefined | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          dispatch_id: string
+          job_key: string
+          kind: string
+          last_error?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          org_id: string
+          source_id: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          dispatch_id?: string
+          job_key?: string
+          kind?: string
+          last_error?: string | null
+          lease_token?: string | null
+          lease_until?: string | null
+          next_attempt_at?: string
+          org_id?: string
+          source_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_jobs_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_jobs_org_id_source_id_dispatch_id_fkey"
+            columns: ["org_id", "source_id", "dispatch_id"]
+            referencedRelation: "dispatches"
+            referencedColumns: ["org_id", "source_id", "id"]
+          },
+        ]
+      }
       semantic_facts: {
         Row: {
           confidence: number
@@ -2880,6 +2982,10 @@ export type Database = {
         Args: { p_connection_key: string; p_org_id: string }
         Returns: string
       }
+      carrier_cost_job_needed: {
+        Args: { p_dispatch_id: string; p_org_id: string; p_source_id: string }
+        Returns: boolean
+      }
       claim_bound_action: {
         Args: {
           p_actor: string
@@ -2903,6 +3009,34 @@ export type Database = {
       claim_event_receipt: {
         Args: { p_consumer: string; p_generation?: string; p_org_id: string }
         Returns: Json
+      }
+      claim_scheduled_job: {
+        Args: { p_kind: string; p_org_id: string }
+        Returns: {
+          attempts: number
+          created_at: string
+          dispatch_id: string
+          job_key: string
+          kind: string
+          last_error: string | null
+          lease_token: string | null
+          lease_until: string | null
+          next_attempt_at: string
+          org_id: string
+          source_id: string
+          state: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "scheduled_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      close_unneeded_job: {
+        Args: { j: Database["public"]["Tables"]["scheduled_jobs"]["Row"] }
+        Returns: undefined
       }
       compute_gst_cents: {
         Args: { p_rate_bps: number; p_subtotal_cents: number }
@@ -2931,6 +3065,21 @@ export type Database = {
           p_reason?: string
         }
         Returns: undefined
+      }
+      discover_carrier_cost_jobs: {
+        Args: { p_org_id: string }
+        Returns: number
+      }
+      dismiss_scheduled_job: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_updated_at: string
+          p_job_key: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
       }
       draft_dispatch_invoice: {
         Args: {
@@ -2980,6 +3129,16 @@ export type Database = {
           p_state: string
         }
         Returns: undefined
+      }
+      finish_scheduled_job: {
+        Args: {
+          p_detail: Json
+          p_job_key: string
+          p_lease_token: string
+          p_org_id: string
+          p_outcome: string
+        }
+        Returns: string
       }
       gen_random_uuid: { Args: Record<PropertyKey, never>; Returns: string }
       gen_salt: { Args: { "": string }; Returns: string }
@@ -3133,6 +3292,19 @@ export type Database = {
         Args: { p_decision_revision: number; p_org_id: string; p_record: Json }
         Returns: string
       }
+      record_manual_carrier_cost: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_cost: string
+          p_expected_updated_at: string
+          p_job_key: string
+          p_org_id: string
+          p_reason: string
+          p_reference: string
+        }
+        Returns: string
+      }
       record_stripe_payment: {
         Args: {
           p_amount_cents: number
@@ -3160,6 +3332,17 @@ export type Database = {
           p_reason: string
         }
         Returns: undefined
+      }
+      retry_scheduled_job: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_updated_at: string
+          p_job_key: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
       }
       revoke_bound_action: {
         Args: {

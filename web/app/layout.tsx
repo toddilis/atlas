@@ -27,6 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/statements" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                   Statements
                 </Link>
+                <Link href="/jobs" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+                  Jobs
+                </Link>
               </nav>
               <form action="/auth/signout" method="post" className="ml-auto">
                 <button

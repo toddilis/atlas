@@ -437,3 +437,4 @@ psql_run -f "$SCRIPT_DIR/verify-dispatch.sql"
 psql_run -f "$SCRIPT_DIR/verify-bound-actions.sql"
 psql_run -f "$SCRIPT_DIR/verify-event-evidence.sql"
 { npx tsx "$SCRIPT_DIR/pricing-fixtures.ts"; cat "$SCRIPT_DIR/verify-pricing.sql"; } | psql_run
+psql_run -f "$SCRIPT_DIR/verify-jobs.sql"
