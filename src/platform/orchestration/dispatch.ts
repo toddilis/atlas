@@ -27,6 +27,9 @@ export async function bootAgents(): Promise<void> {
     // once; revoking a grant (enabled=false) switches that console action off.
     { agentName: 'operator', toolName: 'jobs.retry', risk: 'notify' },
     { agentName: 'operator', toolName: 'jobs.dismiss', risk: 'notify' },
+    // Console operators may save and activate pricing versions (0033), on the same terms.
+    { agentName: 'operator', toolName: 'pricing.save', risk: 'notify' },
+    { agentName: 'operator', toolName: 'pricing.activate', risk: 'notify' },
   ]);
 
   booted = true;

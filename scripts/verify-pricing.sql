@@ -281,3 +281,50 @@ begin
   perform pg_temp.pricing_reject(format('update invoices set due_at=now() where id=%L',ra->>'invoiceId'),'%%immutable%%');
   perform pg_temp.pricing_reject(format('update invoice_lines set unit_price_cents=1 where invoice_id=%L',ra->>'invoiceId'),'%%immutable%%');
 end $$;
+
+-- PRICING-01 console entry points (0033): grant, pause, reason, references, revision, audit.
+do $$
+declare
+  company uuid:=current_setting('test.pricing_company'); operator uuid:='63000000-0000-4000-8000-0000000000aa';
+  c jsonb:=jsonb_set(jsonb_set(current_setting('test.pricing_config_v2')::jsonb,'{version}','"v3"'),'{effectiveFrom}','"2026-10-10T00:00:00+13:00"');
+  v2 uuid:=(select id from pricing_versions where org_id=company and version_key='v2'); v3 uuid; v4 uuid; a uuid;
+  save text:=format('select operator_save_pricing_version(%L,2,%L,%L,%L,%L)',company,c,operator,'ops@example.test','October price list');
+begin
+  perform pg_temp.pricing_reject(save,'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','pricing.save','notify');
+  perform pg_temp.pricing_reject(format('select operator_save_pricing_version(%L,2,%L,%L,%L,%L)',company,c,operator,'ops@example.test','x'),'%%pricing reason required%%');
+  perform pg_temp.pricing_reject(format('select operator_save_pricing_version(%L,2,%L,%L,%L,%L)',company,c,null,'ops@example.test','October price list'),'%%operator identity required%%');
+  perform pg_temp.pricing_reject(format('select operator_save_pricing_version(%L,2,%L,%L,%L,%L)',company,
+    jsonb_set(c,'{books,0,entries,0,productId}',to_jsonb(gen_random_uuid()::text)),operator,'ops@example.test','October price list'),'%%products this business does not have%%');
+  perform pg_temp.pricing_reject(format('select operator_save_pricing_version(%L,2,%L,%L,%L,%L)',company,
+    jsonb_set(c,'{bindings,0,accountId}',to_jsonb(gen_random_uuid()::text)),operator,'ops@example.test','October price list'),'%%retailers this business does not have%%');
+  perform pg_temp.pricing_reject(format('select operator_save_pricing_version(%L,1,%L,%L,%L,%L)',company,c,operator,'ops@example.test','October price list'),'%%stale pricing revision%%');
+  -- Same identifier as an existing version from a page loaded before it: stale, not "taken".
+  perform pg_temp.pricing_reject(format('select operator_save_pricing_version(%L,1,%L,%L,%L,%L)',company,jsonb_set(c,'{version}','"v2"'),operator,'ops@example.test','October price list'),'%%stale pricing revision%%');
+  perform set_action_pause(company,true,'probe','probe pause');
+  perform pg_temp.pricing_reject(save,'%%business actions paused%%');
+  perform set_action_pause(company,false,'probe','probe resume');
+
+  v3:=operator_save_pricing_version(company,2,c,operator,'ops@example.test',' October price list ');
+  perform pg_temp.pricing_assert((select revision=3 and actor='ops@example.test' and reason='October price list' from pricing_versions where id=v3),'saved as revision 3 by the operator');
+  perform pg_temp.pricing_assert(operator_save_pricing_version(company,2,c,operator,'ops@example.test','October price list')=v3,'a retry returns the saved version');
+  perform pg_temp.pricing_assert((select count(*)=1 from audit_log where org_id=company and action='pricing.save' and subject_id=v3
+    and detail->>'actor_email'='ops@example.test' and detail->>'version_key'='v3'),'save audited once');
+
+  perform pg_temp.pricing_reject(format('select operator_activate_pricing_version(%L,%L,3,%L,%L,%L)',company,v3,operator,'ops@example.test','go live'),'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','pricing.activate','notify');
+  perform pg_temp.pricing_reject(format('select operator_activate_pricing_version(%L,%L,2,%L,%L,%L)',company,v3,operator,'ops@example.test','go live'),'%%stale pricing activation%%');
+  a:=operator_activate_pricing_version(company,v3,3,operator,'ops@example.test','go live');
+  perform pg_temp.pricing_assert(operator_activate_pricing_version(company,v3,3,operator,'ops@example.test','go live')=a,'an activation retry returns it');
+  perform pg_temp.pricing_assert((select count(*)=1 from audit_log where org_id=company and action='pricing.activate' and subject_id=v3
+    and detail->>'previous_version_id'=v2::text and detail->>'reason'='go live'),'activation audited once with the version it replaced');
+
+  -- A version that would move the effective timeline backwards cannot be activated.
+  v4:=operator_save_pricing_version(company,3,jsonb_set(jsonb_set(c,'{version}','"v4"'),'{effectiveFrom}','"2026-10-05T00:00:00+13:00"'),operator,'ops@example.test','backdated');
+  perform pg_temp.pricing_reject(format('select operator_activate_pricing_version(%L,%L,4,%L,%L,%L)',company,v4,operator,'ops@example.test','backdated'),'%%must advance effective timeline%%');
+  update tool_grants set enabled=false where org_id=company and agent_name='operator' and tool_name='pricing.activate';
+  perform pg_temp.pricing_reject(format('select operator_activate_pricing_version(%L,%L,4,%L,%L,%L)',company,v4,operator,'ops@example.test','backdated'),'%%tool entitlement missing or revoked%%');
+  perform pg_temp.pricing_assert(not has_function_privilege('authenticated','operator_save_pricing_version(uuid,integer,jsonb,uuid,text,text)','execute')
+    and not has_function_privilege('anon','operator_activate_pricing_version(uuid,uuid,integer,uuid,text,text)','execute')
+    and has_function_privilege('service_role','operator_activate_pricing_version(uuid,uuid,integer,uuid,text,text)','execute'),'pricing entry points are service-only');
+end $$;

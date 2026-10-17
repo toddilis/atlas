@@ -397,9 +397,59 @@ Evidence:
 
 Limits:
 
-- A full draft that uses a manual cost has not been run in CI, because the precomputed
-  draft fixtures cannot match a cost stamped at entry time. The draft's stored-cost check
-  has no connection-specific rule.
+- The draft's stored-cost check has no connection-specific rule: a manual cost is used
+  like any other latest stored cost (the end-to-end draft above shows it).
 - Once recorded, a manual cost cannot be corrected in the console. A wrong amount needs a
   new evidence record, through a correction path that does not exist yet.
 - Cost entry is offered only for dismissed jobs, not for blocked or quarantined ones.
+
+## 17 October: pricing editor in the console (step 4a)
+
+`/pricing` is the PRICING-01 operator journey: edit a draft of the next version, preview a
+retailer's charge, save it as a version, preview the saved version and activate it.
+
+- **What can be edited.** Version name and identifier, effective from/until and timezone,
+  pricing-date basis, currency, tax rate, whether freight is taxed, payment terms, price
+  precedence, the volume-tier quantity basis, the fallback for retailers without a book,
+  discount combination; price books and their products; retailer books; negotiated
+  prices, volume tiers and discounts (retailer or all retailers); shipping rules (scope,
+  priority, charge mode, partial-order basis, a per-shipment free threshold).
+- **First version.** Every choice that changes what a retailer pays starts empty, and the
+  draft cannot be saved until the schema accepts every field. A next version starts from
+  the latest saved one with no start time, since it activates only if it starts after the
+  version in effect.
+- **Preview.** The browser runs the shared calculator on a hypothetical order of the
+  chosen retailer (lines, dates, an optional carrier cost standing in for stored
+  evidence, earlier parts), and compares it with the version in effect.
+- **Save and activate** (`0033`). The console verifies the operator (session, allowlist,
+  same origin) and checks the draft against the schema with the business forced to the
+  operator's own. `operator_save_pricing_version` and `operator_activate_pricing_version`
+  enforce action pause and the business's `pricing.save` / `pricing.activate` operator
+  grants (seeded at boot, revocable), refuse products or retailers the business does not
+  have, refuse a page loaded before another save (`stale pricing revision`, even when both
+  chose the same identifier), and record an audit row with the actor, reason and, on
+  activation, the version it replaced. Activation recalculates the operator's preview
+  from the stored version and is refused if the total differs.
+- **Bundling.** The console imports the platform calculator from `src/`, so its Turbopack
+  root is the repository and `zod` resolves to the console's own dependency (the console
+  is built with only `web/` installed, as CI does).
+
+Evidence:
+
+- `verify-pricing.sql`: no grant, short reason, no identity, unknown product, unknown
+  retailer, stale revision (including the same identifier), paused; save, retry and one
+  audit row; activation without grant, stale, retry and one audit row naming the replaced
+  version; a backdated version refused; a revoked grant refused; service-only access.
+- Browser acceptance: the first version built from empty, a draft preview (10 tees,
+  retail: 241.50 incl. 10.00 freight and 15% tax), save, a server-checked preview of the
+  saved version (10 caps, tax-exempt retailer: 135.00), activation; a stale save refused
+  with its draft kept; a signed-out request sent to sign in and a cross-site request
+  refused; another business's product and retailer never shown.
+
+Limits:
+
+- The workbook import preview (`previewPriceImport`) is not in the console yet.
+- Preview uses a hypothetical order, not a stored dispatch. Drafting real parts from the
+  console, and approve → print, are step 4b.
+- Reasoned per-invoice overrides (price or freight) are not in the console yet.
+
