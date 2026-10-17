@@ -117,3 +117,13 @@ test('a typed carrier cost is accepted only as digits with at most two decimals'
   for (const ok of ['0', '12', '12.5', '12.50', ' 18.40 ', '999999999.99']) assert.equal(isManualCost(ok), true, ok);
   for (const bad of ['', '12.345', '-1', '1,50', '$12', '1e3', '.5', '12.', 'NaN', '1234567890']) assert.equal(isManualCost(bad), false, bad);
 });
+
+test('invoice part drafts explain what they wait for', () => {
+  assert.match(adviceFor('billing: no pricing version is active; activate one in Pricing') ?? '', /Activate a pricing version/);
+  assert.match(adviceFor('pricing: missing or expired carrier quote') ?? '', /drafted as soon as its carrier cost job records one/);
+  assert.match(adviceFor('an earlier shipment of this order must be invoiced first; it carries the order\'s freight') ?? '', /must be invoiced first/);
+  assert.match(adviceFor('pricing: missing product 1234') ?? '', /no price for this retailer and product/);
+  assert.match(adviceFor('order retailer unknown: link the Shopify customer to an account') ?? '', /not linked to a retailer account/);
+  assert.match(adviceFor('billing: no single active product for SKU WIDGET') ?? '', /does not match exactly one active product/);
+  assert.match(nextStep(job('d', 'dismissed', { kind: 'invoice_part_draft' }), now), /will not draft this shipment's invoice part/);
+});

@@ -22,8 +22,6 @@ import { recordObservation } from '../../platform/memory/observations.js';
 import { appendEvent } from '../../platform/events/eventLog.js';
 import { log } from '../../platform/log.js';
 import { decideRoute } from './routing.js';
-import type { DraftInvoiceInput, DraftInvoiceOutput } from './tools/draft_invoice.js';
-import { invokeTool } from '../../platform/tools/registry.js';
 
 async function onShopifyFulfillmentCreated(event: {
   id: string;
@@ -117,37 +115,9 @@ async function onShopifyFulfillmentCreated(event: {
     idempotencyKey: `controller.fulfillment.routed:${canonical.id}`,
   });
 
-  // PR-D: wholesale routes auto-draft an invoice. The draft is idempotent on
-  // fulfillment_event_id, so a replay is a no-op. Other routes (consignment, ignored)
-  // don't produce invoices in this PR.
-  if (decision.route === 'wholesale') {
-    try {
-      const invocation = await invokeTool<DraftInvoiceInput, DraftInvoiceOutput>(
-        'controller.draft_invoice',
-        { fulfillmentEventId },
-        { companyId: orgId(), agentName: 'controller', subjectType: 'fulfillment_event', subjectId: fulfillmentEventId },
-      );
-      if (invocation.status !== 'executed') {
-        log.info('controller.invoice.draft_held', { fulfillment_event_id: fulfillmentEventId, status: invocation.status });
-        return;
-      }
-      const draft = invocation.result;
-      log.info('controller.invoice.drafted', {
-        invoice_id: draft.invoiceId,
-        invoice_number: draft.invoiceNumber,
-        total_cents: draft.totalCents,
-        reused: draft.reused,
-      });
-    } catch (e) {
-      // A draft failure shouldn't roll back routing — the fulfillment_event is the system
-      // of record for the routing decision. Log and continue so the operator can retry
-      // drafting (idempotent) after fixing pricing data.
-      log.error('controller.draft_invoice.failed', {
-        fulfillment_event_id: fulfillmentEventId,
-        error: (e as Error).message,
-      });
-    }
-  }
+  // Wholesale shipments are invoiced as dispatch parts by the invoice part job (0035),
+  // which the worker discovers from this routing record. The legacy whole-order draft
+  // already refused every dispatch-backed fulfillment, so it is no longer called here.
 }
 
 export const controllerAgent: AgentDefinition = {

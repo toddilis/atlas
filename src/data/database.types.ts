@@ -2401,6 +2401,7 @@ export type Database = {
           state: string
           updated_at: string
           close_unneeded_job: undefined | null
+          scheduled_job_needed: boolean | null
         }
         Insert: {
           attempts?: number
@@ -3123,6 +3124,10 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: number
       }
+      discover_invoice_part_jobs: {
+        Args: { p_org_id: string }
+        Returns: number
+      }
       dismiss_scheduled_job: {
         Args: {
           p_actor_email: string
@@ -3133,6 +3138,10 @@ export type Database = {
           p_reason: string
         }
         Returns: string
+      }
+      dispatch_routed_wholesale: {
+        Args: { p_dispatch_id: string; p_org_id: string }
+        Returns: boolean
       }
       draft_dispatch_invoice: {
         Args: {
@@ -3217,6 +3226,10 @@ export type Database = {
       invoice_action_snapshot_digest: {
         Args: { p_invoice_id: string; p_org_id: string }
         Returns: string
+      }
+      invoice_part_job_needed: {
+        Args: { p_dispatch_id: string; p_org_id: string; p_source_id: string }
+        Returns: boolean
       }
       issue_bound_invoice: {
         Args: { p_action_id: string; p_execution_id: string; p_org_id: string }
@@ -3464,6 +3477,10 @@ export type Database = {
           p_reason: string
         }
         Returns: string
+      }
+      scheduled_job_needed: {
+        Args: { j: Database["public"]["Tables"]["scheduled_jobs"]["Row"] }
+        Returns: boolean
       }
       seed_chart_of_accounts: { Args: { p_org_id: string }; Returns: undefined }
       set_action_pause: {

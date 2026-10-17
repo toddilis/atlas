@@ -29,7 +29,7 @@ export const MAX_ATTEMPTS = 8;
 /** The worker ticks every minute; a due job left this long means it is not running. */
 export const STALE_AFTER_MS = 10 * 60_000;
 
-export const KIND_LABELS: Record<string, string> = { carrier_cost_sync: 'Carrier cost sync' };
+export const KIND_LABELS: Record<string, string> = { carrier_cost_sync: 'Carrier cost sync', invoice_part_draft: 'Invoice part draft' };
 export const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
 
 const ADVICE: Array<[RegExp, string]> = [
@@ -43,6 +43,16 @@ const ADVICE: Array<[RegExp, string]> = [
   [/conflicting duplicate consignment/, 'GoSweetSpot returned two different records for one consignment, so no cost was recorded. Check the shipment in GoSweetSpot.'],
   [/no cost yet/, 'GoSweetSpot has not priced this consignment yet (it reports a zero cost), so nothing was recorded. It is retried automatically.'],
   [/lease expired/, 'The worker stopped during this run. It is retried automatically.'],
+  // Invoice part drafts (0035).
+  [/no pricing version is active|no effective configuration/, 'No activated pricing applies to this shipment\'s date. Activate a pricing version in Pricing; waiting parts are drafted as soon as one is activated.'],
+  [/order retailer unknown/, 'The Shopify customer on this order is not linked to a retailer account. Link it; then retry this job.'],
+  [/no single active product for SKU|a shipped line has no SKU|product mapping/, 'A shipped SKU does not match exactly one active product in Atlas. Fix the product catalogue; then retry this job.'],
+  [/carrier cost requires stored carrier evidence|stored carrier evidence expired|missing or expired carrier quote/, 'This shipment\'s freight is its carrier cost, which is not recorded yet. It is drafted as soon as its carrier cost job records one.'],
+  [/earlier shipment of this order must be invoiced first/, 'An earlier shipment of this order carries its freight and must be invoiced first. This one is drafted as soon as that part is.'],
+  [/already has a legacy invoice/, 'This order already has an invoice from the old whole-order path. Reconcile it before invoicing its shipments.'],
+  [/authoritative dispatch destination/, 'A shipping rule depends on the destination, which Atlas does not have for this shipment. Change the rule or record the destination; then retry.'],
+  [/pricing: missing product|retailer has no price book/, 'The pricing in effect has no price for this retailer and product. Add it in Pricing and activate the new version.'],
+  [/order display reference unavailable|order has no order date|no dispatch time/, 'The Shopify order is missing details an invoice needs. Re-sync it from Shopify; then retry.'],
 ];
 export function adviceFor(error: string | null): string | null {
   if (!error) return null;
@@ -71,7 +81,9 @@ export function nextStep(job: JobRow, now: Date): string {
     case 'succeeded':
       return 'Done.';
     case 'dismissed':
-      return 'Dismissed by an operator; Atlas will not retry it. No carrier cost was recorded, so if this dispatch is its order\'s first part, that part cannot be drafted until a cost is recorded.';
+      return job.kind === 'invoice_part_draft'
+        ? 'Dismissed by an operator; Atlas will not draft this shipment\'s invoice part unless the job is retried.'
+        : 'Dismissed by an operator; Atlas will not retry it. No carrier cost was recorded, so if this dispatch is its order\'s first part, that part cannot be drafted until a cost is recorded.';
     default:
       if (at <= 0) return `Due now (attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}).`;
       return `Next attempt in ${duration(at)} (attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}).`;

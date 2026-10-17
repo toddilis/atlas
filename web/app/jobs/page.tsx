@@ -240,7 +240,7 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions, manualCos
         </div>
       ) : null}
 
-      {manualCost && actions ? <ManualCostForm job={job} currency={dispatch?.currency ?? null} actions={actions} /> : null}
+      {manualCost && actions && job.kind === 'carrier_cost_sync' ? <ManualCostForm job={job} currency={dispatch?.currency ?? null} actions={actions} /> : null}
 
       {runs.length > 0 && !compact ? (
         <details className="mt-3">
