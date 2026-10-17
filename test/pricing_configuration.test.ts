@@ -35,4 +35,6 @@ test('print renders immutable quantities/terms/order reference, escapes text and
   const html=renderInvoiceDocument(doc);assert.match(html,/#123/);assert.match(html,/>40</);assert.match(html,/NZD 379.50/);assert.match(html,/2026-11-20/);
   assert.doesNotMatch(html,/<script>/);assert.match(html,/&lt;script&gt;/);
   c.tiers[0]!.unitPrice='2000';assert.equal(renderInvoiceDocument(doc),html);
+  const named=renderInvoiceDocument(doc,{business:'Synthetic <Co>',retailer:'Retailer & Sons'});
+  assert.match(named,/From: Synthetic &lt;Co&gt;/);assert.match(named,/To: Retailer &amp; Sons/);assert.match(named,/NZD 379.50/);assert.doesNotMatch(named,/Account:/);
 });

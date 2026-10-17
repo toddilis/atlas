@@ -30,6 +30,9 @@ export async function bootAgents(): Promise<void> {
     // Console operators may save and activate pricing versions (0033), on the same terms.
     { agentName: 'operator', toolName: 'pricing.save', risk: 'notify' },
     { agentName: 'operator', toolName: 'pricing.activate', risk: 'notify' },
+    // Recording what happened to a printed invoice (0034). Issuing an invoice
+    // (operator → controller.issue_invoice) is never seeded: a business turns it on.
+    { agentName: 'operator', toolName: 'invoices.record_print', risk: 'notify' },
   ]);
 
   booted = true;

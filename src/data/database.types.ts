@@ -1577,6 +1577,55 @@ export type Database = {
           },
         ]
       }
+      invoice_print_outcomes: {
+        Row: {
+          actor_email: string
+          actor_id: string
+          document_sha256: string
+          id: string
+          invoice_id: string
+          note: string | null
+          org_id: string
+          outcome: string
+          recorded_at: string
+        }
+        Insert: {
+          actor_email: string
+          actor_id: string
+          document_sha256: string
+          id?: string
+          invoice_id: string
+          note?: string | null
+          org_id: string
+          outcome: string
+          recorded_at?: string
+        }
+        Update: {
+          actor_email?: string
+          actor_id?: string
+          document_sha256?: string
+          id?: string
+          invoice_id?: string
+          note?: string | null
+          org_id?: string
+          outcome?: string
+          recorded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_print_outcomes_invoice_id_fkey"
+            columns: ["invoice_id"]
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_print_outcomes_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           account_id: string | null
@@ -3165,6 +3214,10 @@ export type Database = {
         Args: { p_invoice_id: string; p_org_id: string }
         Returns: Json
       }
+      invoice_action_snapshot_digest: {
+        Args: { p_invoice_id: string; p_org_id: string }
+        Returns: string
+      }
       issue_bound_invoice: {
         Args: { p_action_id: string; p_execution_id: string; p_org_id: string }
         Returns: Json
@@ -3205,6 +3258,29 @@ export type Database = {
           p_org_id: string
           p_reason: string
           p_version_id: string
+        }
+        Returns: string
+      }
+      operator_approve_invoice_part: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_snapshot_sha: string
+          p_invoice_id: string
+          p_note?: string
+          p_org_id: string
+        }
+        Returns: Json
+      }
+      operator_record_invoice_print: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_expected_document_sha: string
+          p_invoice_id: string
+          p_note?: string
+          p_org_id: string
+          p_outcome: string
         }
         Returns: string
       }

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { calculatePricing } from '../../../src/platform/pricing/versioned';
 
 const authUrl = 'http://127.0.0.1:54321/auth/v1';
 const password = 'disposable-atlas-browser-password';
@@ -325,3 +326,82 @@ test('pricing writes need a signed-in operator posting from the console itself',
   await page.goto('/pricing');
   await expect(page.getByRole('region', { name: 'Versions' })).not.toContainText('from outside');
 });
+
+// Runs after the pricing journeys above, which activated the fixture business's first
+// version. The part is drafted through the real BILL path: the shared calculator prices the
+// seeded dispatch and the service-only draft function re-checks every amount.
+test('owner approves the exact invoice part, issues it, prints it and records the print', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const one = async (path: string) => {
+    const response = await request.get(`${rest}/${path}`, { headers: service });
+    expect(response.ok(), await response.text()).toBeTruthy();
+    const rows = await response.json(); expect(rows).toHaveLength(1); return rows[0];
+  };
+  const dispatch = await one(`dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-print-1&select=id,source_id,source_revision,source_occurred_at,order_key,source_dispatch_key`);
+  const line = await one(`dispatch_lines?dispatch_id=eq.${dispatch.id}&active=is.true&select=id,quantity,ordered_quantity`);
+  const product = await one(`products?org_id=eq.${org}&sku=eq.TEE&select=id,display_name`);
+  const account = await one(`accounts?org_id=eq.${org}&name=eq.Synthetic%20Retail%20North&select=id`);
+  const order = await one(`shopify_orders?org_id=eq.${org}&id=eq.${dispatch.order_key}&select=placed_at,shopify_order_name`);
+  const activation = await one(`pricing_activations?org_id=eq.${org}&select=version_id`);
+  const version = await one(`pricing_versions?org_id=eq.${org}&id=eq.${activation.version_id}&select=config`);
+  const now = new Date().toISOString();
+  const snapshot = calculatePricing(version.config, {
+    businessId: org, accountId: account.id, orderKey: dispatch.order_key, dispatchKey: dispatch.source_dispatch_key,
+    orderAt: order.placed_at, dispatchAt: dispatch.source_occurred_at, evaluatedAt: now, destination: null,
+    lines: [{ lineId: line.id, productId: product.id, description: product.display_name, ordered: line.ordered_quantity, dispatched: line.quantity, override: null }],
+    carrier: null, freightOverride: null, priorParts: 0, taxExempt: false, orderValue: null,
+    terms: { kind: 'following_month_day', day: version.config.terms.day, anchor: version.config.terms.anchor, invoiceAt: now },
+  });
+  expect(snapshot.total).toBe('24150');
+  const drafted = await request.post(`${rest}/rpc/draft_dispatch_invoice`, { headers: service, data: {
+    p_org_id: org, p_source_id: dispatch.source_id, p_dispatch_id: dispatch.id, p_source_revision: dispatch.source_revision,
+    p_pricing_version_id: activation.version_id, p_snapshot: snapshot, p_order_reference: order.shopify_order_name } });
+  expect(drafted.ok(), await drafted.text()).toBeTruthy();
+  const { invoiceId } = await drafted.json();
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  // A draft cannot be printed: only the issued invoice is.
+  const early = await page.request.get(`/invoices/${invoiceId}/print`);
+  expect(early.status()).toBe(409);
+  expect(await early.text()).toContain('Approve and issue this invoice before printing it.');
+
+  await page.goto(`/invoices/${invoiceId}`);
+  const other = await page.context().newPage();
+  await other.goto(`/invoices/${invoiceId}`);
+  await expect(page.getByRole('heading', { name: 'Invoice part A of order #5001' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Invoice part A of order #5001' })).toContainText('Due 2026-11-20');
+  await expect(page.getByText('20 Nov 2026')).toBeVisible();
+  await page.getByLabel('Approval note', { exact: true }).fill('Checked against the packing slip');
+  await page.getByRole('button', { name: 'Approve and issue NZD 241.50' }).click();
+  await expect(page).toHaveURL(new RegExp(`/invoices/${invoiceId}\\?outcome=issued$`));
+  await expect(page.getByTestId('invoice-notice')).toContainText('Invoice approved and issued exactly as shown.');
+  await expect(page.getByRole('button', { name: /Approve and issue/ })).toHaveCount(0);
+
+  // A page loaded before the approval cannot issue it again.
+  await other.getByRole('button', { name: 'Approve and issue NZD 241.50' }).click();
+  await expect(other.getByTestId('invoice-notice')).toContainText('no longer a draft, so nothing was issued');
+
+  const printable = await page.context().newPage();
+  await printable.goto(`/invoices/${invoiceId}/print`);
+  await expect(printable.getByRole('heading', { name: /^Invoice .+A$/ })).toBeVisible();
+  for (const text of ['Order reference: #5001', 'From: Auth browser fixture', 'To: Synthetic Retail North', 'Due date: 2026-11-20', 'NZD 241.50'])
+    await expect(printable.locator('body')).toContainText(text);
+  await printable.screenshot({ path: 'test-results/invoice-printable.png', fullPage: true });
+
+  const print = page.getByRole('region', { name: 'Print', exact: true });
+  await expect(print).toContainText('Not recorded as printed yet.');
+  await print.getByRole('button', { name: 'Printing failed' }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Say briefly what went wrong');
+  await page.getByLabel('Print note', { exact: true }).fill('Printer jammed');
+  await page.getByRole('button', { name: 'Printing failed' }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Recorded that printing failed.');
+  await page.getByRole('button', { name: 'Record as printed' }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Recorded as printed, against this exact document.');
+  await expect(page.getByText(/Last recorded: printed by operator@example\.test/)).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Print history' })).toContainText('printing failed by operator@example.test: Printer jammed');
+  await page.screenshot({ path: 'test-results/invoice-printed.png', fullPage: true });
+});
+

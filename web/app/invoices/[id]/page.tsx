@@ -6,6 +6,9 @@ import { notFound } from 'next/navigation';
 import { supabaseServer, orgId } from '@/lib/supabase';
 import { formatCents, formatDate, formatDateTime } from '@/lib/format';
 import { Badge, invoiceStateTone } from '@/components/Badge';
+import { InvoicePart, type InvoicePartView } from '@/components/InvoicePart';
+import { INVOICE_OUTCOMES, isInvoiceOutcome, type PrintOutcomeRow } from '@/lib/invoice-part';
+import type { PricingSnapshot } from '../../../../src/platform/pricing/versioned';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +65,7 @@ interface LedgerTxnRow {
 }
 
 async function loadInvoice(id: string): Promise<{
+  part: InvoicePartView | null;
   invoice: InvoiceDetail;
   lines: InvoiceLine[];
   payments: PaymentRow[];
@@ -110,6 +114,7 @@ async function loadInvoice(id: string): Promise<{
   if (ledgerRes.error) throw ledgerRes.error;
 
   return {
+    part: await loadPart(id, invoice as unknown as InvoiceDetail),
     invoice: (invoice as unknown) as InvoiceDetail,
     lines: ((linesRes.data as unknown) as InvoiceLine[]) ?? [],
     payments: ((paymentsRes.data as unknown) as PaymentRow[]) ?? [],
@@ -117,14 +122,48 @@ async function loadInvoice(id: string): Promise<{
   };
 }
 
+/** A dispatch invoice part (0028) carries its immutable calculation and document; only those
+ * are approved and printed from this page (0034). Null for any other invoice. */
+async function loadPart(id: string, invoice: InvoiceDetail): Promise<InvoicePartView | null> {
+  const sb = await supabaseServer();
+  const org = orgId();
+  const { data: snap, error } = await sb.from('invoice_calculation_snapshots')
+    .select('snapshot, document, content_hash, pricing_version_id, dispatch_id').eq('org_id', org).eq('invoice_id', id).maybeSingle();
+  if (error) throw error;
+  if (!snap) return null;
+  const [dispatch, version, grants, controls, prints, digest] = await Promise.all([
+    sb.from('dispatches').select('source_dispatch_key').eq('org_id', org).eq('id', snap.dispatch_id).single(),
+    sb.from('pricing_versions').select('version_key, revision').eq('org_id', org).eq('id', snap.pricing_version_id).single(),
+    sb.from('tool_grants').select('tool_name, enabled').eq('org_id', org).eq('agent_name', 'operator').in('tool_name', ['controller.issue_invoice', 'invoices.record_print']),
+    sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
+    sb.from('invoice_print_outcomes').select('outcome, actor_email, note, recorded_at').eq('org_id', org).eq('invoice_id', id),
+    // The digest the approval binds: the exact snapshot this page shows.
+    invoice.state === 'draft' ? sb.rpc('invoice_action_snapshot_digest', { p_org_id: org, p_invoice_id: id }) : Promise.resolve({ data: null, error: null }),
+  ]);
+  for (const r of [dispatch, version, grants, controls, prints, digest]) if (r.error) throw r.error;
+  const granted = (tool: string) => (grants.data ?? []).some(g => g.tool_name === tool && g.enabled);
+  const document = snap.document as { orderReference: string };
+  return {
+    invoiceId: id, invoiceNumber: invoice.invoice_number, state: invoice.state, snapshot: snap.snapshot as unknown as PricingSnapshot,
+    orderReference: document.orderReference, dispatchKey: dispatch.data!.source_dispatch_key,
+    pricingVersion: `${version.data!.version_key} (revision ${version.data!.revision})`, documentSha: snap.content_hash,
+    snapshotSha: typeof digest.data === 'string' ? digest.data : null,
+    canIssue: granted('controller.issue_invoice'), canRecordPrint: granted('invoices.record_print'),
+    paused: Boolean(controls.data?.paused), prints: (prints.data ?? []) as PrintOutcomeRow[],
+  };
+}
+
 export default async function InvoiceDetailPage({
-  params,
+  params, searchParams,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>; searchParams: Promise<{ outcome?: string }>;
 }) {
-  const result = await loadInvoice(params.id);
+  const [{ id }, { outcome }] = await Promise.all([params, searchParams]);
+  const result = await loadInvoice(id);
   if (!result) notFound();
-  const { invoice, lines, payments, ledgerTxns } = result;
+  const { invoice, lines, payments, ledgerTxns, part } = result;
+  // Only the fixed messages are shown from the URL; nothing from it is echoed.
+  const notice = isInvoiceOutcome(outcome) ? INVOICE_OUTCOMES[outcome] : null;
 
   const paidToDate = payments.reduce((sum, p) => sum + Number(p.amount_cents), 0);
   const outstanding = Math.max(0, invoice.total_cents - paidToDate);
@@ -149,7 +188,15 @@ export default async function InvoiceDetailPage({
         </div>
       </div>
 
-      <SummaryGrid invoice={invoice} paidToDate={paidToDate} outstanding={outstanding} />
+      {notice && (
+        <p role="status" data-testid="invoice-notice" className={`p-3 border rounded text-sm ${notice.ok ? 'border-green-300 bg-green-50 text-green-900' : 'border-red-300 bg-red-50 text-red-900'}`}>
+          {notice.text}
+        </p>
+      )}
+
+      <SummaryGrid invoice={invoice} paidToDate={paidToDate} outstanding={outstanding} dueDate={part?.snapshot.terms.dueDate} />
+
+      {part && <InvoicePart part={part} />}
 
       <Section title="Lines">
         {lines.length === 0 ? (
@@ -252,10 +299,13 @@ function SummaryGrid({
   invoice,
   paidToDate,
   outstanding,
+  dueDate,
 }: {
   invoice: InvoiceDetail;
   paidToDate: number;
   outstanding: number;
+  /** An invoice part's own due date (its business's calendar day), not due_at in server time. */
+  dueDate?: string;
 }) {
   return (
     <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
@@ -263,7 +313,9 @@ function SummaryGrid({
       <SummaryCell label="Paid" value={formatCents(paidToDate, invoice.currency)} />
       <SummaryCell label="Outstanding" value={formatCents(outstanding, invoice.currency)} />
       <SummaryCell label="Issued" value={formatDate(invoice.issued_at)} />
-      {invoice.due_at ? (
+      {dueDate ? (
+        <SummaryCell label="Due" value={new Intl.DateTimeFormat('en-NZ', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(Date.parse(`${dueDate}T00:00:00Z`))} />
+      ) : invoice.due_at ? (
         <SummaryCell label="Due" value={formatDate(invoice.due_at)} />
       ) : null}
       {invoice.paid_at ? (
