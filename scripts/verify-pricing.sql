@@ -262,7 +262,10 @@ begin
   -- This shipment went by hand courier: an operator records its actual cost on the dismissed
   -- carrier cost job (JOBS 0032), and the draft bills that stored manual cost like any other.
   insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at,dispatch_id)
-    values(company,'dispatch-c',order200,'success','{}',late_revision,dc);
+    values(company,'dispatch-c',order200,'success','{}',late_revision,dc) returning id into fe;
+  -- The Controller routed it as wholesale, so it needs a carrier cost (0035).
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+    values(company,fe,order200,account,'wholesale',late_revision);
   insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id,state) values(company,'carrier-cost:'||dc,'carrier_cost_sync',source,dc,'dismissed');
   insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','carriers.record_manual_cost','notify');
   manual:=record_manual_carrier_cost(company,'carrier-cost:'||dc,(select updated_at from scheduled_jobs where org_id=company and job_key='carrier-cost:'||dc),

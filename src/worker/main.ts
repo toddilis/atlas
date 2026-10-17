@@ -14,6 +14,7 @@ import { bootPlatform } from '../platform/orchestration/boot.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
 import { carrierCostSyncEnabled, runCarrierCostJobs } from '../platform/jobs/carrier-cost.js';
+import { runInvoicePartJobs } from '../agents/controller/invoice-parts.js';
 import { orgId } from '../data/supabase.js';
 
 const INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS ?? 60_000);
@@ -57,11 +58,19 @@ async function tick(): Promise<void> {
   }
   // JOBS-01: carrier cost sync for first invoice parts, when GoSweetSpot is configured.
   // Failures a person must fix are recorded on the job as blocked with their reason.
-  if (!carrierCostSyncEnabled()) return;
+  if (carrierCostSyncEnabled()) {
+    try {
+      log.info('worker.carrier_cost_jobs', await runCarrierCostJobs(orgId()));
+    } catch (e) {
+      log.error('worker.carrier_cost_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
+    }
+  }
+  // Step 4c: draft each wholesale shipment's invoice part (0035). A part that cannot be
+  // drafted yet is blocked with its reason and woken when what it waits for arrives.
   try {
-    log.info('worker.carrier_cost_jobs', await runCarrierCostJobs(orgId()));
+    log.info('worker.invoice_part_jobs', await runInvoicePartJobs(orgId()));
   } catch (e) {
-    log.error('worker.carrier_cost_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
+    log.error('worker.invoice_part_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
   }
 }
 

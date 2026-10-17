@@ -501,3 +501,60 @@ Limits:
 - Email delivery, payment instructions on the document and business branding are not
   built; the document names the business by its display name only.
 
+
+## 17 October: the Controller drafts dispatch invoice parts (step 4c)
+
+Each wholesale shipment's invoice part is drafted by the worker as a JOBS-01 job
+(`invoice_part_draft`, 0035), instead of the legacy whole-order draft.
+
+- **What gets a job.** `discover_invoice_part_jobs` finds eligible dispatches from an
+  enabled Shopify source that are routed wholesale (a `fulfillment_events` row for one of
+  their fulfillments) and have no part yet. A job whose shipment was drafted, rerouted or
+  withdrawn is closed as not needed, at discovery, claim and operator retry alike
+  (`scheduled_job_needed` covers every kind). Carrier cost jobs now also require wholesale
+  routing, so consignment shipments no longer ask GoSweetSpot for a cost.
+- **What the worker drafts.** `dispatchDraftRequest` builds the calculator input only from
+  stored records: the dispatch and its lines, the one active product each line's SKU
+  names, the order's date and the activated pricing version in effect (by the order or
+  dispatch date, as that version says; if the two dates pick versions that disagree,
+  nothing is drafted). `draftPricedDispatch` derives the retailer, tax treatment, part
+  order and carrier cost, and `draft_dispatch_invoice` (0028) checks every amount again.
+  The worker runs the pass on every tick, after the carrier cost pass.
+- **When it cannot.** A missing record (no active pricing, unknown retailer, a SKU without
+  exactly one active product, no carrier cost, an earlier shipment not yet invoiced, a
+  legacy invoice for the order) blocks the job with that reason; the jobs console shows
+  it under "Needs a person" with advice. Races and outages are retried. A blocked job is
+  woken at once when what it waits for arrives: a carrier cost for the shipment, a part for
+  an earlier shipment of the order, or a pricing activation for the business.
+- **Legacy path.** The Controller no longer calls `controller.draft_invoice` on wholesale
+  routing. That tool already refused every fulfillment with a dispatch, and the only
+  ingest path (`project_shopify_dispatch`) always links one.
+
+Evidence:
+
+- `verify-jobs.sql` (business 69): discovery creates jobs for the three wholesale
+  shipments and not the consignment one; carrier jobs only for wholesale shipments; the
+  kind check; each of the three wake triggers moves only the right jobs' due time; a claim
+  closes the job of a shipment drafted in the meantime; retry refuses a job no longer
+  needed; discovery is service-only and the helpers are internal.
+- `test/invoice_part_jobs.test.ts`: the pass drafts, blocks and retries per the
+  classifier, records the draft's ids, and takes the business from the worker's binding.
+- Browser acceptance: the worker pass drafts order #5002's shipment (4 tees) as part A,
+  a second pass drafts nothing, the invoice page offers "Approve and issue NZD 103.50",
+  and a shipment whose SKU names no single active product waits in the jobs console with
+  its reason.
+
+Limits:
+
+- Carrier cost discovery still covers every unbilled wholesale shipment of an order, not
+  only the first; the cost is used only for the part that carries freight.
+- The destination is not read from the order yet; the pricing configuration must not
+  depend on it.
+- A blocked job with no wake event waits for its backoff (up to 6 hours) or an operator
+  retry.
+- A later shipment waits while its order's first shipment is blocked; whether VICE wants
+  it invoiced without freight in that case is an open business question.
+- Issuing still enqueues the legacy Stripe outbox row, marked failed as needing separate
+  provider authorization.
+- Fulfillments recorded before 0021 have no dispatch and are no longer drafted by the
+  legacy path; replaying one routes it without an invoice.

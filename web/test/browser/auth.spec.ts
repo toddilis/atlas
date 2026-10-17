@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { calculatePricing } from '../../../src/platform/pricing/versioned';
+import { runInvoicePartJobs } from '../../../src/agents/controller/invoice-parts';
 
 const authUrl = 'http://127.0.0.1:54321/auth/v1';
 const password = 'disposable-atlas-browser-password';
@@ -403,5 +404,34 @@ test('owner approves the exact invoice part, issues it, prints it and records th
   await expect(page.getByText(/Last recorded: printed by operator@example\.test/)).toBeVisible();
   await expect(page.getByRole('list', { name: 'Print history' })).toContainText('printing failed by operator@example.test: Printer jammed');
   await page.screenshot({ path: 'test-results/invoice-printed.png', fullPage: true });
+});
+
+// Runs after the pricing journeys (a version is active). The worker's own invoice part pass
+// runs against the disposable stack, as the worker does on each tick.
+test('the worker drafts a wholesale shipment\'s invoice part; ones it cannot price wait with their reason', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const result = await runInvoicePartJobs(org);
+  expect(result.succeeded).toBe(1);
+  expect(result.blocked).toBeGreaterThan(0);
+
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const rows = await (await request.get(`${rest}/dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-auto-1&select=id`, { headers: service })).json();
+  const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
+  expect(parts).toHaveLength(1);
+  // A second pass drafts nothing new.
+  expect((await runInvoicePartJobs(org)).succeeded).toBe(0);
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto(`/invoices/${parts[0].invoice_id}`);
+  // 4 tees at the book price, the first shipment's freight, 15% tax: priced from stored records only.
+  await expect(page.getByRole('heading', { name: 'Invoice part A of order #5002' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Approve and issue NZD 103.50' })).toBeVisible();
+
+  await page.goto('/jobs');
+  const waiting = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job').filter({ hasText: 'Invoice part draft' }).first();
+  await expect(waiting).toContainText('does not match exactly one active product');
+  await page.screenshot({ path: 'test-results/invoice-part-jobs.png', fullPage: true });
 });
 

@@ -9,7 +9,7 @@ insert into invoices(org_id,invoice_number,state,currency,subtotal_cents,total_c
 -- business's blocked job that must never be shown.
 do $$
 declare
-  org uuid; src uuid; o uuid; d uuid; k text; n int := 1000;
+  org uuid; src uuid; o uuid; d uuid; f uuid; k text; n int := 1000;
   line jsonb := '[{"source_line_key":"1","order_line_key":"1","item_key":"WIDGET","quantity":1,"ordered_quantity":1}]';
 begin
   foreach org in array array['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222']::uuid[] loop
@@ -21,7 +21,9 @@ begin
         values(org,'jobs-'||k,'#'||n,'NZD',0,0,'{}',now()) returning id into o;
       d := project_dispatch(org,src,'ship-'||k,o::text,now(),'succeeded',null,line,null,'{}',now());
       insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
-        values(org,'ship-'||k,o,'success',array['TRK-'||upper(k)],'{}',now(),d);
+        values(org,'ship-'||k,o,'success',array['TRK-'||upper(k)],'{}',now(),d) returning id into f;
+      -- The Controller routed these as wholesale: only wholesale shipments are costed and invoiced (0035).
+      insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,route,occurred_at) values(org,f,o,'wholesale',now());
       insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id,state,attempts,next_attempt_at,last_error,updated_at)
         values(org,'carrier-cost:'||d,'carrier_cost_sync',src,d,
           case when k in ('other','courier') then 'blocked' else k end,
@@ -65,6 +67,19 @@ begin
     values(org,'print-1','#5001','cust-north','NZD',0,0,'{}','2026-10-10T09:00:00+13:00') returning id into o;
   perform project_dispatch(org,bind_shopify_dispatch_source(org,'jobs-1111.myshopify.com'),'ship-print-1',o::text,'2026-10-12T09:00:00+13:00',
     'succeeded',null,'[{"source_line_key":"1","order_line_key":"1","item_key":"TEE","quantity":10,"ordered_quantity":10}]',null,'{}','2026-10-12T09:00:00+13:00');
+end $$;
+-- Step 4c: a wholesale-routed shipment the worker's invoice part job drafts by itself.
+do $$
+declare org uuid := '11111111-1111-4111-8111-111111111111'; o uuid; d uuid; f uuid;
+begin
+  insert into shopify_orders(org_id,shopify_order_id,shopify_order_name,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(org,'auto-1','#5002','cust-north','NZD',0,0,'{}','2026-10-13T09:00:00+13:00') returning id into o;
+  d := project_dispatch(org,bind_shopify_dispatch_source(org,'jobs-1111.myshopify.com'),'ship-auto-1',o::text,'2026-10-14T09:00:00+13:00',
+    'succeeded',null,'[{"source_line_key":"1","order_line_key":"1","item_key":"TEE","quantity":4,"ordered_quantity":4}]',null,'{}','2026-10-14T09:00:00+13:00');
+  insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at,dispatch_id)
+    values(org,'ship-auto-1',o,'success','{}','2026-10-14T09:00:00+13:00',d) returning id into f;
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+    select org,f,o,id,'wholesale','2026-10-14T09:00:00+13:00' from accounts where org_id=org and name='Synthetic Retail North';
 end $$;
 -- Console operators may retry and dismiss stopped jobs in the fixture business only (boot seeds these grants).
 insert into tool_grants(org_id,agent_name,tool_name,risk) values
