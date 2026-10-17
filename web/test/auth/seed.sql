@@ -52,6 +52,20 @@ insert into accounts(org_id,name,tax_exempt) values
  ('11111111-1111-4111-8111-111111111111','Synthetic Retail North',false),
  ('11111111-1111-4111-8111-111111111111','Synthetic Export',true),
  ('22222222-2222-4222-8222-222222222222','OTHER-SECRET-RETAILER',false);
+-- Approve → print (0034): a retailer's Shopify order shipped in full, ready for the browser
+-- journey to draft its invoice part through the real BILL path once pricing is active, and
+-- the chart of accounts issuing posts to (an onboarding step).
+do $$
+declare org uuid := '11111111-1111-4111-8111-111111111111'; o uuid;
+begin
+  perform seed_chart_of_accounts(org);
+  insert into shopify_customers(org_id,shopify_customer_id,raw,account_id)
+    select org,'cust-north','{}',id from accounts where org_id=org and name='Synthetic Retail North';
+  insert into shopify_orders(org_id,shopify_order_id,shopify_order_name,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+    values(org,'print-1','#5001','cust-north','NZD',0,0,'{}','2026-10-10T09:00:00+13:00') returning id into o;
+  perform project_dispatch(org,bind_shopify_dispatch_source(org,'jobs-1111.myshopify.com'),'ship-print-1',o::text,'2026-10-12T09:00:00+13:00',
+    'succeeded',null,'[{"source_line_key":"1","order_line_key":"1","item_key":"TEE","quantity":10,"ordered_quantity":10}]',null,'{}','2026-10-12T09:00:00+13:00');
+end $$;
 -- Console operators may retry and dismiss stopped jobs in the fixture business only (boot seeds these grants).
 insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','jobs.retry','notify'),
@@ -60,7 +74,10 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','carriers.record_manual_cost','notify'),
  -- Boot seeds the pricing grants too (0033).
  ('11111111-1111-4111-8111-111111111111','operator','pricing.save','notify'),
- ('11111111-1111-4111-8111-111111111111','operator','pricing.activate','notify');
+ ('11111111-1111-4111-8111-111111111111','operator','pricing.activate','notify'),
+ ('11111111-1111-4111-8111-111111111111','operator','invoices.record_print','notify'),
+ -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
+ ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required');
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';

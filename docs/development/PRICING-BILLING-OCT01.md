@@ -453,3 +453,51 @@ Limits:
   console, and approve → print, are step 4b.
 - Reasoned per-invoice overrides (price or freight) are not in the console yet.
 
+## 17 October: approve the exact invoice part, then print it (step 4b)
+
+An invoice part drafted from a dispatch (0028) is approved, issued and printed from its
+invoice page.
+
+- **What the page shows.** The part's order reference and letter, shipment, pricing
+  version and date basis, each line's price explanation, freight with its source, tax and
+  due date, all from the immutable snapshot. The summary shows the part's own due date.
+- **Approve and issue** (`operator_approve_invoice_part`, 0034). The page carries the
+  digest of the snapshot it showed (`invoice_action_snapshot_digest`). In one transaction
+  the database checks the operator's `controller.issue_invoice` grant (never seeded: a
+  business turns issuing on deliberately) and pause, refuses anything but a draft
+  dispatch part and any snapshot other than the one shown, prepares a bound action for
+  exactly that snapshot, records the approval with the operator and an optional note,
+  claims it and issues through `issue_bound_invoice` (authority, policy caps and the
+  subject re-checked; ledger posted), then confirms the action with
+  `delivery: not_confirmed`. Any refusal leaves no approval, action or issued invoice.
+- **Print.** `/invoices/:id/print` renders the stored document, naming the business and
+  retailer from their records; it refuses a draft. Opening it records nothing. The
+  operator records **printed** or **printing failed** (with a note) against the stored
+  document's digest (`operator_record_invoice_print`, `invoices.record_print` grant,
+  seeded at boot). Outcomes are append-only; the latest is current and all are history.
+
+Evidence:
+
+- `verify-pricing.sql`: issuing off without the grant; a stale view, a legacy invoice, no
+  identity and pause refused; part A issued with an operator approval, a confirmed action
+  bound to the exact snapshot, one confirmed attempt with delivery not claimed, a ledger
+  posting and one audit row; a second approval refused; a policy cap below part B refuses
+  it and leaves nothing; print refused without grant, before issue, for another document,
+  without a note when failed, or with an unknown outcome; failed then printed both kept
+  and audited; outcomes append-only; service-only access.
+- Browser acceptance drafts a real part through `draft_dispatch_invoice` (priced by the
+  version the pricing journey activated: 10 tees, 241.50, due 2026-11-20), refuses to
+  print the draft, approves and issues it, refuses a second approval from a page loaded
+  before it, opens the printable invoice (order #5001, both parties, total, due date),
+  then records a failed print without and with a note, and a successful print.
+
+Limits:
+
+- Parts are not drafted from the console or automatically yet: the Controller still
+  drafts the legacy whole-order invoice on wholesale fulfillments, which blocks parts for
+  that order (#28). Switching the Controller to dispatch parts is step 4c.
+- Issuing still enqueues the legacy Stripe outbox row, marked failed as needing separate
+  provider authorization; nothing is sent to Stripe or the retailer.
+- Email delivery, payment instructions on the document and business branding are not
+  built; the document names the business by its display name only.
+

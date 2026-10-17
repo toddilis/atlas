@@ -328,3 +328,71 @@ begin
     and not has_function_privilege('anon','operator_activate_pricing_version(uuid,uuid,integer,uuid,text,text)','execute')
     and has_function_privilege('service_role','operator_activate_pricing_version(uuid,uuid,integer,uuid,text,text)','execute'),'pricing entry points are service-only');
 end $$;
+
+-- FLOW-01A print journey (0034): approve the exact invoice part, issue it, record the print.
+do $$
+declare
+  company uuid:=current_setting('test.pricing_company'); operator uuid:='63000000-0000-4000-8000-0000000000aa';
+  a invoices; b invoices; legacy invoices; sha_a text; sha_b text; doc text; res jsonb; n_approvals int; n_ledger int; p1 uuid; p2 uuid;
+begin
+  select i.* into a from invoices i join invoice_calculation_snapshots s on s.invoice_id=i.id join dispatches d on d.id=s.dispatch_id
+    where i.org_id=company and d.source_dispatch_key='dispatch-a';
+  select i.* into b from invoices i join invoice_calculation_snapshots s on s.invoice_id=i.id join dispatches d on d.id=s.dispatch_id
+    where i.org_id=company and d.source_dispatch_key='dispatch-b';
+  select i.* into legacy from invoices i where i.org_id=company and not exists(select 1 from invoice_calculation_snapshots s where s.invoice_id=i.id) limit 1;
+  sha_a:=encode(sha256(convert_to(invoice_action_snapshot(company,a.id)::text,'UTF8')),'hex');
+  sha_b:=encode(sha256(convert_to(invoice_action_snapshot(company,b.id)::text,'UTF8')),'hex');
+  perform seed_chart_of_accounts(company);
+
+  -- Issuing is off until the business grants it; then only the exact draft part shown.
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,a.id,sha_a,operator,'ops@example.test'),'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','controller.issue_invoice','approve_required');
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,a.id,'stale-view',operator,'ops@example.test'),'%%changed since it was loaded%%');
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,legacy.id,
+    encode(sha256(convert_to(invoice_action_snapshot(company,legacy.id)::text,'UTF8')),'hex'),operator,'ops@example.test'),'%%only invoice parts drafted from a dispatch%%');
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,a.id,sha_a,null,'ops@example.test'),'%%operator identity required%%');
+  perform set_action_pause(company,true,'probe','probe pause');
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,a.id,sha_a,operator,'ops@example.test'),'%%business actions paused%%');
+  perform set_action_pause(company,false,'probe','probe resume');
+
+  n_ledger:=(select count(*) from ledger_transactions where org_id=company);
+  res:=operator_approve_invoice_part(company,a.id,sha_a,operator,'ops@example.test','Checked against the packing slip');
+  perform pg_temp.pricing_assert((select state='issued' and issued_at is not null from invoices where id=a.id),'part A issued');
+  perform pg_temp.pricing_assert((select state='approved' and decided_by='ops@example.test' and reason='Checked against the packing slip' and agent_name='operator'
+    from approvals where id=(res->>'approval_id')::uuid),'approval recorded for the operator');
+  perform pg_temp.pricing_assert((select v.state='CONFIRMED' and v.intent->'subject_snapshot'->'invoice'->>'total_cents'=a.total_cents::text
+    from approved_actions v where v.id=(res->>'action_id')::uuid),'the confirmed action is bound to the exact snapshot');
+  perform pg_temp.pricing_assert((select count(*)=1 from action_attempts where action_id=(res->>'action_id')::uuid and state='CONFIRMED'
+    and evidence->>'delivery'='not_confirmed'),'one confirmed attempt; delivery not claimed');
+  perform pg_temp.pricing_assert((select count(*)=n_ledger+1 from ledger_transactions where org_id=company)
+    and exists(select 1 from ledger_transactions where org_id=company and source='invoice_issued' and source_ref=a.id),'issuance posted to the ledger');
+  perform pg_temp.pricing_assert((select count(*)=1 from audit_log where org_id=company and action='invoices.approve' and subject_id=a.id
+    and detail->>'snapshot_sha256'=sha_a),'approval audited');
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,a.id,sha_a,operator,'ops@example.test'),'%%not a draft%%');
+
+  -- The issuance policy is re-read at the effect: a cap below part B refuses it, and the
+  -- refusal leaves no approval, action or issued invoice behind.
+  insert into policy_rules(org_id,scope_action,config) values(company,'controller.issue_invoice','{"perTransactionCap":{"amount":"100"}}');
+  n_approvals:=(select count(*) from approvals where org_id=company);
+  perform pg_temp.pricing_reject(format('select operator_approve_invoice_part(%L,%L,%L,%L,%L)',company,b.id,sha_b,operator,'ops@example.test'),'%%per-transaction cap%%');
+  perform pg_temp.pricing_assert((select state='draft' from invoices where id=b.id) and (select count(*) from approvals where org_id=company)=n_approvals,'a refused issue leaves nothing');
+  update policy_rules set enabled=false where org_id=company and scope_action='controller.issue_invoice';
+
+  -- Printing is a person's record against the stored document, after issue only.
+  doc:=(select content_hash from invoice_calculation_snapshots where invoice_id=a.id);
+  perform pg_temp.pricing_reject(format('select operator_record_invoice_print(%L,%L,%L,%L,%L,%L)',company,a.id,'printed',doc,operator,'ops@example.test'),'%%tool entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','invoices.record_print','notify');
+  perform pg_temp.pricing_reject(format('select operator_record_invoice_print(%L,%L,%L,%L,%L,%L)',company,b.id,'printed',
+    (select content_hash from invoice_calculation_snapshots where invoice_id=b.id),operator,'ops@example.test'),'%%only an issued invoice%%');
+  perform pg_temp.pricing_reject(format('select operator_record_invoice_print(%L,%L,%L,%L,%L,%L)',company,a.id,'printed','other-document',operator,'ops@example.test'),'%%document changed%%');
+  perform pg_temp.pricing_reject(format('select operator_record_invoice_print(%L,%L,%L,%L,%L,%L)',company,a.id,'failed',doc,operator,'ops@example.test'),'%%say what went wrong%%');
+  perform pg_temp.pricing_reject(format('select operator_record_invoice_print(%L,%L,%L,%L,%L,%L)',company,a.id,'emailed',doc,operator,'ops@example.test'),'%%unknown print outcome%%');
+  p1:=operator_record_invoice_print(company,a.id,'failed',doc,operator,'ops@example.test','Printer jammed');
+  p2:=operator_record_invoice_print(company,a.id,'printed',doc,operator,'ops@example.test',null);
+  perform pg_temp.pricing_assert((select string_agg(outcome,',' order by recorded_at,id) from invoice_print_outcomes where invoice_id=a.id) in ('failed,printed','printed,failed')
+    and (select count(*)=2 from audit_log where org_id=company and action='invoices.record_print' and subject_id=a.id),'both outcomes kept and audited');
+  perform pg_temp.pricing_reject(format('update invoice_print_outcomes set outcome=%L where id=%L','printed',p1),'%%append-only%%');
+  perform pg_temp.pricing_assert(not has_function_privilege('authenticated','operator_approve_invoice_part(uuid,uuid,text,uuid,text,text)','execute')
+    and not has_function_privilege('anon','operator_record_invoice_print(uuid,uuid,text,text,uuid,text,text)','execute')
+    and has_function_privilege('service_role','operator_approve_invoice_part(uuid,uuid,text,uuid,text,text)','execute'),'approval and print entry points are service-only');
+end $$;
