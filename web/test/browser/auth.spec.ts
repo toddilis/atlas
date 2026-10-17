@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { calculatePricing } from '../../../src/platform/pricing/versioned';
-import { runInvoicePartJobs } from '../../../src/agents/controller/invoice-parts';
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 
 const authUrl = 'http://127.0.0.1:54321/auth/v1';
 const password = 'disposable-atlas-browser-password';
@@ -407,10 +408,16 @@ test('owner approves the exact invoice part, issues it, prints it and records th
 });
 
 // Runs after the pricing journeys (a version is active). The worker's own invoice part pass
-// runs against the disposable stack, as the worker does on each tick.
+// runs against the disposable stack in its own process from the repository root, as the
+// worker does on each tick.
+function invoicePartPass(org: string): { succeeded: number; blocked: number } {
+  const out = execFileSync('npx', ['tsx', 'scripts/invoice-part-pass.ts', org],
+    { cwd: path.resolve(__dirname, '../../..'), encoding: 'utf8', env: process.env });
+  return JSON.parse(out.trim().split('\n').at(-1)!);
+}
 test('the worker drafts a wholesale shipment\'s invoice part; ones it cannot price wait with their reason', async ({ page, request }) => {
   const org = '11111111-1111-4111-8111-111111111111';
-  const result = await runInvoicePartJobs(org);
+  const result = invoicePartPass(org);
   expect(result.succeeded).toBe(1);
   expect(result.blocked).toBeGreaterThan(0);
 
@@ -420,7 +427,7 @@ test('the worker drafts a wholesale shipment\'s invoice part; ones it cannot pri
   const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
   expect(parts).toHaveLength(1);
   // A second pass drafts nothing new.
-  expect((await runInvoicePartJobs(org)).succeeded).toBe(0);
+  expect(invoicePartPass(org).succeeded).toBe(0);
 
   await login(page);
   await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
