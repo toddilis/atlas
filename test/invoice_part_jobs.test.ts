@@ -35,6 +35,7 @@ test('each wholesale shipment is drafted, and what stops one is its recorded rea
 
 test('races and outages are retried; missing records and refusals wait for a person or an event', () => {
   for (const m of ['stale part order; recalculate', 'stale or inactive pricing snapshot', 'order is being invoiced by BILL; retry',
+    'dispatch is not eligible at the expected revision',
     'fetch failed', 'could not serialize access due to concurrent update', 'canceling statement due to statement timeout'])
     assert.equal(classifyInvoicePart(new Error(m)), 'retry', m);
   for (const m of ['billing: no pricing version is active; activate one in Pricing', 'order retailer unknown: link the Shopify customer to an account',

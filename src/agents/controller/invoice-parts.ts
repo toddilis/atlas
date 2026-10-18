@@ -47,7 +47,8 @@ export async function dispatchDraftRequest(context: DispatchContext, dispatchId:
     if (byOrder.pricingDateBasis !== 'order') throw new Error('billing: pricing versions disagree on the pricing date; check Pricing');
     chosen = byOrder;
   }
-  const version = versions.find(v => (v.config as { version?: string }).version === chosen.version)!;
+  const version = versions.find(v => (v.config as { version?: string }).version === chosen.version);
+  if (!version) throw new Error(`billing: active pricing version ${chosen.version} not found`);
   const at = now.toISOString();
   return {
     pricingVersionId: version.id,
@@ -67,8 +68,10 @@ export async function draftDispatchPart(context: DispatchContext, dispatchId: st
 
 // Waiting on another process or a race: try again shortly. Everything else needs a person
 // (or an event that wakes the job: a carrier cost, an earlier part, a pricing activation).
+// A dispatch revised by a Shopify sync mid-draft is a race too: the retry re-reads it, and
+// a dispatch that is no longer eligible closes its job as not needed at the next claim.
 const TRANSIENT = [/fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|timed? ?out|aborted/i, /stale part order/, /stale or inactive pricing snapshot/,
-  /being invoiced by BILL/, /could not serialize|deadlock/, /HTTP 5\d\d/];
+  /being invoiced by BILL/, /not eligible at the expected revision/, /could not serialize|deadlock/, /HTTP 5\d\d/];
 export function classifyInvoicePart(error: unknown): 'retry' | 'blocked' {
   const message = messageOf(error);
   return TRANSIENT.some(p => p.test(message)) ? 'retry' : 'blocked';
