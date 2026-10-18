@@ -127,3 +127,14 @@ test('invoice part drafts explain what they wait for', () => {
   assert.match(adviceFor('billing: no single active product for SKU WIDGET') ?? '', /does not match exactly one active product/);
   assert.match(nextStep(job('d', 'dismissed', { kind: 'invoice_part_draft' }), now), /will not draft this shipment's invoice part/);
 });
+
+test('a Shopify sync job explains itself without a dispatch', () => {
+  assert.match(adviceFor('SHOPIFY_ADMIN_API_TOKEN must be set') ?? '', /Set this Shopify setting/);
+  assert.match(adviceFor('shopify orders.json 401: unauthorized') ?? '', /Shopify refused the request/);
+  assert.match(adviceFor('sync job source is not the configured Shopify connection') ?? '', /not the one the worker is configured for/);
+  assert.match(adviceFor('invalid Shopify order ID; numeric IDs must be safe integers or decimal strings') ?? '', /needs a developer/);
+  // A GoSweetSpot refusal keeps its own advice; a Shopify refusal never borrows it.
+  assert.match(adviceFor('HTTP 401 from GoSweetSpot') ?? '', /GOSWEETSPOT_ACCESS_KEY/);
+  assert.match(nextStep(job('s', 'dismissed', { kind: 'shopify_sync', dispatch_id: null }), now), /will not sync this Shopify connection/);
+  assert.match(nextStep(job('s', 'blocked', { kind: 'shopify_sync', dispatch_id: null, next_attempt_at: at(30) }), now), /Next attempt in 30 min/);
+});

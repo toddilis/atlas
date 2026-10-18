@@ -49,7 +49,8 @@ async function loadJobs() {
       : !granted('carriers.record_manual_cost') ? 'Entering a carrier cost by hand is off for this business. It is turned on deliberately with the operator carriers.record_manual_cost grant.' : null,
   };
   const rows = (jobs.data ?? []) as JobRow[];
-  const dispatchIds = [...new Set(rows.map(j => j.dispatch_id))];
+  // A Shopify sync job has no dispatch (0036); its card names the connection instead.
+  const dispatchIds = [...new Set(rows.map(j => j.dispatch_id).filter((id): id is string => id != null))];
   const dispatches = new Map<string, DispatchInfo>();
   if (dispatchIds.length) {
     const [d, f] = await Promise.all([
@@ -90,6 +91,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   summary.counts.succeeded = succeeded;
   const history = runsByJob(runs);
   const total = rows.length + succeeded;
+  const dispatchFor = (job: JobRow) => (job.dispatch_id ? dispatches.get(job.dispatch_id) : undefined);
 
   return (
     <div className="space-y-8">
@@ -110,8 +112,9 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
       {total === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-10 text-center text-zinc-500">
-          No background jobs yet. Carrier cost jobs appear once the worker runs with GoSweetSpot
-          configured and a tracked Shopify dispatch still needs its shipping cost.
+          No background jobs yet. Jobs appear once the worker runs: a Shopify sync job for the
+          configured connection, carrier cost jobs for tracked shipments that still need their
+          cost (with GoSweetSpot configured), and invoice part drafts for wholesale shipments.
         </div>
       ) : (
         <>
@@ -127,13 +130,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           {summary.overdue.length > 0 ? (
             <div role="alert" data-testid="overdue" className="rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-4 text-sm text-amber-900 dark:text-amber-200">
               {summary.overdue.length} {summary.overdue.length === 1 ? 'job is' : 'jobs are'} overdue by more than
-              10 minutes. Check that the worker is running and that GOSWEETSPOT_ACCESS_KEY is still set on it.
+              10 minutes. Check that the worker is running and that its Shopify and GoSweetSpot settings are still set.
             </div>
           ) : null}
 
           <Section title="Needs a person" empty="Nothing is blocked. Every job is running, retrying or done.">
             {summary.needsAttention.map(job => (
-              <JobCard key={job.job_key} job={job} now={now} dispatch={dispatches.get(job.dispatch_id)} runs={history.get(job.job_key) ?? []}
+              <JobCard key={job.job_key} job={job} now={now} dispatch={dispatchFor(job)} runs={history.get(job.job_key) ?? []}
                 actions={actions} />
             ))}
           </Section>
@@ -141,7 +144,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           {summary.retrying.length > 0 ? (
             <Section title="Retrying" empty="">
               {summary.retrying.map(job => (
-                <JobCard key={job.job_key} job={job} now={now} dispatch={dispatches.get(job.dispatch_id)} runs={history.get(job.job_key) ?? []} />
+                <JobCard key={job.job_key} job={job} now={now} dispatch={dispatchFor(job)} runs={history.get(job.job_key) ?? []} />
               ))}
             </Section>
           ) : null}
@@ -149,7 +152,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           {summary.inProgress.length > 0 ? (
             <Section title="Queued and running" empty="">
               {summary.inProgress.map(job => (
-                <JobCard key={job.job_key} job={job} now={now} dispatch={dispatches.get(job.dispatch_id)} runs={history.get(job.job_key) ?? []} compact />
+                <JobCard key={job.job_key} job={job} now={now} dispatch={dispatchFor(job)} runs={history.get(job.job_key) ?? []} compact />
               ))}
             </Section>
           ) : null}
@@ -157,7 +160,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           {summary.dismissed.length > 0 ? (
             <Section title="Dismissed" empty="">
               {summary.dismissed.map(job => (
-                <JobCard key={job.job_key} job={job} now={now} dispatch={dispatches.get(job.dispatch_id)} runs={history.get(job.job_key) ?? []}
+                <JobCard key={job.job_key} job={job} now={now} dispatch={dispatchFor(job)} runs={history.get(job.job_key) ?? []}
                   actions={{ ...actions, dismiss: false }} manualCost />
               ))}
             </Section>
@@ -185,7 +188,7 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions, manualCos
 }) {
   const advice = adviceFor(job.last_error);
   return (
-    <article className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-5" data-testid="job" aria-label={`${kindLabel(job.kind)} ${dispatch?.orderName ?? job.dispatch_id}`}>
+    <article className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-5" data-testid="job" aria-label={`${kindLabel(job.kind)} ${dispatch?.orderName ?? job.dispatch_id ?? job.job_key}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-sm">
@@ -193,11 +196,17 @@ function JobCard({ job, now, dispatch, runs, compact = false, actions, manualCos
             <Badge tone={STATE_TONE[job.state]}>{job.state === 'failed' ? 'retrying' : job.state}</Badge>
           </div>
           <div className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            {dispatch?.orderName ? <>Order {dispatch.orderName} · </> : null}
-            Dispatch <span className="font-mono text-xs">{dispatch?.sourceDispatchKey ?? job.dispatch_id}</span>
-            {dispatch && dispatch.trackingNumbers.length > 0 ? (
-              <> · Tracking <span className="font-mono text-xs">{dispatch.trackingNumbers.join(', ')}</span></>
-            ) : null}
+            {job.dispatch_id == null ? (
+              <>The business&apos;s Shopify connection</>
+            ) : (
+              <>
+                {dispatch?.orderName ? <>Order {dispatch.orderName} · </> : null}
+                Dispatch <span className="font-mono text-xs">{dispatch?.sourceDispatchKey ?? job.dispatch_id}</span>
+                {dispatch && dispatch.trackingNumbers.length > 0 ? (
+                  <> · Tracking <span className="font-mono text-xs">{dispatch.trackingNumbers.join(', ')}</span></>
+                ) : null}
+              </>
+            )}
           </div>
         </div>
         <div className="text-right text-xs text-zinc-500 whitespace-nowrap">

@@ -390,3 +390,54 @@ begin
     and not has_function_privilege('service_role','invoice_part_job_needed(uuid,uuid,uuid)','execute')
     and not has_function_privilege('authenticated','discover_invoice_part_jobs(uuid)','execute'),'discovery is the worker''s; the rest internal');
 end $$;
+
+-- Scheduled Shopify ingestion jobs (0036): one recurring job per enabled connection, with
+-- no dispatch; re-armed on the source's own cadence after a success; closed when the
+-- source is disabled; a longer lease than work jobs. A fourth business.
+do $$
+declare
+  company uuid:='70000000-0000-4000-8000-000000000001'; actor uuid:='70000000-0000-4000-8000-0000000000aa';
+  source uuid; j scheduled_jobs; k text;
+begin
+  insert into orgs(id,slug,display_name) values(company,'jobs-fixture-4','Synthetic jobs four');
+  source:=bind_shopify_dispatch_source(company,'jobs-fixture-4.myshopify.com');
+
+  -- One job per enabled connection, with no dispatch; discovery is idempotent.
+  perform pg_temp.jobs_assert(discover_shopify_sync_jobs(company)=1 and discover_shopify_sync_jobs(company)=0,'one sync job per connection, idempotent');
+  perform pg_temp.jobs_assert((select dispatch_id is null and state='pending' from scheduled_jobs where org_id=company and job_key='shopify-sync:'||source),
+    'the sync job names only its connection');
+  -- A sync job never names a shipment, a work job always does, and a job's source is real.
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id) select %L,%L,%L,%L,d.id from dispatches d limit 1',
+    company,'x-sync','shopify_sync',source),'%%scheduled_jobs_dispatch_scope%%');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id) values(%L,%L,%L,%L)',
+    company,'x-cost','carrier_cost_sync',source),'%%scheduled_jobs_dispatch_scope%%');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id) values(%L,%L,%L,%L)',
+    company,'x-src','shopify_sync',gen_random_uuid()),'%%scheduled_jobs_source_fk%%');
+
+  -- A canonical sync can outlast a work job's 5 minutes: its lease is longer.
+  j:=claim_scheduled_job(company,'shopify_sync');
+  perform pg_temp.jobs_assert(j.job_key='shopify-sync:'||source and j.state='running' and j.dispatch_id is null
+    and j.lease_until>clock_timestamp()+interval '20 minutes','the sync lease outlasts a work lease');
+  perform pg_temp.jobs_assert(finish_scheduled_job(company,j.job_key,j.lease_token,'succeeded','{"orders":3}')='succeeded','sync finishes');
+
+  -- Re-armed only once the source's cadence has elapsed since the last success.
+  perform pg_temp.jobs_assert(discover_shopify_sync_jobs(company)=0,'not re-armed before the cadence');
+  update scheduled_jobs set updated_at=now()-interval '20 minutes' where org_id=company and job_key='shopify-sync:'||source;
+  perform pg_temp.jobs_assert(discover_shopify_sync_jobs(company)=1,'re-armed after the cadence');
+  perform pg_temp.jobs_assert((select state='pending' and attempts=0 from scheduled_jobs where org_id=company and job_key='shopify-sync:'||source),'re-armed fresh');
+
+  -- A disabled connection's waiting job is closed, and cannot be retried back to life.
+  update scheduled_jobs set state='blocked',last_error='SHOPIFY_ADMIN_API_TOKEN must be set' where org_id=company and job_key='shopify-sync:'||source;
+  update dispatch_sources set enabled=false where org_id=company and id=source;
+  perform pg_temp.jobs_assert(discover_shopify_sync_jobs(company)=0,'a disabled connection discovers nothing');
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and job_key='shopify-sync:'||source)
+    and exists(select 1 from job_runs where org_id=company and job_key='shopify-sync:'||source and outcome='not_needed'),
+    'a disabled connection''s job is closed as no longer needed');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.retry','notify');
+  update scheduled_jobs set state='dismissed' where org_id=company and job_key='shopify-sync:'||source returning * into j;
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','try again'),'%%job no longer needed%%');
+
+  perform pg_temp.jobs_assert(has_function_privilege('service_role','discover_shopify_sync_jobs(uuid)','execute')
+    and not has_function_privilege('service_role','shopify_sync_job_needed(uuid,uuid)','execute')
+    and not has_function_privilege('authenticated','discover_shopify_sync_jobs(uuid)','execute'),'discovery is the worker''s; the need check internal');
+end $$;

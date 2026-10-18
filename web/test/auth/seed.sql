@@ -43,6 +43,12 @@ begin
       end if;
     end loop;
   end loop;
+  -- Scheduled ingestion (0036): the connection's own sync job, blocked on a worker setting.
+  -- It has no dispatch; the console names the connection instead.
+  insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id,state,attempts,next_attempt_at,last_error,updated_at)
+    select s.org_id,'shopify-sync:'||s.id,'shopify_sync',s.id,null,'blocked',1,now()+interval '6 hours',
+      'SHOPIFY_ADMIN_API_TOKEN must be set',now()-interval '30 minutes'
+    from dispatch_sources s where s.org_id='11111111-1111-4111-8111-111111111111' and s.provider='shopify';
 end $$;
 -- Pricing (0033): two products and two retailers to price, and another business's product
 -- and retailer that the editor must never offer.

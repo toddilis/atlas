@@ -78,7 +78,8 @@ async function main() {
     return reply.code(result.status).send({ ok: result.ok, message: result.message });
   });
 
-  // Manual sync trigger — useful in dev. In production this would be scheduled, not exposed.
+  // Manual sync trigger — useful in dev. The worker runs the same sync on each source's
+  // own cadence as a scheduled job (0036); this stays as an operator's on-demand kick.
   app.post('/admin/shopify/sync', async (_req, reply) => {
     try {
       const result = await syncAll();

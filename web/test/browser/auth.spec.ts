@@ -102,7 +102,7 @@ test('operator sees blocked and quarantined jobs with their reason, and no other
   await expect(page.getByTestId('overdue')).toContainText('1 job is overdue by more than 10 minutes');
 
   const attention = page.getByRole('region', { name: 'Needs a person' }).getByTestId('job');
-  await expect(attention).toHaveCount(3);
+  await expect(attention).toHaveCount(4);
   const quarantined = attention.nth(0);
   await expect(quarantined).toContainText('quarantined');
   await expect(quarantined).toContainText('Order #1002');
@@ -115,6 +115,12 @@ test('operator sees blocked and quarantined jobs with their reason, and no other
   await expect(blocked).toContainText(/Next attempt in 4 h \d+ min \(attempt 3 of 8\)/);
   await blocked.getByText('Attempt history (2)').click();
   await expect(blocked).toContainText('HTTP 502');
+  // The connection's own sync job (0036): no dispatch, named by the connection.
+  const sync = attention.filter({ hasText: 'Shopify sync' });
+  await expect(sync).toHaveCount(1);
+  await expect(sync).toContainText('The business\'s Shopify connection');
+  await expect(sync).toContainText('SHOPIFY_ADMIN_API_TOKEN must be set');
+  await expect(sync).toContainText('Set this Shopify setting on the worker host.');
 
   const retrying = page.getByRole('region', { name: 'Retrying' }).getByTestId('job');
   await expect(retrying).toHaveCount(1);

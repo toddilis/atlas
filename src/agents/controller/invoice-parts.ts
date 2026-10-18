@@ -84,7 +84,8 @@ export type PartDraft = (context: DispatchContext, dispatchId: string) => Promis
 export async function runInvoicePartJobs(orgId: string, options: { limit?: number; store?: JobsStore; draft?: PartDraft } = {}) {
   const draft = options.draft ?? draftDispatchPart;
   return runJobPass(orgId, options.store ?? invoicePartJobs, async job => {
-    const result = await draft({ orgId, sourceId: job.source_id }, job.dispatch_id) as { invoiceId?: string; snapshotId?: string; reused?: boolean } | null;
+    // A work job always names its shipment (scheduled_jobs_dispatch_scope, 0036).
+    const result = await draft({ orgId, sourceId: job.source_id }, job.dispatch_id!) as { invoiceId?: string; snapshotId?: string; reused?: boolean } | null;
     return { invoice_id: result?.invoiceId ?? null, snapshot_id: result?.snapshotId ?? null, reused: result?.reused ?? null };
   }, classifyInvoicePart, options.limit ?? 20);
 }
