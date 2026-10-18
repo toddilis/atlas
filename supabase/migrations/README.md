@@ -11,7 +11,7 @@ Claim a number by recording it in the current-status section of
 authoring the file. Do not take an unclaimed number mid-range; take the next one after
 the highest reservation.
 
-## Ledger (as of 2026-10-16, after the #30/#28/#35 merge wave)
+## Ledger (as of 2026-10-18, after step 4: #38, #39 and #40)
 
 | Number | Name | Track / owner | Where it lives |
 | --- | --- | --- | --- |
@@ -28,4 +28,7 @@ the highest reservation.
 | 0030 | `operator_job_retry` | JOBS-01 | main (PR #35) |
 | 0031 | `operator_job_dismiss` | JOBS-01 | main (PR #35) |
 | 0032 | `manual_carrier_cost` | JOBS-01 (carrier costs) | main (PR #35) |
-| **0033** | **next unclaimed** | — | — |
+| 0033 | `operator_pricing` | PRICING-01 (step 4a) | main (PR #38) |
+| 0034 | `invoice_approval_print` | BILL-01 / AUTHZ-02 (step 4b) | main (PR #39) |
+| 0035 | `invoice_part_jobs` | BILL-01 / JOBS-01 (step 4c) | PR #40 |
+| **0036** | **next unclaimed** | — | — |

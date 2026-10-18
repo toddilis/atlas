@@ -13,7 +13,7 @@ each PR. The 1–7 October target (D13) was not met; it is now step 4.
 | --- | --- | --- | --- | --- | --- |
 | 3b | GoSweetSpot carrier cost: live check | Todd | — (#35 merged) | Needs VICE's GoSweetSpot site id and one real `api/shipments` response | Confirm the cost field, then switch the sync on |
 | 3b | Manual carrier cost grant | Todd | — (#35 merged) | Off by default; not seeded at boot | Decide whether VICE turns it on |
-| 4c | Controller drafts dispatch invoice parts (replaces the legacy whole-order draft) | Claude | `claude/amazing-mayer-t2r2fz` | In review | Todd's review, then merge |
+| 4c | Controller drafts dispatch invoice parts (replaces the legacy whole-order draft) | Claude | #40 (migration 0035) | In review | Todd's review, then merge |
 | 4c | Later shipment while the first is blocked | Todd | — | Waits for the first part, which carries the freight | Decide whether it may be invoiced without freight |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
