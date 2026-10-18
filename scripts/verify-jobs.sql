@@ -7,6 +7,12 @@ begin
   begin execute command; exception when others then if sqlerrm not like pattern then raise; end if; return; end;
   raise exception 'ASSERT JOBS expected rejection: %',pattern;
 end $$;
+-- The Controller routes each fulfillment; only wholesale shipments are invoiced, so only
+-- they need carrier costs and invoice parts (0035). Route a business's new fulfillments.
+create function pg_temp.route_wholesale(company uuid,account uuid) returns void language sql as $$
+  insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+    select f.org_id,f.id,f.shopify_order_id,account,'wholesale',f.occurred_at from shopify_fulfillments f where f.org_id=company
+  on conflict (org_id,shopify_fulfillment_id) do nothing $$;
 do $$
 declare
   company uuid:='67000000-0000-4000-8000-000000000001'; account uuid:='67000000-0000-4000-8000-000000000002';
@@ -40,6 +46,7 @@ begin
     end loop;
   end loop;
 
+  perform pg_temp.route_wholesale(company,account);
   -- Discovery: only the unbilled order's first-part candidates with tracking and no valid cost.
   perform pg_temp.jobs_assert(discover_carrier_cost_jobs(company)=2,'discovers the two candidates of the unbilled order');
   perform pg_temp.jobs_assert((select array_agg(dispatch_id order by dispatch_id) from scheduled_jobs where org_id=company)
@@ -240,6 +247,7 @@ begin
       values(company,(select source_dispatch_key from dispatches where id=d),(select order_key::uuid from dispatches where id=d),'success',array['SYN-'||left(d::text,8)],'{}',rev,d);
     if a is null then a:=d; elsif b is null then b:=d; else c:=d; end if;
   end loop;
+  perform pg_temp.route_wholesale(company,account);
   perform pg_temp.jobs_assert(discover_carrier_cost_jobs(company)=3,'three needed dispatches');
 
   -- Paused business actions stop the worker: nothing is claimed, so no carrier is called.
@@ -283,6 +291,7 @@ begin
   d:=project_dispatch(company,source,'r-1',o::text,rev,'succeeded',null,line,null,'{}',rev);
   insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
     values(company,'r-1',o,'success',array['SYN-R1'],'{}',rev,d);
+  perform pg_temp.route_wholesale(company,account);
   ev1:=record_carrier_cost(company,source,d,'gosweetspot:synthetic','consignment:9@2026-09-01T00:00:00.000Z','NZD',800,'2026-09-01T00:00:00Z','2026-09-02T00:00:00Z','{}');
   perform pg_temp.jobs_assert(discover_carrier_cost_jobs(company)=1 and carrier_cost_job_needed(company,source,d),'expired cost makes the dispatch due again');
   ev2:=record_carrier_cost(company,source,d,'gosweetspot:synthetic','consignment:9@'||to_char(now() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'NZD',800,now(),now()+interval '30 days','{}');
@@ -297,6 +306,7 @@ begin
   d:=project_dispatch(company,source,'s-1',o::text,rev,'succeeded',null,line,null,'{}',rev);
   insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
     values(company,'s-1',o,'success',array['SYN-S1'],'{}',rev,d);
+  perform pg_temp.route_wholesale(company,account);
   perform discover_carrier_cost_jobs(company);
   update scheduled_jobs set state='dismissed' where org_id=company and dispatch_id=d returning * into j;
   insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','carriers.record_manual_cost','approve_required');
@@ -308,4 +318,75 @@ begin
   insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.retry','notify');
   select job_key into other_job from scheduled_jobs where org_id='67000000-0000-4000-8000-000000000001' limit 1;
   perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,other_job,now(),actor,'ops@example.test','not mine'),'%%job not found%%');
+end $$;
+
+-- Invoice part drafting jobs (0035): wholesale-routed eligible dispatches without a part;
+-- woken by a carrier cost, an earlier shipment's part or a pricing activation; closed when
+-- no longer needed; a third business.
+do $$
+declare
+  company uuid:='69000000-0000-4000-8000-000000000001'; account uuid:='69000000-0000-4000-8000-000000000002';
+  actor uuid:='69000000-0000-4000-8000-0000000000aa';
+  source uuid; v uuid; rev timestamptz:='2026-10-02T09:00:00+13:00'; o uuid; d uuid; f uuid; w1 uuid; w2 uuid; y1 uuid; c1 uuid; part uuid; inv uuid; k text;
+  j scheduled_jobs; due timestamptz;
+  line jsonb:='[{"source_line_key":"1","order_line_key":"1","item_key":"WIDGET","quantity":1,"ordered_quantity":2}]';
+begin
+  insert into orgs(id,slug,display_name) values(company,'jobs-fixture-3','Synthetic jobs three');
+  insert into accounts(id,org_id,name) values(account,company,'Synthetic retailer');
+  source:=bind_shopify_dispatch_source(company,'jobs-fixture-3.myshopify.com');
+  -- order w: two wholesale shipments; order y: one; order c: a consignment shipment.
+  foreach k in array array['w1','w2','y1','c1'] loop
+    if k<>'w2' then
+      insert into shopify_orders(org_id,shopify_order_id,shopify_customer_id,currency,subtotal_cents,total_cents,raw,placed_at)
+        values(company,'order-'||k,'cust','NZD',0,0,'{}',rev) returning id into o;
+    end if;
+    d:=project_dispatch(company,source,'ship-'||k,o::text,rev+(case k when 'w2' then interval '1 day' else interval '0' end),'succeeded',null,line,null,'{}',rev);
+    insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,tracking_numbers,raw,occurred_at,dispatch_id)
+      values(company,'ship-'||k,o,'success',array['TRK-'||k],'{}',rev,d) returning id into f;
+    insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,account_id,route,occurred_at)
+      values(company,f,o,case when k='c1' then null else account end,case when k='c1' then 'consignment'::fulfillment_route else 'wholesale' end,rev);
+    case k when 'w1' then w1:=d; when 'w2' then w2:=d; when 'y1' then y1:=d; else c1:=d; end case;
+  end loop;
+
+  -- Only wholesale shipments get invoice part jobs, and carrier cost jobs.
+  perform pg_temp.jobs_assert(discover_invoice_part_jobs(company)=3 and discover_invoice_part_jobs(company)=0,'three wholesale parts, discovery idempotent');
+  perform pg_temp.jobs_assert(not exists(select 1 from scheduled_jobs where org_id=company and dispatch_id=c1),'a consignment shipment is not invoiced');
+  perform pg_temp.jobs_assert(discover_carrier_cost_jobs(company)=3 and not exists(select 1 from scheduled_jobs where org_id=company and kind='carrier_cost_sync' and dispatch_id=c1),
+    'carrier costs only for wholesale shipments');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id) values(%L,%L,%L,%L,%L)',company,'x','other',source,w1),'%%scheduled_jobs_kind_check%%');
+
+  -- Waiting jobs wake when what they wait for arrives.
+  update scheduled_jobs set state='blocked',next_attempt_at=now()+interval '6 hours' where org_id=company and kind='invoice_part_draft';
+  due:=clock_timestamp();
+  perform record_carrier_cost(company,source,y1,'gosweetspot:synthetic','consignment:9@'||rev,'NZD',900,rev,'2099-01-01T00:00:00Z','{}');
+  perform pg_temp.jobs_assert((select next_attempt_at<=due from scheduled_jobs where org_id=company and kind='invoice_part_draft' and dispatch_id=y1)
+    and (select next_attempt_at>due from scheduled_jobs where org_id=company and kind='invoice_part_draft' and dispatch_id=w2),'a carrier cost wakes only its shipment');
+  v:=save_pricing_version(company,0,jsonb_build_object('schemaVersion',1,'businessId',company,'version','v1','effectiveFrom','2026-01-01T00:00:00Z'),'fixture','jobs fixture');
+  part:=claim_dispatch(company,source,w1,rev,'bill:'||w1);
+  insert into invoices(org_id,account_id,invoice_number,state,currency,subtotal_cents,tax_cents,total_cents)
+    values(company,account,'JOB3-1A','draft','NZD',0,0,0) returning id into inv;
+  insert into invoice_calculation_snapshots(org_id,invoice_id,part_id,source_id,dispatch_id,source_revision,pricing_version_id,snapshot,content_hash,document)
+    values(company,inv,part,source,w1,rev,v,'{}','x','{}');
+  perform pg_temp.jobs_assert((select next_attempt_at<=clock_timestamp() from scheduled_jobs where org_id=company and kind='invoice_part_draft' and dispatch_id=w2),
+    'an earlier shipment''s part wakes the order''s later shipment');
+  update scheduled_jobs set next_attempt_at=now()+interval '6 hours' where org_id=company and kind='invoice_part_draft' and dispatch_id=y1;
+  perform activate_pricing_version(company,v,1,'fixture','activate');
+  perform pg_temp.jobs_assert((select next_attempt_at<=clock_timestamp() from scheduled_jobs where org_id=company and kind='invoice_part_draft' and dispatch_id=y1),
+    'an activated pricing version wakes waiting parts');
+
+  -- The drafted shipment's job is closed on claim, not run; the next needed one is leased.
+  -- All three are due at now(); make w1's the first the claim meets, whatever the job keys.
+  update scheduled_jobs set next_attempt_at=now()-interval '1 minute' where org_id=company and kind='invoice_part_draft' and dispatch_id=w1;
+  j:=claim_scheduled_job(company,'invoice_part_draft');
+  perform pg_temp.jobs_assert(j.dispatch_id in (w2,y1) and j.state='running','a needed job is leased');
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and kind='invoice_part_draft' and dispatch_id=w1)
+    and exists(select 1 from job_runs r join scheduled_jobs s using(org_id,job_key) where s.org_id=company and s.dispatch_id=w1 and s.kind='invoice_part_draft' and r.outcome='not_needed'),
+    'the drafted shipment''s job closed as no longer needed');
+  -- Retry refuses a job whose shipment already has its part.
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.retry','notify');
+  update scheduled_jobs set state='blocked' where org_id=company and kind='invoice_part_draft' and dispatch_id=w1 returning * into j;
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','try again'),'%%job no longer needed%%');
+  perform pg_temp.jobs_assert(has_function_privilege('service_role','discover_invoice_part_jobs(uuid)','execute')
+    and not has_function_privilege('service_role','invoice_part_job_needed(uuid,uuid,uuid)','execute')
+    and not has_function_privilege('authenticated','discover_invoice_part_jobs(uuid)','execute'),'discovery is the worker''s; the rest internal');
 end $$;
