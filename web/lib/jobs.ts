@@ -13,7 +13,8 @@ export interface JobRow {
   last_error: string | null;
   created_at: string;
   updated_at: string;
-  dispatch_id: string;
+  /** Work jobs name their shipment; a Shopify sync job names only its connection (0036). */
+  dispatch_id: string | null;
 }
 
 export interface JobRunRow {
@@ -29,7 +30,7 @@ export const MAX_ATTEMPTS = 8;
 /** The worker ticks every minute; a due job left this long means it is not running. */
 export const STALE_AFTER_MS = 10 * 60_000;
 
-export const KIND_LABELS: Record<string, string> = { carrier_cost_sync: 'Carrier cost sync', invoice_part_draft: 'Invoice part draft' };
+export const KIND_LABELS: Record<string, string> = { carrier_cost_sync: 'Carrier cost sync', invoice_part_draft: 'Invoice part draft', shopify_sync: 'Shopify sync' };
 export const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
 
 const ADVICE: Array<[RegExp, string]> = [
@@ -53,6 +54,11 @@ const ADVICE: Array<[RegExp, string]> = [
   [/authoritative dispatch destination/, 'A shipping rule depends on the destination, which Atlas does not have for this shipment. Change the rule or record the destination; then retry.'],
   [/pricing: missing product|retailer has no price book/, 'The pricing in effect has no price for this retailer and product. Add it in Pricing and activate the new version.'],
   [/order display reference unavailable|order has no order date|no dispatch time/, 'The Shopify order is missing details an invoice needs. Re-sync it from Shopify; then retry.'],
+  // Shopify sync (0036).
+  [/^SHOPIFY_/, 'Set this Shopify setting on the worker host. The sync tries again on its next attempt.'],
+  [/shopify \S+ 40[134]\b/, 'Shopify refused the request. Check SHOPIFY_SHOP_DOMAIN, SHOPIFY_ADMIN_API_TOKEN and the token\'s scopes on the worker host.'],
+  [/not the configured Shopify connection|does not match the configured business\/connection|binding mismatch or disabled source/, 'This job\'s connection is not the one the worker is configured for. Check SHOPIFY_SHOP_DOMAIN and this source\'s connection.'],
+  [/invalid Shopify .* ID|malformed Shopify|belongs to a different order|cannot move to a different order|duplicate normalized dispatch line/, 'Shopify returned data Atlas refuses to ingest as-is. The adapter needs a developer to look at this order.'],
 ];
 export function adviceFor(error: string | null): string | null {
   if (!error) return null;
@@ -83,7 +89,9 @@ export function nextStep(job: JobRow, now: Date): string {
     case 'dismissed':
       return job.kind === 'invoice_part_draft'
         ? 'Dismissed by an operator; Atlas will not draft this shipment\'s invoice part unless the job is retried.'
-        : 'Dismissed by an operator; Atlas will not retry it. No carrier cost was recorded, so if this dispatch is its order\'s first part, that part cannot be drafted until a cost is recorded.';
+        : job.kind === 'shopify_sync'
+          ? 'Dismissed by an operator; Atlas will not sync this Shopify connection unless the job is retried.'
+          : 'Dismissed by an operator; Atlas will not retry it. No carrier cost was recorded, so if this dispatch is its order\'s first part, that part cannot be drafted until a cost is recorded.';
     default:
       if (at <= 0) return `Due now (attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}).`;
       return `Next attempt in ${duration(at)} (attempt ${job.attempts + 1} of ${MAX_ATTEMPTS}).`;

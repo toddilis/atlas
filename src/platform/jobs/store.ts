@@ -6,8 +6,8 @@ import { log } from '../log.js';
 // backoff, quarantine and whether a job is still needed (0029, 0035); a pass only claims
 // due jobs of one kind, runs each, and reports how its attempt ended.
 
-export type JobKind = 'carrier_cost_sync' | 'invoice_part_draft';
-export type Job = { org_id: string | null; job_key: string | null; source_id: string; dispatch_id: string; lease_token: string | null; attempts: number };
+export type JobKind = 'carrier_cost_sync' | 'invoice_part_draft' | 'shopify_sync';
+export type Job = { org_id: string | null; job_key: string | null; source_id: string; dispatch_id: string | null; lease_token: string | null; attempts: number };
 export type JobOutcome = 'succeeded' | 'retry' | 'blocked';
 export interface JobsStore {
   discover(orgId: string): Promise<number>;
@@ -15,7 +15,7 @@ export interface JobsStore {
   finish(orgId: string, job: Job, outcome: JobOutcome, detail: Record<string, unknown>): Promise<string>;
 }
 
-const DISCOVER = { carrier_cost_sync: 'discover_carrier_cost_jobs', invoice_part_draft: 'discover_invoice_part_jobs' } as const;
+const DISCOVER = { carrier_cost_sync: 'discover_carrier_cost_jobs', invoice_part_draft: 'discover_invoice_part_jobs', shopify_sync: 'discover_shopify_sync_jobs' } as const;
 
 export function scheduledJobs(kind: JobKind): JobsStore {
   return {

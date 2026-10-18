@@ -2,23 +2,25 @@
 
 ## Current status
 
-Updated 17 October 2026. This section is the live status and supersedes the dated sections below, which are
-history. Steps 1–4b are merged: AUTH-01 + AUTHZ-02 (#31), EVENT-01 + EVIDENCE-01 (#30),
+Updated 18 October 2026. This section is the live status and supersedes the dated sections below, which are
+history. Steps 1–4 are merged: AUTH-01 + AUTHZ-02 (#31), EVENT-01 + EVIDENCE-01 (#30),
 PRICING-01 + BILL-01 (#28), the GoSweetSpot carrier cost sync with the JOBS-01 core (#35), the
-pricing editor (step 4a, #38) and approve → issue → print for an invoice part (step 4b, #39). Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
+pricing editor (step 4a, #38), approve → issue → print for an invoice part (step 4b, #39) and the
+invoice part draft jobs (step 4c, #40). Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
 and a PR merges only after that approval and green CI. Commit and CI evidence lives in
-each PR. The 1–7 October target (D13) was not met; it is now step 4.
+each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October.
 
 | Order | Task | Owner | PR | State | Next step |
 | --- | --- | --- | --- | --- | --- |
 | 3b | GoSweetSpot carrier cost: live check | Todd | — (#35 merged) | Needs VICE's GoSweetSpot site id and one real `api/shipments` response | Confirm the cost field, then switch the sync on |
 | 3b | Manual carrier cost grant | Todd | — (#35 merged) | Off by default; not seeded at boot | Decide whether VICE turns it on |
-| 4c | Controller drafts dispatch invoice parts (replaces the legacy whole-order draft) | Claude | #40 (migration 0035) | In review | Todd's review, then merge |
 | 4c | Later shipment while the first is blocked | Todd | — | Waits for the first part, which carries the freight | Decide whether it may be invoiced without freight |
+| 5 | JOBS-01: scheduled Shopify ingestion (sync as a job; migration 0036 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 5 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
-After step 4: FLOW-01 bank reconciliation (needs a Wise/ASB export sample), UI-01,
-the rest of JOBS-01, TODAY-01, AI-01, CLOSE-01. Business inputs still needed are listed in
+After ingestion: FLOW-01 bank reconciliation (needs the export sample above), UI-01,
+TODAY-01, AI-01, CLOSE-01. Business inputs still needed are listed in
 [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
 
 ## Standing backlog and historical snapshots

@@ -854,6 +854,7 @@ export type Database = {
           id: string
           org_id: string
           provider: string
+          sync_every_minutes: number
         }
         Insert: {
           connection_key: string
@@ -861,6 +862,7 @@ export type Database = {
           id?: string
           org_id: string
           provider: string
+          sync_every_minutes?: number
         }
         Update: {
           connection_key?: string
@@ -868,6 +870,7 @@ export type Database = {
           id?: string
           org_id?: string
           provider?: string
+          sync_every_minutes?: number
         }
         Relationships: [
           {
@@ -2389,7 +2392,7 @@ export type Database = {
         Row: {
           attempts: number
           created_at: string
-          dispatch_id: string
+          dispatch_id: string | null
           job_key: string
           kind: string
           last_error: string | null
@@ -2406,7 +2409,7 @@ export type Database = {
         Insert: {
           attempts?: number
           created_at?: string
-          dispatch_id: string
+          dispatch_id?: string | null
           job_key: string
           kind: string
           last_error?: string | null
@@ -2421,7 +2424,7 @@ export type Database = {
         Update: {
           attempts?: number
           created_at?: string
-          dispatch_id?: string
+          dispatch_id?: string | null
           job_key?: string
           kind?: string
           last_error?: string | null
@@ -2445,6 +2448,12 @@ export type Database = {
             columns: ["org_id", "source_id", "dispatch_id"]
             referencedRelation: "dispatches"
             referencedColumns: ["org_id", "source_id", "id"]
+          },
+          {
+            foreignKeyName: "scheduled_jobs_source_fk"
+            columns: ["org_id", "source_id"]
+            referencedRelation: "dispatch_sources"
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -3069,7 +3078,7 @@ export type Database = {
         Returns: {
           attempts: number
           created_at: string
-          dispatch_id: string
+          dispatch_id: string | null
           job_key: string
           kind: string
           last_error: string | null
@@ -3125,6 +3134,10 @@ export type Database = {
         Returns: number
       }
       discover_invoice_part_jobs: {
+        Args: { p_org_id: string }
+        Returns: number
+      }
+      discover_shopify_sync_jobs: {
         Args: { p_org_id: string }
         Returns: number
       }
@@ -3491,6 +3504,10 @@ export type Database = {
           p_reason: string
         }
         Returns: undefined
+      }
+      shopify_sync_job_needed: {
+        Args: { p_org_id: string; p_source_id: string }
+        Returns: boolean
       }
       supported_platform_event: { Args: { p_envelope: Json }; Returns: boolean }
     }

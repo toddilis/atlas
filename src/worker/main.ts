@@ -1,8 +1,8 @@
-// Atlas worker — the second process in the Fly app (PR-O). Runs the recovery loops that
-// must not depend on anyone hitting an HTTP endpoint: outbox drain (with lease reaping)
-// and projection replay. PR-R extends this into the full scheduler (Shopify sync,
-// approval-expiry sweep, dashboard rollup) with recorded job runs; the process shape —
-// boot, tick loop, clean SIGTERM — is what deployment needs pinned down now.
+// Atlas worker — the second process in the Fly app (PR-O). Runs everything that must not
+// depend on anyone hitting an HTTP endpoint: outbox drain (with lease reaping), projection
+// replay, and the JOBS-01 passes with recorded job runs — Shopify ingestion on each
+// source's cadence (0036), carrier costs (0029) and invoice part drafts (0035). Remaining
+// scheduler work (approval-expiry sweep, dashboard rollup) lands as further job kinds.
 //
 // Ticks never overlap: the loop awaits each tick, then sleeps. A tick failure is logged
 // and the loop continues — the work is idempotent (outbox leases + projection state),
@@ -14,6 +14,7 @@ import { bootPlatform } from '../platform/orchestration/boot.js';
 import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
 import { carrierCostSyncEnabled, runCarrierCostJobs } from '../platform/jobs/carrier-cost.js';
+import { runShopifySyncJobs, shopifySyncEnabled } from '../platform/jobs/shopify-sync.js';
 import { runInvoicePartJobs } from '../agents/controller/invoice-parts.js';
 import { orgId } from '../data/supabase.js';
 
@@ -55,6 +56,16 @@ async function tick(): Promise<void> {
     });
   } catch (e) {
     log.error('worker.tick_failed', { error: (e as Error).message });
+  }
+  // JOBS-01 scheduled ingestion (0036): pull the configured Shopify connection's canonical
+  // data on its own cadence, so new orders and shipments arrive without anyone calling an
+  // endpoint. Runs first so this tick's cost and invoice passes see what it ingested.
+  if (shopifySyncEnabled()) {
+    try {
+      log.info('worker.shopify_sync_jobs', await runShopifySyncJobs(orgId()));
+    } catch (e) {
+      log.error('worker.shopify_sync_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
+    }
   }
   // JOBS-01: carrier cost sync for first invoice parts, when GoSweetSpot is configured.
   // Failures a person must fix are recorded on the job as blocked with their reason.
