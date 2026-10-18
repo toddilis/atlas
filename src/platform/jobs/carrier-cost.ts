@@ -29,7 +29,7 @@ export async function runCarrierCostJobs(orgId: string, options: { limit?: numbe
   const sync = options.sync ?? syncGoSweetSpotCostFromEnv;
   return runJobPass(orgId, options.store ?? databaseJobs, async job => {
     // A work job always names its shipment (scheduled_jobs_dispatch_scope, 0036).
-    const recorded = await sync({ orgId, sourceId: job.source_id }, job.dispatch_id!);
+    const recorded = await sync({ orgId, sourceId: job.source_id! }, job.dispatch_id!);
     return { evidence_id: recorded.evidenceId, cost_minor: recorded.costMinor };
   }, classify, options.limit ?? 20);
 }

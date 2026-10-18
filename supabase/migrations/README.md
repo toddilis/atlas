@@ -31,5 +31,6 @@ the highest reservation.
 | 0033 | `operator_pricing` | PRICING-01 (step 4a) | main (PR #38) |
 | 0034 | `invoice_approval_print` | BILL-01 / AUTHZ-02 (step 4b) | main (PR #39) |
 | 0035 | `invoice_part_jobs` | BILL-01 / JOBS-01 (step 4c) | main (PR #40) |
-| 0036 | `shopify_sync_jobs` | JOBS-01 (scheduled ingestion) | claimed 18 Oct (queue row), in progress |
-| **0037** | **next unclaimed** | — | — |
+| 0036 | `shopify_sync_jobs` | JOBS-01 (scheduled ingestion) | main (PR #42) |
+| 0037 | `approval_console` | UI-01 (console approvals + executor job) | claimed 18 Oct (queue row), in progress |
+| **0038** | **next unclaimed** | — | — |

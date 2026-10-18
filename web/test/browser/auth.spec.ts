@@ -130,6 +130,39 @@ test('operator sees blocked and quarantined jobs with their reason, and no other
   await page.screenshot({ path: 'test-results/jobs.png', fullPage: true });
 });
 
+test('operator decides pending approvals with a reason; decisions and execution state are shown', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.getByRole('link', { name: 'Approvals', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Approvals', exact: true })).toBeVisible();
+
+  const pending = page.getByRole('region', { name: 'Pending approvals' }).getByTestId('approval');
+  await expect(pending).toHaveCount(2);
+  await expect(page.getByText('OTHER-APPROVAL-SECRET')).toHaveCount(0);
+
+  // Approve the restock with a reason: the decision and who made it are recorded, and the
+  // card explains that the worker executes it.
+  const restock = pending.filter({ hasText: 'Restock widget order #88' });
+  await restock.getByLabel('Reason').fill('stock confirmed with the warehouse');
+  await restock.getByRole('button', { name: 'Approve' }).click();
+  await expect(page.getByTestId('approval-notice')).toContainText('Approved. The worker executes it on its next pass');
+  const decided = page.getByRole('region', { name: 'Recently decided' }).getByTestId('approval');
+  const approved = decided.filter({ hasText: 'Restock widget order #88' });
+  await expect(approved).toContainText('Approved by operator@example.test');
+  await expect(approved).toContainText('stock confirmed with the warehouse');
+  await expect(approved.getByTestId('execution-status')).toContainText('The worker executes it on its next pass');
+
+  // Reject the other: final, with nothing to execute.
+  const credit = page.getByRole('region', { name: 'Pending approvals' }).getByTestId('approval').filter({ hasText: 'Credit note for order #91' });
+  await credit.getByLabel('Reason').fill('not our retailer');
+  await credit.getByRole('button', { name: 'Reject' }).click();
+  await expect(page.getByTestId('approval-notice')).toContainText('Rejected. Nothing will be executed');
+  await expect(page.getByRole('region', { name: 'Pending approvals' }).getByTestId('approval')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Recently decided' }).getByTestId('approval').filter({ hasText: 'Credit note for order #91' }))
+    .toContainText('Rejected by operator@example.test');
+  await page.screenshot({ path: 'test-results/approvals.png', fullPage: true });
+});
+
 test('operator retries a stopped job with a reason; a stale page cannot retry it again', async ({ page }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();

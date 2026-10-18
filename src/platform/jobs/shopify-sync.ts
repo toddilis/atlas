@@ -39,7 +39,7 @@ export const shopifySyncJobs: JobsStore = scheduledJobs('shopify_sync');
 export async function runShopifySyncJobs(orgId: string, options: { limit?: number; store?: JobsStore; sync?: SourceSync } = {}) {
   const sync = options.sync ?? syncConfiguredShopifySource;
   return runJobPass(orgId, options.store ?? shopifySyncJobs, async job => {
-    const counts = await sync({ orgId, sourceId: job.source_id });
+    const counts = await sync({ orgId, sourceId: job.source_id! });
     return { customers: counts.customers, products: counts.products, orders: counts.orders };
   }, classifyShopifySync, options.limit ?? 1);
 }

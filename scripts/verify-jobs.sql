@@ -441,3 +441,89 @@ begin
     and not has_function_privilege('service_role','shopify_sync_job_needed(uuid,uuid)','execute')
     and not has_function_privilege('authenticated','discover_shopify_sync_jobs(uuid)','execute'),'discovery is the worker''s; the need check internal');
 end $$;
+
+-- Console approval decisions and the approved-action executor job (0037): an operator
+-- decision AUTHORISES the stored action, the job runs it, and refusals name their rule.
+-- A fifth business.
+do $$
+declare
+  company uuid:='71000000-0000-4000-8000-000000000001'; actor uuid:='71000000-0000-4000-8000-0000000000aa';
+  a1 uuid; a2 uuid; a3 uuid; act1 uuid; act3 uuid; j scheduled_jobs; claim jsonb;
+  intent jsonb;
+begin
+  insert into orgs(id,slug,display_name) values(company,'jobs-fixture-5','Synthetic jobs five');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values
+    (company,'operator','approvals.decide','notify'),
+    (company,'controller','demo.alpha','approve_required'),
+    (company,'controller','demo.beta','approve_required');
+  intent:=jsonb_build_object('org_id',company,'schema_version','1','tool_name','demo.alpha','agent_name','controller',
+    'input','{}'::jsonb,'subject_snapshot','{}'::jsonb,'policy_snapshot',null,'subject_type','observation','subject_id',null);
+  a1:=create_bound_approval(company,intent,clock_timestamp()+interval '1 hour','Restock widgets');
+  a2:=create_bound_approval(company,intent||jsonb_build_object('tool_name','demo.beta'),clock_timestamp()+interval '1 hour','Credit note');
+  a3:=create_bound_approval(company,intent,clock_timestamp()+interval '1 hour','Later revoked');
+  select id into act1 from approved_actions where org_id=company and approval_id=a1;
+  select id into act3 from approved_actions where org_id=company and approval_id=a3;
+
+  -- The operator seam refuses: a thin reason, no identity, an unknown disposition, pause,
+  -- a missing grant, and a grant that would make deciding itself need an approval.
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,%L,%L,%L,%L)',company,a1,actor,'ops@example.test','approved','xy'),'%%reason required%%');
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,null,%L,%L,%L)',company,a1,'ops@example.test','approved','looks right'),'%%operator identity required%%');
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,%L,%L,%L,%L)',company,a1,actor,'ops@example.test','maybe','looks right'),'%%invalid approval decision%%');
+  insert into action_controls(org_id,paused,changed_by,reason) values(company,true,'probe','pause');
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,%L,%L,%L,%L)',company,a1,actor,'ops@example.test','approved','looks right'),'%%business actions paused%%');
+  update action_controls set paused=false where org_id=company;
+  update tool_grants set enabled=false where org_id=company and agent_name='operator' and tool_name='approvals.decide';
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,%L,%L,%L,%L)',company,a1,actor,'ops@example.test','approved','looks right'),'%%entitlement missing or revoked%%');
+  update tool_grants set enabled=true,risk='approve_required' where org_id=company and agent_name='operator' and tool_name='approvals.decide';
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,%L,%L,%L,%L)',company,a1,actor,'ops@example.test','approved','looks right'),'%%must not require approval%%');
+  update tool_grants set risk='notify' where org_id=company and agent_name='operator' and tool_name='approvals.decide';
+
+  -- Approve authorises the stored action and records who decided; a decision is final.
+  perform pg_temp.jobs_assert(operator_decide_approval(company,a1,actor,'ops@example.test','approved','stock confirmed')='approved','approve returns its disposition');
+  perform pg_temp.jobs_assert((select state='approved' and decided_by='ops@example.test' from approvals where id=a1),'approval decided by the operator');
+  perform pg_temp.jobs_assert((select state='AUTHORISED' from approved_actions where id=act1),'approved action is authorised');
+  perform pg_temp.jobs_assert(exists(select 1 from audit_log where org_id=company and action='approvals.decide' and approval_id=a1
+    and detail->>'actor_id'=actor::text and detail->>'disposition'='approved'),'the decision is audited with the operator identity');
+  perform pg_temp.jobs_reject(format('select operator_decide_approval(%L,%L,%L,%L,%L,%L)',company,a1,actor,'ops@example.test','approved','again'),'%%not pending%%');
+  perform pg_temp.jobs_assert(operator_decide_approval(company,a2,actor,'ops@example.test','rejected','not ours')='rejected','reject returns its disposition');
+  perform pg_temp.jobs_assert((select v.state='PREPARED' from approved_actions v join approvals a on a.id=v.approval_id where a.id=a2),'a rejected proposal is never authorised');
+
+  -- The executor job: one per authorised action, with neither source nor shipment.
+  perform pg_temp.jobs_assert(discover_approved_action_jobs(company)=1 and discover_approved_action_jobs(company)=0,'one job per authorised action, idempotent');
+  perform pg_temp.jobs_assert((select action_id=act1 and source_id is null and dispatch_id is null from scheduled_jobs where org_id=company and job_key='approved-action:'||act1),
+    'the executor job names only its action');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id,action_id) select %L,%L,%L,s.id,%L from dispatch_sources s limit 1',
+    company,'x-src','approved_action_execute',act1),'%%scheduled_jobs_dispatch_scope%%');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,action_id,dispatch_id) select %L,%L,%L,%L,d.id from dispatches d limit 1',
+    company,'x-disp','approved_action_execute',act1),'%%scheduled_jobs%%');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id,dispatch_id,action_id) select %L,%L,%L,d.source_id,d.id,%L from dispatches d where d.org_id=%L limit 1',
+    '67000000-0000-4000-8000-000000000001','x-work','carrier_cost_sync',act1,'67000000-0000-4000-8000-000000000001'),'%%scheduled_jobs_dispatch_scope%%');
+
+  -- Claim leases it; a simulated execution confirms the action; the job finishes and the
+  -- action is never re-discovered.
+  j:=claim_scheduled_job(company,'approved_action_execute');
+  perform pg_temp.jobs_assert(j.action_id=act1 and j.state='running','the executor job is leased');
+  claim:=claim_bound_action(company,a1,'probe-worker',null,'{}'::jsonb);
+  perform finish_bound_action(company,(claim->>'action_id')::uuid,(claim->>'execution_id')::uuid,'CONFIRMED','{}'::jsonb,'{"receipt":"probe"}'::jsonb);
+  perform pg_temp.jobs_assert(finish_scheduled_job(company,j.job_key,j.lease_token,'succeeded','{"status":"CONFIRMED"}')='succeeded','executor job records its run');
+  perform pg_temp.jobs_assert((select state='CONFIRMED' from approved_actions where id=act1),'the action is confirmed with evidence');
+  perform pg_temp.jobs_assert(discover_approved_action_jobs(company)=0,'a confirmed action is not re-discovered');
+
+  -- A revoked action's waiting job closes, and retry refuses to resurrect it.
+  perform pg_temp.jobs_assert(operator_decide_approval(company,a3,actor,'ops@example.test','approved','second batch')='approved','third approval approved');
+  perform pg_temp.jobs_assert(discover_approved_action_jobs(company)=1,'the authorised action gets its job');
+  perform revoke_bound_action(company,act3,'probe','no longer wanted');
+  perform pg_temp.jobs_assert(discover_approved_action_jobs(company)=0,'a revoked action discovers nothing');
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and job_key='approved-action:'||act3)
+    and exists(select 1 from job_runs where org_id=company and job_key='approved-action:'||act3 and outcome='not_needed'),
+    'a revoked action''s job is closed as no longer needed');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','jobs.retry','notify');
+  update scheduled_jobs set state='blocked' where org_id=company and job_key='approved-action:'||act3 returning * into j;
+  perform pg_temp.jobs_reject(format('select retry_scheduled_job(%L,%L,%L,%L,%L,%L)',company,j.job_key,j.updated_at,actor,'ops@example.test','try again'),'%%job no longer needed%%');
+
+  perform pg_temp.jobs_assert(has_function_privilege('service_role','operator_decide_approval(uuid,uuid,uuid,text,text,text)','execute')
+    and has_function_privilege('service_role','discover_approved_action_jobs(uuid)','execute')
+    and not has_function_privilege('service_role','approved_action_job_needed(uuid,uuid)','execute')
+    and not has_function_privilege('authenticated','operator_decide_approval(uuid,uuid,uuid,text,text,text)','execute'),
+    'the console decides, the worker discovers; the need check is internal');
+end $$;
