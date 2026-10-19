@@ -1,0 +1,9 @@
+{
+  "mode": "fixture",
+  "limits": { "maxTasks": 2, "maxAttempts": 2, "maxUnits": 12, "maxConcurrent": 1, "runTimeoutMs": 30000 },
+  "allowFixtureRelease": true,
+  "tasks": [
+    { "id": "FIXTURE-A", "dependsOn": [], "instruction": "Create the first harmless fixture artifact", "value": "Atlas fixture A" },
+    { "id": "FIXTURE-B", "dependsOn": ["FIXTURE-A"], "instruction": "Continue automatically after the first fixture completes", "value": "Atlas fixture B" }
+  ]
+}

@@ -26,6 +26,7 @@ pnpm-debug.log*
 # test
 coverage/
 .nyc_output/
+.atlas-build-loop*/
 
 # supabase
 supabase/.branches
