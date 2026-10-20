@@ -92,6 +92,26 @@ test('genuinely expired access token with revoked refresh session cannot regain 
   await expect(page).toHaveURL(/\/login$/);
 });
 
+test('the home page is the operator\'s day, from stored rows alone, with explicit empty and never-synced states', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+
+  await expect(page.getByTestId('stat-approvals')).toContainText('Pending approvals');
+  await expect(page.getByTestId('stat-approvals')).toContainText('2');
+  await expect(page.getByTestId('stat-jobs')).toContainText('3 blocked · 1 quarantined');
+  await expect(page.getByTestId('stat-parts')).toContainText('0');
+  await expect(page.getByTestId('today-next-sync')).toContainText('Next Shopify sync in');
+
+  // Freshness names this business's connection only, and says plainly it never synced.
+  const freshness = page.getByTestId('today-freshness');
+  await expect(freshness).toContainText('jobs-1111.myshopify.com');
+  await expect(freshness).toContainText('No successful sync yet.');
+  await expect(page.getByText('jobs-2222')).toHaveCount(0);
+
+  await expect(page.getByTestId('today-receivables')).toContainText('Nothing issued is outstanding.');
+  await page.screenshot({ path: 'test-results/today.png', fullPage: true });
+});
+
 test('operator sees blocked and quarantined jobs with their reason, and no other business\'s jobs', async ({ page }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
