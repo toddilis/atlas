@@ -15,6 +15,7 @@ import { drain as drainOutbox } from '../platform/tools/outbox.js';
 import { replay } from '../platform/events/projector.js';
 import { carrierCostSyncEnabled, runCarrierCostJobs } from '../platform/jobs/carrier-cost.js';
 import { runShopifySyncJobs, shopifySyncEnabled } from '../platform/jobs/shopify-sync.js';
+import { runApprovedActionJobs } from '../platform/jobs/approved-actions.js';
 import { runInvoicePartJobs } from '../agents/controller/invoice-parts.js';
 import { orgId } from '../data/supabase.js';
 
@@ -82,6 +83,13 @@ async function tick(): Promise<void> {
     log.info('worker.invoice_part_jobs', await runInvoicePartJobs(orgId()));
   } catch (e) {
     log.error('worker.invoice_part_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
+  }
+  // UI-01 (0037): execute actions an operator approved in the console. executeApproved
+  // re-checks the agent's grant, policy and material subject before each durable attempt.
+  try {
+    log.info('worker.approved_action_jobs', await runApprovedActionJobs(orgId()));
+  } catch (e) {
+    log.error('worker.approved_action_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
   }
 }
 

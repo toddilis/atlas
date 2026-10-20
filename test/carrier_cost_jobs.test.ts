@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { carrierCostSyncEnabled, classify, runCarrierCostJobs, type JobsStore } from '../src/platform/jobs/carrier-cost.js';
 
 const ORG = '67000000-0000-4000-8000-000000000001';
-const job = (n: number) => ({ org_id: ORG, job_key: `carrier-cost:d${n}`, source_id: 'src', dispatch_id: `d${n}`, lease_token: `lease-${n}`, attempts: 1 });
+const job = (n: number) => ({ org_id: ORG, job_key: `carrier-cost:d${n}`, source_id: 'src', dispatch_id: `d${n}`, action_id: null, lease_token: `lease-${n}`, attempts: 1 });
 
 // In-memory store: hands out the queued jobs once and applies the database's outcome rules.
 function fakeStore(count: number, quarantineKey?: string) {

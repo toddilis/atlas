@@ -99,6 +99,26 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','invoices.record_print','notify'),
  -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
  ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required');
+-- Approvals (0037): two pending bound proposals the journey decides, and another
+-- business's pending approval that must never be shown.
+do $$
+declare org uuid; intent jsonb;
+begin
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values
+   ('11111111-1111-4111-8111-111111111111','operator','approvals.decide','notify'),
+   ('11111111-1111-4111-8111-111111111111','controller','demo.widget_restock','approve_required'),
+   ('22222222-2222-4222-8222-222222222222','controller','demo.widget_restock','approve_required');
+  foreach org in array array['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222']::uuid[] loop
+    intent:=jsonb_build_object('org_id',org,'schema_version','1','tool_name','demo.widget_restock','agent_name','controller',
+      'input','{}'::jsonb,'subject_snapshot','{}'::jsonb,'policy_snapshot',null,'subject_type','observation','subject_id',null);
+    if org='11111111-1111-4111-8111-111111111111' then
+      perform create_bound_approval(org,intent,now()+interval '2 days','Restock widget order #88');
+      perform create_bound_approval(org,intent,now()+interval '2 days','Credit note for order #91');
+    else
+      perform create_bound_approval(org,intent,now()+interval '2 days','OTHER-APPROVAL-SECRET');
+    end if;
+  end loop;
+end $$;
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';

@@ -85,7 +85,7 @@ export async function runInvoicePartJobs(orgId: string, options: { limit?: numbe
   const draft = options.draft ?? draftDispatchPart;
   return runJobPass(orgId, options.store ?? invoicePartJobs, async job => {
     // A work job always names its shipment (scheduled_jobs_dispatch_scope, 0036).
-    const result = await draft({ orgId, sourceId: job.source_id }, job.dispatch_id!) as { invoiceId?: string; snapshotId?: string; reused?: boolean } | null;
+    const result = await draft({ orgId, sourceId: job.source_id! }, job.dispatch_id!) as { invoiceId?: string; snapshotId?: string; reused?: boolean } | null;
     return { invoice_id: result?.invoiceId ?? null, snapshot_id: result?.snapshotId ?? null, reused: result?.reused ?? null };
   }, classifyInvoicePart, options.limit ?? 20);
 }

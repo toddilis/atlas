@@ -33,6 +33,10 @@ export async function bootAgents(): Promise<void> {
     // Recording what happened to a printed invoice (0034). Issuing an invoice
     // (operator → controller.issue_invoice) is never seeded: a business turns it on.
     { agentName: 'operator', toolName: 'invoices.record_print', risk: 'notify' },
+    // Console operators may decide pending approvals (0037), on the same terms as jobs.
+    // The decision only AUTHORISES the stored action; execution still re-checks the
+    // acting agent's own grant and policy.
+    { agentName: 'operator', toolName: 'approvals.decide', risk: 'notify' },
   ]);
 
   booted = true;

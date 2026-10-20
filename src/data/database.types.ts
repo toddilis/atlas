@@ -2390,6 +2390,7 @@ export type Database = {
       }
       scheduled_jobs: {
         Row: {
+          action_id: string | null
           attempts: number
           created_at: string
           dispatch_id: string | null
@@ -2400,13 +2401,14 @@ export type Database = {
           lease_until: string | null
           next_attempt_at: string
           org_id: string
-          source_id: string
+          source_id: string | null
           state: string
           updated_at: string
           close_unneeded_job: undefined | null
           scheduled_job_needed: boolean | null
         }
         Insert: {
+          action_id?: string | null
           attempts?: number
           created_at?: string
           dispatch_id?: string | null
@@ -2417,11 +2419,12 @@ export type Database = {
           lease_until?: string | null
           next_attempt_at?: string
           org_id: string
-          source_id: string
+          source_id?: string | null
           state?: string
           updated_at?: string
         }
         Update: {
+          action_id?: string | null
           attempts?: number
           created_at?: string
           dispatch_id?: string | null
@@ -2432,11 +2435,17 @@ export type Database = {
           lease_until?: string | null
           next_attempt_at?: string
           org_id?: string
-          source_id?: string
+          source_id?: string | null
           state?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "scheduled_jobs_action_fk"
+            columns: ["org_id", "action_id"]
+            referencedRelation: "approved_actions"
+            referencedColumns: ["org_id", "id"]
+          },
           {
             foreignKeyName: "scheduled_jobs_org_id_fkey"
             columns: ["org_id"]
@@ -3020,6 +3029,10 @@ export type Database = {
         }
         Returns: string
       }
+      approved_action_job_needed: {
+        Args: { p_action_id: string; p_org_id: string }
+        Returns: boolean
+      }
       assert_action_authority: {
         Args: { p_agent: string; p_org_id: string; p_tool: string }
         Returns: undefined
@@ -3076,6 +3089,7 @@ export type Database = {
       claim_scheduled_job: {
         Args: { p_kind: string; p_org_id: string }
         Returns: {
+          action_id: string | null
           attempts: number
           created_at: string
           dispatch_id: string | null
@@ -3086,7 +3100,7 @@ export type Database = {
           lease_until: string | null
           next_attempt_at: string
           org_id: string
-          source_id: string
+          source_id: string | null
           state: string
           updated_at: string
         }
@@ -3128,6 +3142,10 @@ export type Database = {
           p_reason?: string
         }
         Returns: undefined
+      }
+      discover_approved_action_jobs: {
+        Args: { p_org_id: string }
+        Returns: number
       }
       discover_carrier_cost_jobs: {
         Args: { p_org_id: string }
@@ -3297,6 +3315,17 @@ export type Database = {
           p_org_id: string
         }
         Returns: Json
+      }
+      operator_decide_approval: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_approval_id: string
+          p_disposition: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
       }
       operator_record_invoice_print: {
         Args: {

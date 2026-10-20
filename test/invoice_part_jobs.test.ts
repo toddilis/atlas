@@ -4,7 +4,7 @@ import { classifyInvoicePart, runInvoicePartJobs } from '../src/agents/controlle
 import type { JobsStore } from '../src/platform/jobs/store.js';
 
 const ORG = '69000000-0000-4000-8000-000000000001';
-const job = (n: number) => ({ org_id: ORG, job_key: `invoice-part:d${n}`, source_id: 'src', dispatch_id: `d${n}`, lease_token: `lease-${n}`, attempts: 1 });
+const job = (n: number) => ({ org_id: ORG, job_key: `invoice-part:d${n}`, source_id: 'src', dispatch_id: `d${n}`, action_id: null, lease_token: `lease-${n}`, attempts: 1 });
 function fakeStore(count: number) {
   const queue = Array.from({ length: count }, (_, i) => job(i + 1));
   const finished: Array<{ key: string; outcome: string; detail: Record<string, unknown> }> = [];
