@@ -74,35 +74,48 @@ for (const row of bucketRows) {
 console.log(`aging parity    ${bucketRows.length} cases checked`);
 
 // ---------- overdue_days (0020: calendar days in a timezone) ----------
-const instantPairs: Array<[string, string]> = [
-  ['2026-06-01T00:00:00Z', '2026-06-16T00:00:00Z'],   // plain delta
-  ['2026-06-01T00:00:00Z', '2026-06-14T23:00:00Z'],   // calendar 14 vs elapsed-floor 13
-  ['2026-04-04T10:30:00Z', '2026-04-05T12:15:00Z'],   // NZ DST end: 25.75h elapsed = 2 calendar days
-  ['2026-09-26T09:30:00Z', '2026-09-27T13:30:00Z'],   // NZ DST start weekend
-  ['2026-06-30T13:00:00Z', '2026-07-01T11:00:00Z'],   // same NZ day, UTC crosses midnight
-  ['2026-06-20T00:00:00Z', '2026-06-16T00:00:00Z'],   // negative (due in future)
-  ['2026-06-16T12:00:00Z', '2026-06-16T12:00:00Z'],   // zero
+// Every business supplies its own timezone (PORT-01), so the grid runs per zone:
+// VICE's Auckland cases plus a contrasting US-eastern set across both DST transitions.
+const dayGrids: Array<[string, Array<[string, string]>]> = [
+  [DEFAULT_TIMEZONE, [
+    ['2026-06-01T00:00:00Z', '2026-06-16T00:00:00Z'],   // plain delta
+    ['2026-06-01T00:00:00Z', '2026-06-14T23:00:00Z'],   // calendar 14 vs elapsed-floor 13
+    ['2026-04-04T10:30:00Z', '2026-04-05T12:15:00Z'],   // NZ DST end: 25.75h elapsed = 2 calendar days
+    ['2026-09-26T09:30:00Z', '2026-09-27T13:30:00Z'],   // NZ DST start weekend
+    ['2026-06-30T13:00:00Z', '2026-07-01T11:00:00Z'],   // same NZ day, UTC crosses midnight
+    ['2026-06-20T00:00:00Z', '2026-06-16T00:00:00Z'],   // negative (due in future)
+    ['2026-06-16T12:00:00Z', '2026-06-16T12:00:00Z'],   // zero
+  ]],
+  ['America/New_York', [
+    ['2026-10-31T10:00:00Z', '2026-11-02T10:00:00Z'],   // spans the 1 Nov fall-back: 48h elapsed = 2 calendar days
+    ['2026-11-01T03:00:00Z', '2026-11-01T23:00:00Z'],   // 31 Oct 23:00 EDT → 1 Nov 18:00 EST: 1 calendar day in 20h
+    ['2026-03-08T04:00:00Z', '2026-03-09T04:00:00Z'],   // spring-forward: 24h elapsed = 2 calendar days
+    ['2026-06-30T23:00:00Z', '2026-07-01T03:00:00Z'],   // same NY day, UTC crosses midnight
+  ]],
 ];
-
-const pairValues = instantPairs
-  .map(([a, b]) => `('${a}'::timestamptz, '${b}'::timestamptz)`)
-  .join(', ');
-// Rows come back in VALUES order, so pair them positionally.
-const dayRows = psqlRows(
-  `select overdue_days(a, b, '${DEFAULT_TIMEZONE}')
-     from (values ${pairValues}) as g(a, b)`,
-);
-for (let i = 0; i < instantPairs.length; i += 1) {
-  const pair = instantPairs[i]!;
-  const row = dayRows[i];
-  if (row === undefined) throw new Error(`missing overdue_days row for pair ${pair[0]} → ${pair[1]}`);
-  const sqlDays = Number(row);
-  const tsDays = overdueDays(new Date(pair[0]), new Date(pair[1]), DEFAULT_TIMEZONE);
-  if (tsDays !== sqlDays) {
-    fail(`overdue_days(${pair[0]}, ${pair[1]}, ${DEFAULT_TIMEZONE}) — SQL ${sqlDays}, TS ${tsDays}`);
+let dayCases = 0;
+for (const [tz, instantPairs] of dayGrids) {
+  const pairValues = instantPairs
+    .map(([a, b]) => `('${a}'::timestamptz, '${b}'::timestamptz)`)
+    .join(', ');
+  // Rows come back in VALUES order, so pair them positionally.
+  const dayRows = psqlRows(
+    `select overdue_days(a, b, '${tz}')
+       from (values ${pairValues}) as g(a, b)`,
+  );
+  for (let i = 0; i < instantPairs.length; i += 1) {
+    const pair = instantPairs[i]!;
+    const row = dayRows[i];
+    if (row === undefined) throw new Error(`missing overdue_days row for pair ${pair[0]} → ${pair[1]}`);
+    const sqlDays = Number(row);
+    const tsDays = overdueDays(new Date(pair[0]), new Date(pair[1]), tz);
+    if (tsDays !== sqlDays) {
+      fail(`overdue_days(${pair[0]}, ${pair[1]}, ${tz}) — SQL ${sqlDays}, TS ${tsDays}`);
+    }
   }
+  dayCases += instantPairs.length;
 }
-console.log(`days parity     ${instantPairs.length} cases checked`);
+console.log(`days parity     ${dayCases} cases checked`);
 
 if (failures > 0) {
   console.error(`\n${failures} parity mismatches — the TS mirror has drifted from the SQL boundary`);

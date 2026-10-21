@@ -11,6 +11,7 @@
 // customer arrives in a later PR with the email integration.
 
 import { supabase, orgId } from '../../../data/supabase.js';
+import { loadActivePricing } from '../../../platform/pricing/service.js';
 import { appendEvent } from '../../../platform/events/eventLog.js';
 import type { ToolContext } from '../../../platform/tools/registry.js';
 
@@ -35,12 +36,24 @@ export async function execute(
   const sb = supabase();
   const org = orgId();
 
+  // Aging runs in the business's own calendar (PORT-01): the timezone comes from the
+  // active pricing configuration — the same configuration that priced the invoices
+  // being aged. A business with no active pricing cannot have drafted BILL invoices,
+  // so only then does the RPC's legacy default apply.
+  let timezone: string | undefined;
+  try {
+    timezone = (await loadActivePricing(org, input.asOfAt)).config.timezone;
+  } catch (cause) {
+    if (!(cause instanceof Error && cause.message.includes('no effective configuration'))) throw cause;
+  }
+
   const { data, error } = await sb.rpc('generate_statement_atomic', {
     p_org_id: org,
     p_account_id: input.accountId,
     p_period_start_at: input.periodStartAt,
     p_as_of_at: input.asOfAt,
     p_generated_by: ctx.agentName,
+    ...(timezone === undefined ? {} : { p_timezone: timezone }),
   });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
