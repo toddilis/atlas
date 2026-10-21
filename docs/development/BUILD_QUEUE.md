@@ -17,7 +17,8 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 4c | Later shipment while the first is blocked | Todd | — | Waits for the first part, which carries the freight | Decide whether it may be invoiced without freight |
 | 5 | JOBS-01: scheduled Shopify ingestion | Claude | — (#42 merged) | Done: sync runs as a recurring job (0036) | — |
 | 6 | UI-01: decide approvals in the console; worker executes them | Claude | — (#43 merged) | Done: console decisions + executor job (0037) | — |
-| 7 | TODAY-01: deterministic daily dashboard (console home) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 7 | TODAY-01: deterministic daily dashboard (console home) | Claude | — (#44 merged) | Done | — |
+| 8 | AI-01a: grounded daily narration over the rollup (migration 0038 claimed; spend off until the `assistant.narrate` grant + key are set) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 

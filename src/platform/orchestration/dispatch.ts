@@ -37,6 +37,8 @@ export async function bootAgents(): Promise<void> {
     // The decision only AUTHORISES the stored action; execution still re-checks the
     // acting agent's own grant and policy.
     { agentName: 'operator', toolName: 'approvals.decide', risk: 'notify' },
+    // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
+    // for the daily briefing, turned on deliberately like controller.issue_invoice.
   ]);
 
   booted = true;
