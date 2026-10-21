@@ -16,6 +16,7 @@ import { replay } from '../platform/events/projector.js';
 import { carrierCostSyncEnabled, runCarrierCostJobs } from '../platform/jobs/carrier-cost.js';
 import { runShopifySyncJobs, shopifySyncEnabled } from '../platform/jobs/shopify-sync.js';
 import { runApprovedActionJobs } from '../platform/jobs/approved-actions.js';
+import { narrationEnabled, runDailyBriefingJobs } from '../platform/jobs/daily-briefing.js';
 import { runInvoicePartJobs } from '../agents/controller/invoice-parts.js';
 import { orgId } from '../data/supabase.js';
 
@@ -90,6 +91,16 @@ async function tick(): Promise<void> {
     log.info('worker.approved_action_jobs', await runApprovedActionJobs(orgId()));
   } catch (e) {
     log.error('worker.approved_action_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
+  }
+  // AI-01 (0038): narrate the day over the deterministic rollup, when the key is set AND
+  // the business's assistant.narrate grant (never seeded) is on. Runs last: it narrates
+  // what this tick's passes produced; figures come from stored rows, never the model.
+  if (narrationEnabled()) {
+    try {
+      log.info('worker.daily_briefing_jobs', await runDailyBriefingJobs(orgId()));
+    } catch (e) {
+      log.error('worker.daily_briefing_jobs_failed', { error: (e as { message?: string }).message ?? String(e) });
+    }
   }
 }
 

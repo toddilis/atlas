@@ -119,6 +119,12 @@ begin
     end if;
   end loop;
 end $$;
+-- Daily briefing (0038): a fresh grounded narration the home page shows, with a cited
+-- record. The grounding check runs in the worker; this stores the evidence shape.
+select record_daily_briefing('11111111-1111-4111-8111-111111111111','fixture-model','{}'::jsonb,
+  'Two proposals wait for a decision and one connection has never synced.',
+  '[{"kind":"approval","id":"00000000-0000-4000-8000-00000000aaaa","label":"pending approval: demo.widget_restock"}]'::jsonb,
+  'ok',null);
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';

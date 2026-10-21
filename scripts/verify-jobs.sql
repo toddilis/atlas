@@ -527,3 +527,64 @@ begin
     and not has_function_privilege('authenticated','operator_decide_approval(uuid,uuid,uuid,text,text,text)','execute'),
     'the console decides, the worker discovers; the need check is internal');
 end $$;
+
+-- Daily briefing jobs (0038): narration is wanted only while the business's own
+-- assistant.narrate grant is on (never seeded — the model-spend switch), actions are not
+-- paused and today's grounded briefing does not exist yet. A sixth business.
+do $$
+declare
+  company uuid:='73000000-0000-4000-8000-000000000001';
+  j scheduled_jobs; b uuid;
+begin
+  insert into orgs(id,slug,display_name) values(company,'jobs-fixture-6','Synthetic jobs six');
+
+  -- No grant, no spend: nothing is wanted or discovered.
+  perform pg_temp.jobs_assert(not daily_briefing_needed(company),'no grant means no narration');
+  perform pg_temp.jobs_assert(discover_daily_briefing_jobs(company)=0,'nothing discovered without the grant');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'assistant','assistant.narrate','notify');
+  insert into action_controls(org_id,paused,changed_by,reason) values(company,true,'probe','pause');
+  perform pg_temp.jobs_assert(not daily_briefing_needed(company),'paused actions stop narration');
+  update action_controls set paused=false where org_id=company;
+  perform pg_temp.jobs_assert(daily_briefing_needed(company),'granted and unpaused, narration is wanted');
+
+  -- One singleton job per business, with no shipment, connection or action.
+  perform pg_temp.jobs_assert(discover_daily_briefing_jobs(company)=1 and discover_daily_briefing_jobs(company)=0,'one briefing job, idempotent');
+  perform pg_temp.jobs_assert((select source_id is null and dispatch_id is null and action_id is null
+    from scheduled_jobs where org_id=company and job_key='daily-briefing:'||company),'the briefing job names only its business');
+  perform pg_temp.jobs_reject(format('insert into scheduled_jobs(org_id,job_key,kind,source_id) select %L,%L,%L,s.id from dispatch_sources s limit 1',
+    company,'x-brief','daily_briefing'),'%%scheduled_jobs_dispatch_scope%%');
+
+  -- The worker claims it, records the grounded narration with an audit row, and once a
+  -- fresh ok briefing exists the job is done for the day.
+  j:=claim_scheduled_job(company,'daily_briefing');
+  perform pg_temp.jobs_assert(j.job_key='daily-briefing:'||company and j.state='running','the briefing job is leased');
+  perform pg_temp.jobs_reject(format('select record_daily_briefing(%L,%L,%L,null,%L,%L,null)',company,'m','{}','[]','ok'),'%%daily_briefings%%');
+  perform pg_temp.jobs_reject(format('select record_daily_briefing(%L,%L,%L,null,%L,%L,null)',company,'m','{}','[]','rejected'),'%%daily_briefings%%');
+  b:=record_daily_briefing(company,'probe-model','{"facts":true}','All quiet.','[]','ok',null);
+  perform pg_temp.jobs_assert(exists(select 1 from audit_log where org_id=company and action='assistant.narrate'
+    and subject_id=b and outcome='success'),'the narration is audited');
+  perform pg_temp.jobs_assert(finish_scheduled_job(company,j.job_key,j.lease_token,'succeeded','{}')='succeeded','briefing job records its run');
+  perform pg_temp.jobs_assert(not daily_briefing_needed(company),'a fresh grounded briefing satisfies the day');
+  perform pg_temp.jobs_assert(discover_daily_briefing_jobs(company)=0,'the day''s job is not re-armed');
+
+  -- A rejected narration keeps its reason as evidence and does not satisfy the day.
+  perform record_daily_briefing(company,'probe-model','{"facts":true}',null,'[]','rejected','briefing rejected: invented a number');
+  -- Synthetic time travel for the probe only; the table is immutable to every role.
+  execute 'alter table daily_briefings disable trigger daily_briefings_immutable';
+  update daily_briefings set generated_at=now()-interval '25 hours' where org_id=company and status='ok';
+  execute 'alter table daily_briefings enable trigger daily_briefings_immutable';
+  perform pg_temp.jobs_assert(daily_briefing_needed(company),'a stale or rejected briefing does not satisfy the day');
+  -- Revoking the grant closes the waiting job instead of spending.
+  update scheduled_jobs set state='blocked',last_error='x' where org_id=company and job_key='daily-briefing:'||company;
+  update tool_grants set enabled=false where org_id=company and agent_name='assistant' and tool_name='assistant.narrate';
+  perform pg_temp.jobs_assert(discover_daily_briefing_jobs(company)=0,'a revoked grant discovers nothing');
+  perform pg_temp.jobs_assert((select state='succeeded' from scheduled_jobs where org_id=company and job_key='daily-briefing:'||company)
+    and exists(select 1 from job_runs where org_id=company and job_key='daily-briefing:'||company and outcome='not_needed'),
+    'a revoked grant''s waiting job closes as no longer needed');
+
+  perform pg_temp.jobs_assert(has_function_privilege('service_role','record_daily_briefing(uuid,text,jsonb,text,jsonb,text,text)','execute')
+    and has_function_privilege('service_role','discover_daily_briefing_jobs(uuid)','execute')
+    and not has_function_privilege('service_role','daily_briefing_needed(uuid)','execute')
+    and not has_function_privilege('authenticated','record_daily_briefing(uuid,text,jsonb,text,jsonb,text,text)','execute'),
+    'the worker records and discovers; the need check is internal');
+end $$;

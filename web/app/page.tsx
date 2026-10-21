@@ -6,6 +6,7 @@
 import Link from 'next/link';
 import { supabaseServer, orgId } from '@/lib/supabase';
 import { formatCents } from '@/lib/format';
+import { briefingView, refHref, type BriefingRow } from '@/lib/briefing';
 import type { JobRow } from '@/lib/jobs';
 import {
   DAY_MS, draftParts, expiringSoon, jobAttention, lastSuccessByJob, nextSyncAt, receivables, sourceFreshness, withinLastDay,
@@ -39,8 +40,10 @@ async function loadToday(now: Date) {
     sb.from('carrier_cost_evidence').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('recorded_at', cutoff),
     sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
   ]);
+  const briefing = await sb.from('daily_briefings').select('generated_at, narration, refs, status, model')
+    .eq('org_id', org).eq('status', 'ok').order('generated_at', { ascending: false }).limit(1).maybeSingle();
   for (const r of [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls]) if (r.error) throw r.error;
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, briefing]) if (r.error) throw r.error;
 
   const jobRows = (jobs.data ?? []) as JobRow[];
   const sourceRows = (sources.data ?? []) as SyncSourceRow[];
@@ -48,6 +51,7 @@ async function loadToday(now: Date) {
   const open = (openInvoices.data ?? []) as TodayInvoiceRow[];
   const drafts = (draftInvoices.data ?? []) as unknown as TodayInvoiceRow[];
   return {
+    briefing: briefingView((briefing.data ?? null) as BriefingRow | null, now),
     paused: Boolean(controls.data?.paused),
     pendingApprovals: (pendingApprovals.data ?? []).length,
     expiringApprovals: expiringSoon((pendingApprovals.data ?? []).map(a => a.expires_at as string | null), now),
@@ -96,6 +100,30 @@ export default async function HomePage() {
           Business actions are paused. Nothing is claimed or executed until they are resumed.
         </div>
       ) : null}
+
+      <section aria-label="Briefing" data-testid="today-briefing">
+        {today.briefing.state === 'fresh' ? (
+          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-5">
+            <p className="text-sm text-zinc-800 dark:text-zinc-200">{today.briefing.narration}</p>
+            {today.briefing.refs.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                {today.briefing.refs.map(ref => (
+                  <Link key={`${ref.kind}:${ref.id}`} href={refHref(ref)} className="text-zinc-600 dark:text-zinc-400 underline-offset-2 hover:underline">
+                    {ref.label}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-2 text-xs text-zinc-500">
+              Narrated {relative(today.briefing.generatedAt, now)} over the stored records; every figure on this page comes from the records, not the narration.
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-zinc-500">
+            No fresh narration. The dashboard below is the deterministic source of truth.
+          </div>
+        )}
+      </section>
 
       <section className="space-y-3" aria-label="Needs you" data-testid="today-needs-you">
         <h2 className="text-lg font-semibold">Needs you</h2>

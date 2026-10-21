@@ -96,6 +96,12 @@ test('the home page is the operator\'s day, from stored rows alone, with explici
   await login(page);
   await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
 
+  // The day's narration is shown with its cited record; figures stay the dashboard's.
+  const briefing = page.getByTestId('today-briefing');
+  await expect(briefing).toContainText('Two proposals wait for a decision and one connection has never synced.');
+  await expect(briefing.getByRole('link', { name: 'pending approval: demo.widget_restock' })).toHaveAttribute('href', '/approvals');
+  await expect(briefing).toContainText('every figure on this page comes from the records');
+
   await expect(page.getByTestId('stat-approvals')).toContainText('Pending approvals');
   await expect(page.getByTestId('stat-approvals')).toContainText('2');
   await expect(page.getByTestId('stat-jobs')).toContainText('3 blocked · 1 quarantined');

@@ -638,6 +638,49 @@ export type Database = {
           },
         ]
       }
+      daily_briefings: {
+        Row: {
+          error: string | null
+          generated_at: string
+          id: string
+          model: string
+          narration: string | null
+          org_id: string
+          refs: NonNullable<Json>
+          snapshot: NonNullable<Json>
+          status: string
+        }
+        Insert: {
+          error?: string | null
+          generated_at?: string
+          id?: string
+          model: string
+          narration?: string | null
+          org_id: string
+          refs?: NonNullable<Json>
+          snapshot: NonNullable<Json>
+          status: string
+        }
+        Update: {
+          error?: string | null
+          generated_at?: string
+          id?: string
+          model?: string
+          narration?: string | null
+          org_id?: string
+          refs?: NonNullable<Json>
+          snapshot?: NonNullable<Json>
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_briefings_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dispatch_allocations: {
         Row: {
           dispatch_id: string
@@ -3132,6 +3175,7 @@ export type Database = {
         Args: { p_org_id: string; p_tool: string }
         Returns: Json
       }
+      daily_briefing_needed: { Args: { p_org_id: string }; Returns: boolean }
       dearmor: { Args: { "": string }; Returns: string }
       decide_bound_approval: {
         Args: {
@@ -3148,6 +3192,10 @@ export type Database = {
         Returns: number
       }
       discover_carrier_cost_jobs: {
+        Args: { p_org_id: string }
+        Returns: number
+      }
+      discover_daily_briefing_jobs: {
         Args: { p_org_id: string }
         Returns: number
       }
@@ -3434,6 +3482,18 @@ export type Database = {
           p_org_id: string
           p_quote_key: string
           p_source_id: string
+        }
+        Returns: string
+      }
+      record_daily_briefing: {
+        Args: {
+          p_error: string
+          p_model: string
+          p_narration: string
+          p_org_id: string
+          p_refs: Json
+          p_snapshot: Json
+          p_status: string
         }
         Returns: string
       }
