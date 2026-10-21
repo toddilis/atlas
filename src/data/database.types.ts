@@ -397,6 +397,55 @@ export type Database = {
           },
         ]
       }
+      assistant_exchanges: {
+        Row: {
+          answer: string | null
+          asked_by_email: string
+          asked_by_id: string
+          citations: NonNullable<Json>
+          created_at: string
+          error: string | null
+          id: string
+          model: string
+          org_id: string
+          question: string
+          status: string
+        }
+        Insert: {
+          answer?: string | null
+          asked_by_email: string
+          asked_by_id: string
+          citations?: NonNullable<Json>
+          created_at?: string
+          error?: string | null
+          id?: string
+          model: string
+          org_id: string
+          question: string
+          status: string
+        }
+        Update: {
+          answer?: string | null
+          asked_by_email?: string
+          asked_by_id?: string
+          citations?: NonNullable<Json>
+          created_at?: string
+          error?: string | null
+          id?: string
+          model?: string
+          org_id?: string
+          question?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_exchanges_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -3469,6 +3518,20 @@ export type Database = {
           p_state: string
         }
         Returns: undefined
+      }
+      record_assistant_exchange: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_answer: string
+          p_citations: Json
+          p_error: string
+          p_model: string
+          p_org_id: string
+          p_question: string
+          p_status: string
+        }
+        Returns: string
       }
       record_carrier_cost: {
         Args: {

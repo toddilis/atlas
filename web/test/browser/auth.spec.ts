@@ -189,6 +189,25 @@ test('operator decides pending approvals with a reason; decisions and execution 
   await page.screenshot({ path: 'test-results/approvals.png', fullPage: true });
 });
 
+test('the assistant shows recorded exchanges with their real citations, and says plainly when no model is configured', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.getByRole('link', { name: 'Assistant', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Assistant', exact: true })).toBeVisible();
+
+  // CI's console holds no model key: the page says so instead of offering a dead form.
+  await expect(page.getByTestId('assistant-note')).toContainText('No model is configured on the console host');
+  await expect(page.getByRole('button', { name: 'Ask' })).toHaveCount(0);
+
+  const exchange = page.getByTestId('exchange').filter({ hasText: 'Which invoices are overdue?' });
+  await expect(exchange).toContainText('One invoice is outstanding and none are overdue.');
+  await expect(exchange).toContainText('operator@example.test');
+  await expect(exchange).toContainText('invoices_lookup');
+  await expect(exchange.getByRole('link', { name: 'invoice AUTH-ALLOWED-001 (draft)' }))
+    .toHaveAttribute('href', '/invoices/00000000-0000-4000-8000-00000000bbbb');
+  await page.screenshot({ path: 'test-results/assistant.png', fullPage: true });
+});
+
 test('operator retries a stopped job with a reason; a stale page cannot retry it again', async ({ page }) => {
   await login(page);
   await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();

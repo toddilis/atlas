@@ -119,6 +119,15 @@ begin
     end if;
   end loop;
 end $$;
+-- Assistant (0039): the grant that switches it on, and one answered exchange with the
+-- citations code built from the queries that ran. The console has no model key in CI, so
+-- the journey also sees the explicit no-model state.
+insert into tool_grants(org_id,agent_name,tool_name,risk) values
+ ('11111111-1111-4111-8111-111111111111','operator','assistant.ask','notify');
+select record_assistant_exchange('11111111-1111-4111-8111-111111111111','00000000-0000-4000-8000-00000000cccc',
+  'operator@example.test','Which invoices are overdue?','One invoice is outstanding and none are overdue.',
+  '[{"tool":"invoices_lookup","args":{"overdue_only":true},"rows":[{"kind":"invoice","id":"00000000-0000-4000-8000-00000000bbbb","label":"invoice AUTH-ALLOWED-001 (draft)"}]}]'::jsonb,
+  'fixture-model','ok',null);
 -- Daily briefing (0038): a fresh grounded narration the home page shows, with a cited
 -- record. The grounding check runs in the worker; this stores the evidence shape.
 select record_daily_briefing('11111111-1111-4111-8111-111111111111','fixture-model','{}'::jsonb,

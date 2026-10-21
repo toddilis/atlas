@@ -33,5 +33,6 @@ the highest reservation.
 | 0035 | `invoice_part_jobs` | BILL-01 / JOBS-01 (step 4c) | main (PR #40) |
 | 0036 | `shopify_sync_jobs` | JOBS-01 (scheduled ingestion) | main (PR #42) |
 | 0037 | `approval_console` | UI-01 (console approvals + executor job) | main (PR #43) |
-| 0038 | `daily_briefings` | AI-01 (grounded narration) | claimed 20 Oct (queue row), in progress |
-| **0039** | **next unclaimed** | — | — |
+| 0038 | `daily_briefings` | AI-01 (grounded narration) | main (PR #45) |
+| 0039 | `assistant_exchanges` | AI-01 (read-only assistant) | claimed 21 Oct (queue row), in progress |
+| **0040** | **next unclaimed** | — | — |
