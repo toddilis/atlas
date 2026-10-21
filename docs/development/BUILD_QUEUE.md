@@ -19,7 +19,8 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 6 | UI-01: decide approvals in the console; worker executes them | Claude | — (#43 merged) | Done: console decisions + executor job (0037) | — |
 | 7 | TODAY-01: deterministic daily dashboard (console home) | Claude | — (#44 merged) | Done | — |
 | 8 | AI-01a: grounded daily narration over the rollup | Claude | — (#45 merged) | Done: spend off until the `assistant.narrate` grant + key are set | — |
-| 9 | AI-01b (PR-T): read-only console assistant (migration 0039 claimed; spend off until the `assistant.ask` grant + console key are set) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 9 | AI-01b (PR-T): read-only console assistant | Claude | — (#46 merged) | Done: spend off until the `assistant.ask` grant + console key are set | — |
+| 10 | PORT-01: contrasting synthetic business profile through the full invoice loop (no migration) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
