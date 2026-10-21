@@ -526,3 +526,47 @@ test('the worker drafts a wholesale shipment\'s invoice part; ones it cannot pri
   await page.screenshot({ path: 'test-results/invoice-part-jobs.png', fullPage: true });
 });
 
+
+// Catalogue (0040, CONFIG-01a): runs last — it adds a product and a retailer, which
+// earlier journeys' counts must not see. Cross-business rows stay invisible, creates
+// land with a confirmation, a duplicate SKU is refused with its reason, and an edit
+// carries the loaded row's timestamp so a stale page cannot overwrite a newer change.
+test('an operator sets up the catalogue in the console: list, create, duplicate refusal, edit', async ({ page }) => {
+  await login(page);
+  await page.goto('/catalog');
+  await expect(page.getByRole('heading', { name: 'Catalogue' })).toBeVisible();
+  // This business's rows, never the other business's. Values live in form inputs, so
+  // the assertions read display values, not text content.
+  await expect(page.getByTestId('product').filter({ has: page.locator('input[value="TEE"]') })).toHaveCount(1);
+  await expect(page.getByTestId('retailer').filter({ has: page.locator('input[value="Synthetic Retail North"]') })).toHaveCount(1);
+  await expect(page.locator('input[value*="OTHER-SECRET"]')).toHaveCount(0);
+
+  // Create a product.
+  await page.getByLabel('New product SKU', { exact: true }).fill('GIZMO');
+  await page.getByLabel('New product name', { exact: true }).fill('Browser gizmo');
+  await page.getByRole('button', { name: 'Add product', exact: true }).click();
+  await expect(page.getByTestId('catalog-notice')).toContainText('Product saved.');
+  const gizmo = page.getByTestId('product').filter({ hasText: 'Created in the console.' }).filter({ has: page.locator('input[value="GIZMO"]') });
+  await expect(gizmo).toHaveCount(1);
+
+  // A duplicate SKU is refused with its reason, and nothing is added.
+  await page.getByLabel('New product SKU', { exact: true }).fill('TEE');
+  await page.getByLabel('New product name', { exact: true }).fill('Impostor tee');
+  await page.getByRole('button', { name: 'Add product', exact: true }).click();
+  await expect(page.getByTestId('catalog-notice')).toContainText('A product with that SKU already exists');
+  await expect(page.getByTestId('product').filter({ has: page.locator('input[value="Impostor tee"]') })).toHaveCount(0);
+
+  // Create a retailer and edit it: the row form carries the loaded timestamp.
+  await page.getByLabel('New retailer name', { exact: true }).fill('Browser Retail');
+  await page.getByLabel('New retailer currency', { exact: true }).fill('NZD');
+  await page.getByRole('button', { name: 'Add retailer', exact: true }).click();
+  await expect(page.getByTestId('catalog-notice')).toContainText('Retailer saved.');
+  const retailer = page.getByTestId('retailer').filter({ has: page.locator('input[value="Browser Retail"]') });
+  await expect(retailer).toHaveCount(1);
+  await retailer.getByLabel('Terms days of Browser Retail', { exact: true }).fill('30');
+  await retailer.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('catalog-notice')).toContainText('Retailer saved.');
+  await expect(page.getByTestId('retailer').filter({ has: page.locator('input[value="Browser Retail"]') })
+    .getByLabel('Terms days of Browser Retail', { exact: true })).toHaveValue('30');
+  await page.screenshot({ path: 'test-results/catalog.png', fullPage: true });
+});
