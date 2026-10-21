@@ -588,3 +588,45 @@ begin
     and not has_function_privilege('authenticated','record_daily_briefing(uuid,text,jsonb,text,jsonb,text,text)','execute'),
     'the worker records and discovers; the need check is internal');
 end $$;
+
+-- Assistant exchanges (0039): the operator's assistant.ask grant is the spend switch
+-- (never seeded); every exchange is recorded immutably with who asked, the citations code
+-- built, and an audit row. A seventh business.
+do $$
+declare
+  company uuid:='74000000-0000-4000-8000-000000000001'; actor uuid:='74000000-0000-4000-8000-0000000000aa';
+  x uuid;
+begin
+  insert into orgs(id,slug,display_name) values(company,'jobs-fixture-7','Synthetic jobs seven');
+
+  -- Refusals: identity, no grant, an approve_required grant, pause, and shape constraints.
+  perform pg_temp.jobs_reject(format('select record_assistant_exchange(%L,null,%L,%L,%L,%L,%L,%L,null)',
+    company,'ops@example.test','q','a','[]','m','ok'),'%%operator identity required%%');
+  perform pg_temp.jobs_reject(format('select record_assistant_exchange(%L,%L,%L,%L,%L,%L,%L,%L,null)',
+    company,actor,'ops@example.test','q','a','[]','m','ok'),'%%entitlement missing or revoked%%');
+  insert into tool_grants(org_id,agent_name,tool_name,risk) values(company,'operator','assistant.ask','approve_required');
+  perform pg_temp.jobs_reject(format('select record_assistant_exchange(%L,%L,%L,%L,%L,%L,%L,%L,null)',
+    company,actor,'ops@example.test','q','a','[]','m','ok'),'%%must not require approval%%');
+  update tool_grants set risk='notify' where org_id=company and tool_name='assistant.ask';
+  insert into action_controls(org_id,paused,changed_by,reason) values(company,true,'probe','pause');
+  perform pg_temp.jobs_reject(format('select record_assistant_exchange(%L,%L,%L,%L,%L,%L,%L,%L,null)',
+    company,actor,'ops@example.test','q','a','[]','m','ok'),'%%business actions paused%%');
+  update action_controls set paused=false where org_id=company;
+  perform pg_temp.jobs_reject(format('select record_assistant_exchange(%L,%L,%L,%L,null,%L,%L,%L,null)',
+    company,actor,'ops@example.test','q','[]','m','ok'),'%%assistant_exchanges%%');
+  perform pg_temp.jobs_reject(format('select record_assistant_exchange(%L,%L,%L,%L,%L,%L,%L,%L,null)',
+    company,actor,'ops@example.test','q',null,'[]','m','failed'),'%%assistant_exchanges%%');
+
+  -- A recorded exchange carries who asked and is audited; the record is immutable.
+  x:=record_assistant_exchange(company,actor,'ops@example.test','Which invoices are overdue?',
+    'None are overdue.','[{"tool":"invoices_lookup","args":{},"rows":[]}]','probe-model','ok',null);
+  perform pg_temp.jobs_assert((select asked_by_email='ops@example.test' and status='ok' from assistant_exchanges where id=x),'the exchange records who asked');
+  perform pg_temp.jobs_assert(exists(select 1 from audit_log where org_id=company and action='assistant.ask' and subject_id=x and outcome='success'),
+    'the exchange is audited');
+  perform record_assistant_exchange(company,actor,'ops@example.test','q2',null,'[]','probe-model','failed','assistant failed: the model declined this question');
+  perform pg_temp.jobs_reject(format('update assistant_exchanges set answer=%L where id=%L','edited',x),'%%append-only%%');
+
+  perform pg_temp.jobs_assert(has_function_privilege('service_role','record_assistant_exchange(uuid,uuid,text,text,text,jsonb,text,text,text)','execute')
+    and not has_function_privilege('authenticated','record_assistant_exchange(uuid,uuid,text,text,text,jsonb,text,text,text)','execute'),
+    'the console records through the RPC alone');
+end $$;

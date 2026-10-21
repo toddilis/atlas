@@ -1,6 +1,7 @@
 import { supabase } from '../../data/supabase.js';
 import type { Json } from '../../data/database.types.js';
 import { anthropic, model } from '../../integrations/anthropic/client.js';
+import { assertNumbersGrounded } from './grounding.js';
 
 // AI-01: the daily briefing narrates the deterministic rollup (PLAN PR-S). Deterministic
 // code computes every figure and picks every record reference; the model only turns those
@@ -95,17 +96,12 @@ export async function buildBriefingSnapshot(orgId: string, now = new Date()): Pr
   };
 }
 
-const digitTokens = (text: string) => new Set((text.match(/\d+/g) ?? []).map(t => t.replace(/^0+(?=\d)/, '')));
-
 /** Reject a narration that introduces any number or record the snapshot does not carry.
  * Every digit run in the narration must appear as a digit run somewhere in the facts
  * (dates in generatedAt/refs excluded on purpose: the narration may not use them either). */
 export function assertGrounded(snapshot: BriefingSnapshot, narration: string, refIds: string[]): void {
   if (!narration.trim() || narration.length > 700) throw new Error('briefing rejected: narration empty or too long');
-  const allowed = digitTokens(JSON.stringify(snapshot.facts));
-  for (const token of digitTokens(narration)) {
-    if (!allowed.has(token)) throw new Error(`briefing rejected: narration introduces the number ${token}, which is not in the facts`);
-  }
+  assertNumbersGrounded(JSON.stringify(snapshot.facts), narration, 'briefing');
   const known = new Set(snapshot.refs.map(r => r.id));
   for (const id of refIds) {
     if (!known.has(id)) throw new Error(`briefing rejected: narration cites unknown record ${id}`);
