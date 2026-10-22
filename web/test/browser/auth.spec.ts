@@ -544,6 +544,41 @@ test('an operator generates a retailer statement that reflects the recorded paym
   await page.screenshot({ path: 'test-results/statement-generated.png', fullPage: true });
 });
 
+// Runs after the generation journey: its statement is the one printed, sent and voided.
+test('an operator prints the statement, records the send, and voids it with a reason', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/statements');
+  await page.locator('tbody tr').filter({ hasText: 'Synthetic Retail North' }).first()
+    .getByRole('link').first().click();
+  await expect(page.getByRole('heading', { name: 'Statement of account' })).toBeVisible();
+
+  // The customer document: business identity (display-name fallback until a profile is
+  // saved), the derivation and the aging — in the invoice document's money style.
+  await page.getByRole('link', { name: 'Open printable statement' }).click();
+  await expect(page.locator('body')).toContainText('From: Auth browser fixture');
+  await expect(page.locator('body')).toContainText('closing NZD 141.50');
+  await expect(page.locator('body')).toContainText('To: Synthetic Retail North');
+  await page.goBack();
+
+  // Record the send; the fact lands on the row, attributed.
+  await page.getByRole('button', { name: 'Record sent', exact: true }).click();
+  await expect(page.getByTestId('statement-notice')).toContainText('Recorded as sent');
+  await expect(page.getByText('Sent', { exact: false }).filter({ hasText: 'operator@example.test' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Record sent', exact: true })).toHaveCount(0);
+
+  // Void it with a reason; the figures stay, the document reprints marked VOID.
+  await page.getByLabel('Void reason', { exact: true }).fill('superseded by a browser redraft');
+  await page.getByRole('button', { name: 'Void statement', exact: true }).click();
+  await expect(page.getByTestId('statement-notice')).toContainText('Statement voided');
+  await expect(page.getByTestId('voided-detail')).toContainText('superseded by a browser redraft');
+  await expect(page.getByLabel('Void reason', { exact: false })).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/statement-voided.png', fullPage: true });
+  await page.getByRole('link', { name: 'Open printable statement' }).click();
+  await expect(page.locator('body')).toContainText('VOID — superseded by a browser redraft');
+  await expect(page.locator('body')).toContainText('closing NZD 141.50');
+});
+
 // Runs after the pricing journeys (a version is active). The worker's own invoice part pass
 // runs against the disposable stack in its own process from the repository root, as the
 // worker does on each tick.

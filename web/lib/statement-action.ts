@@ -67,7 +67,56 @@ export async function generateStatementAction(request: Request) {
     p_actor_id: operator.actorId, p_actor_email: operator.email,
   });
   if (!error) return back('statement_generated');
-  const outcome = statementOutcomeFor(error.message);
+  const outcome = statementOutcomeFor('generate', error.message);
   if (outcome === 'failed') console.error('statements.generate_failed', { error: error.message });
   return back(outcome);
+}
+
+// Lifecycle actions (0047). Outcomes land back on the statement's own page. The database
+// enforces the grant, pause, identity, the transition rules and retry stability.
+const backTo = (id: string, outcome: StatementOutcome) =>
+  new Response(null, { status: 303, headers: { Location: `/statements/${id}?outcome=${outcome}` } });
+
+async function lifecycleOperator(request: Request): Promise<Awaited<ReturnType<typeof requireOperator>> | Response> {
+  try {
+    return await requireOperator(request);
+  } catch (error) {
+    if (!(error instanceof OperatorAuthError)) throw error;
+    if (error.status === 401) return new Response(null, { status: 303, headers: { Location: '/login' } });
+    return Response.json({ error: error.message }, { status: error.status });
+  }
+}
+
+export async function recordStatementSentAction(request: Request, statementId: string) {
+  const operator = await lifecycleOperator(request);
+  if (operator instanceof Response) return operator;
+  if (!UUID.test(statementId)) return backTo(statementId, 'not_found');
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc('operator_record_statement_sent', {
+    p_org_id: operator.orgId, p_statement_id: statementId,
+    p_actor_id: operator.actorId, p_actor_email: operator.email,
+  });
+  if (!error) return backTo(statementId, 'statement_sent');
+  const outcome = statementOutcomeFor('send', error.message);
+  if (outcome === 'failed') console.error('statements.record_send_failed', { error: error.message });
+  return backTo(statementId, outcome);
+}
+
+export async function voidStatementAction(request: Request, statementId: string) {
+  const operator = await lifecycleOperator(request);
+  if (operator instanceof Response) return operator;
+  if (!UUID.test(statementId)) return backTo(statementId, 'not_found');
+  const form = await request.formData();
+  const raw = form.get('reason');
+  const reason = typeof raw === 'string' ? raw.trim() : '';
+  if (reason.length < 3 || reason.length > 500) return backTo(statementId, 'void_invalid');
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc('operator_void_statement', {
+    p_org_id: operator.orgId, p_statement_id: statementId, p_reason: reason,
+    p_actor_id: operator.actorId, p_actor_email: operator.email,
+  });
+  if (!error) return backTo(statementId, 'statement_voided');
+  const outcome = statementOutcomeFor('void', error.message);
+  if (outcome === 'failed') console.error('statements.void_failed', { error: error.message });
+  return backTo(statementId, outcome);
 }
