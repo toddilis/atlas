@@ -39,5 +39,6 @@ the highest reservation.
 | 0041 | `operator_pause` | UI-01b (console pause/resume) | main (PR #49) |
 | 0042 | `operator_connection` | CONFIG-01b (console Shopify connection) | main (PR #50) |
 | 0043 | `operator_payment` | PAY-01 (console bank payment) | main (PR #51) |
-| 0044 | `operator_statement` | STMT-01 (console statement generation) | claimed 22 Oct (queue row), in progress |
-| **0045** | **next unclaimed** | — | — |
+| 0044 | `operator_statement` | STMT-01 (console statement generation) | main (PR #52) |
+| 0045 | `business_profile` | CONFIG-01c (profile on documents) | claimed 22 Oct (queue row), in progress |
+| **0046** | **next unclaimed** | — | — |

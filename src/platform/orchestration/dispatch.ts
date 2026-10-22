@@ -51,6 +51,8 @@ export async function bootAgents(): Promise<void> {
     // Statement generation (0044): a read-projection snapshot, the same class as
     // pricing edits. Recording payments stays never-seeded; this only derives.
     { agentName: 'operator', toolName: 'statements.generate', risk: 'notify' },
+    // The business profile printed on documents (0045): setup, not money movement.
+    { agentName: 'operator', toolName: 'profile.save', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
   ]);

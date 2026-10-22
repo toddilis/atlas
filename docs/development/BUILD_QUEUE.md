@@ -25,7 +25,8 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 12 | UI-01b: pause and resume business actions in the console | Claude | — (#49 merged) | Done | — |
 | 13 | CONFIG-01b: the Shopify connection in the console | Claude | — (#50 merged) | Done | — |
 | 14 | PAY-01 (FLOW-01 manual leg): record a bank payment against an invoice in the console | Claude | — (#51 merged) | Done: `payments.record` never seeded — the business flips it | — |
-| 15 | STMT-01 (CLOSE-01 slice): generate a statement from the console (migration 0044 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 15 | STMT-01 (CLOSE-01 slice): generate a statement from the console | Claude | — (#52 merged) | Done | — |
+| 16 | CONFIG-01c: business profile on printed invoices — legal name, tax number, address, payment instructions (migration 0045 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 

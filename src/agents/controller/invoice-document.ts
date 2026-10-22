@@ -8,14 +8,23 @@ const escape = (v: string) => v.replaceAll('&','&amp;').replaceAll('<','&lt;').r
 const money = (value: string, currency: string) => {
   const n = BigInt(value); return `${escape(currency)} ${n / 100n}.${(n % 100n).toString().padStart(2,'0')}`;
 };
-/** Who the document is from and to, as the caller's stored records name them. The money,
- * quantities, terms and references always come from the immutable document itself. */
-export interface InvoiceParties { business: string; retailer: string }
+/** Who the document is from and to, as the caller's stored records name them, plus the
+ * business profile the printed page carries (0045): legal name, tax number under the
+ * business's own label, address and payment instructions. Missing fields are simply not
+ * printed. The money, quantities, terms and references always come from the immutable
+ * document itself; the profile is presentation around it — a reprint carries the
+ * business's CURRENT details, which is what a payer needs. */
+export interface InvoiceParties {
+  business: string; retailer: string;
+  legalName?: string | null; taxLabel?: string | null; taxNumber?: string | null;
+  address?: string | null; paymentInstructions?: string | null;
+}
+const lines = (v: string) => v.split('\n').map(line => escape(line)).join('<br>');
 /** Render stored content only. A caller must authorize the exact immutable reference.
  * No provider IO; generating HTML is not evidence of print, pack, email or receipt. */
 export function renderInvoiceDocument(document: InvoiceDocument, parties?: InvoiceParties): string {
   const s = document.calculation;
   if (document.company_id !== s.businessId || s.scale !== 2 || document.revision !== 1) throw new Error('invoice document contract mismatch');
   const rows = s.lines.map(l => `<tr><td>${escape(l.description)}</td><td>${l.dispatched}</td><td>${money(l.unitPrice,s.currency)}</td><td>${money(l.lineAmount,s.currency)}</td></tr>`).join('');
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${escape(document.invoiceNumber)}</title><style>body{font:16px system-ui;margin:40px;color:#18212b}h1{font-size:28px}table{border-collapse:collapse;width:100%;margin:24px 0}td,th{padding:10px;text-align:right;border-bottom:1px solid #ccd2d8}td:first-child,th:first-child{text-align:left}.total{font-weight:bold}footer{margin-top:32px;font-size:12px}@media print{body{margin:12mm}}</style></head><body><h1>Invoice ${escape(document.invoiceNumber)}</h1><p>Order reference: ${escape(document.orderReference)}</p><p>${parties ? `From: ${escape(parties.business)}<br>To: ${escape(parties.retailer)}` : `Account: ${escape(s.input.accountId)}`}<br>Due date: ${escape(s.terms.dueDate)}</p><table><thead><tr><th>Description</th><th>Quantity</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${rows}<tr><td colspan="3">Products</td><td>${money(s.subtotal,s.currency)}</td></tr><tr><td colspan="3">Freight</td><td>${money(s.freight.amount,s.currency)}</td></tr><tr><td colspan="3">Tax (${s.tax.rateBps / 100}%)</td><td>${money(s.tax.amount,s.currency)}</td></tr><tr class="total"><td colspan="3">Total</td><td>${money(s.total,s.currency)}</td></tr></tbody></table><p>Terms: ${escape(s.terms.kind === 'explicit' ? s.terms.reason : `Day ${s.terms.day} of the month following ${s.terms.anchor}`)}</p><footer>Pricing version ${escape(s.configVersion)} · Document revision ${document.revision}<br>Document generation does not confirm printing or customer receipt.</footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${escape(document.invoiceNumber)}</title><style>body{font:16px system-ui;margin:40px;color:#18212b}h1{font-size:28px}table{border-collapse:collapse;width:100%;margin:24px 0}td,th{padding:10px;text-align:right;border-bottom:1px solid #ccd2d8}td:first-child,th:first-child{text-align:left}.total{font-weight:bold}footer{margin-top:32px;font-size:12px}@media print{body{margin:12mm}}</style></head><body><h1>Invoice ${escape(document.invoiceNumber)}</h1><p>Order reference: ${escape(document.orderReference)}</p><p>${parties ? `From: ${escape(parties.legalName || parties.business)}${parties.address ? `<br>${lines(parties.address)}` : ''}${parties.taxNumber ? `<br>${escape(parties.taxLabel || 'Tax number')}: ${escape(parties.taxNumber)}` : ''}<br>To: ${escape(parties.retailer)}` : `Account: ${escape(s.input.accountId)}`}<br>Due date: ${escape(s.terms.dueDate)}</p><table><thead><tr><th>Description</th><th>Quantity</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${rows}<tr><td colspan="3">Products</td><td>${money(s.subtotal,s.currency)}</td></tr><tr><td colspan="3">Freight</td><td>${money(s.freight.amount,s.currency)}</td></tr><tr><td colspan="3">Tax (${s.tax.rateBps / 100}%)</td><td>${money(s.tax.amount,s.currency)}</td></tr><tr class="total"><td colspan="3">Total</td><td>${money(s.total,s.currency)}</td></tr></tbody></table><p>Terms: ${escape(s.terms.kind === 'explicit' ? s.terms.reason : `Day ${s.terms.day} of the month following ${s.terms.anchor}`)}</p>${parties?.paymentInstructions ? `<p>Payment: ${lines(parties.paymentInstructions)}</p>` : ''}<footer>Pricing version ${escape(s.configVersion)} · Document revision ${document.revision}<br>Document generation does not confirm printing or customer receipt.</footer></body></html>`;
 }

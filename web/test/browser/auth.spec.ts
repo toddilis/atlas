@@ -627,6 +627,32 @@ test('an operator sets up the catalogue in the console: list, create, duplicate 
   await page.screenshot({ path: 'test-results/catalog.png', fullPage: true });
 });
 
+// The business profile (0045): saved in the console and carried by the printed invoice
+// from the next print — legal name as From, the tax number under the business's own
+// label, and the bank payment instructions a transfer needs. Runs after the statement
+// journey; the invoice printed here was issued earlier.
+test('the printed invoice carries the saved business profile', async ({ page, request }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/business');
+  await page.getByLabel('Legal name', { exact: true }).fill('Auth Browser Fixtures Ltd');
+  await page.getByLabel('Tax number label', { exact: true }).fill('GST number');
+  await page.getByLabel('Tax number', { exact: true }).fill('123-456-789');
+  await page.getByLabel('Payment instructions', { exact: true }).fill('Bank 00-0000-0000000-00 — reference the invoice number');
+  await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+  await expect(page.getByTestId('profile-notice')).toContainText('Business profile saved.');
+
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const rows = await (await request.get(`${rest}/dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-print-1&select=id`, { headers: service })).json();
+  const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
+  await page.goto(`/invoices/${parts[0].invoice_id}/print`);
+  for (const text of ['From: Auth Browser Fixtures Ltd', 'GST number: 123-456-789', 'Bank 00-0000-0000000-00'])
+    await expect(page.locator('body')).toContainText(text);
+  await page.screenshot({ path: 'test-results/invoice-with-profile.png', fullPage: true });
+});
+
 // The Shopify connection (0042): the seeded business already has its one connection
 // with a blocked sync job, so the journey edits it — cadence, disable with its warning,
 // re-enable — and sees the fixed domain and the sync's honest blocked reason.
