@@ -105,7 +105,9 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','connections.save','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','invoices.record_print','notify'),
  -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
- ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required');
+ ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required'),
+ -- Never seeded at boot either; manual payment entry is turned on deliberately (0043).
+ ('11111111-1111-4111-8111-111111111111','operator','payments.record','notify');
 -- Approvals (0037): two pending bound proposals the journey decides, and another
 -- business's pending approval that must never be shown.
 do $$

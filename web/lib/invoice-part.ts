@@ -15,6 +15,13 @@ export const INVOICE_OUTCOMES = {
   not_issued: { ok: false, text: 'Only an issued invoice can be printed. Approve it first; nothing was recorded.' },
   document_changed: { ok: false, text: 'The stored document is not the one this page showed, so nothing was recorded. Reload and check it.' },
   note: { ok: false, text: 'Say briefly what went wrong (at least 3 characters). Nothing was recorded.' },
+  payment_recorded: { ok: true, text: 'Payment recorded against this invoice, exactly once, and posted to the ledger.' },
+  payment_duplicate: { ok: false, text: 'That reference is already recorded for this invoice with different details, so nothing was recorded. Check the stored entry, or use a distinct reference for a distinct transfer.' },
+  payment_overpay: { ok: false, text: 'That amount exceeds what is outstanding on this invoice, so nothing was recorded. Apply the remainder to its own invoice.' },
+  payment_state: { ok: false, text: 'Only an issued (or partially paid) invoice can receive a payment. Nothing was recorded.' },
+  payment_paid: { ok: false, text: 'This invoice is already fully paid. An overpayment or refund is an explicit correction, not a payment entry; nothing was recorded.' },
+  payment_invalid: { ok: false, text: 'Check the fields: a reference of at least 3 characters, a positive amount with at most two decimals, and a date not in the future. Nothing was recorded.' },
+  payment_off: { ok: false, text: 'Recording payments is switched off for this business (its operator grant is missing, revoked, or set to require approval); a business turns it on deliberately. Nothing was recorded.' },
   paused: { ok: false, text: 'Business actions are paused, so nothing changed. Resume them first.' },
   failed: { ok: false, text: 'The action could not be recorded. Nothing changed; try again.' },
 } as const;
@@ -39,8 +46,26 @@ const PRINT: Array<[RegExp, InvoiceOutcome]> = [
   [/document changed|no stored document/, 'document_changed'],
   [/tool entitlement missing or revoked|agent disabled/, 'print_off'],
 ];
-export function invoiceOutcomeFor(action: 'approve' | 'print', message: string): InvoiceOutcome {
-  return [...COMMON, ...(action === 'approve' ? APPROVE : PRINT)].find(([p]) => p.test(message))?.[1] ?? 'failed';
+const PAYMENT: Array<[RegExp, InvoiceOutcome]> = [
+  [/conflicts with the stored payment/, 'payment_duplicate'],
+  [/exceeds what is outstanding/, 'payment_overpay'],
+  [/already fully paid/, 'payment_paid'],
+  [/only an issued invoice can receive|void invoice cannot receive/, 'payment_state'],
+  [/payment reference required|amount must be positive|must not be in the future/, 'payment_invalid'],
+  [/tool entitlement missing or revoked|must not require approval|agent disabled/, 'payment_off'],
+];
+export function invoiceOutcomeFor(action: 'approve' | 'print' | 'payment', message: string): InvoiceOutcome {
+  return [...COMMON, ...(action === 'approve' ? APPROVE : action === 'print' ? PRINT : PAYMENT)]
+    .find(([p]) => p.test(message))?.[1] ?? 'failed';
+}
+
+/** Exact decimal money entry ("402.59" → 40259). No floats: a mis-parsed amount is a
+ * wrong book entry, so anything but digits with at most two decimals is rejected. */
+export function parseAmountCents(input: string): number | null {
+  const m = /^(\d{1,13})(?:\.(\d{1,2}))?$/.exec(input.trim());
+  if (!m) return null;
+  const cents = Number(m[1]) * 100 + Number((m[2] ?? '').padEnd(2, '0') || '0');
+  return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
 }
 
 /** The part suffix of an invoice number (A, B, …, Z, AA …), or null for an unsuffixed one. */
