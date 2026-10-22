@@ -35,5 +35,6 @@ the highest reservation.
 | 0037 | `approval_console` | UI-01 (console approvals + executor job) | main (PR #43) |
 | 0038 | `daily_briefings` | AI-01 (grounded narration) | main (PR #45) |
 | 0039 | `assistant_exchanges` | AI-01 (read-only assistant) | main (PR #46) |
-| 0040 | `operator_catalog` | CONFIG-01a (console catalogue) | claimed 21 Oct (queue row), in progress |
-| **0041** | **next unclaimed** | — | — |
+| 0040 | `operator_catalog` | CONFIG-01a (console catalogue) | main (PR #48) |
+| 0041 | `operator_pause` | UI-01b (console pause/resume) | claimed 22 Oct (queue row), in progress |
+| **0042** | **next unclaimed** | — | — |

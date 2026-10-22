@@ -99,6 +99,8 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  -- Boot seeds the catalogue grants too (0040).
  ('11111111-1111-4111-8111-111111111111','operator','catalog.save','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','accounts.save','notify'),
+ -- Boot seeds the emergency stop too (0041).
+ ('11111111-1111-4111-8111-111111111111','operator','actions.pause','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','invoices.record_print','notify'),
  -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
  ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required');
