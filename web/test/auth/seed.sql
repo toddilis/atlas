@@ -105,6 +105,8 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','connections.save','notify'),
  -- Boot seeds statement generation too (0044).
  ('11111111-1111-4111-8111-111111111111','operator','statements.generate','notify'),
+ -- Boot seeds the business profile too (0045).
+ ('11111111-1111-4111-8111-111111111111','operator','profile.save','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','invoices.record_print','notify'),
  -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
  ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required'),

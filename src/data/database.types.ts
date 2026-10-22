@@ -553,6 +553,43 @@ export type Database = {
           },
         ]
       }
+      business_profiles: {
+        Row: {
+          address: string | null
+          legal_name: string | null
+          org_id: string
+          payment_instructions: string | null
+          tax_label: string
+          tax_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          legal_name?: string | null
+          org_id: string
+          payment_instructions?: string | null
+          tax_label?: string
+          tax_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          legal_name?: string | null
+          org_id?: string
+          payment_instructions?: string | null
+          tax_label?: string
+          tax_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_profiles_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       carrier_cost_evidence: {
         Row: {
           carrier_connection: string
@@ -3492,6 +3529,20 @@ export type Database = {
           p_tax_exempt: boolean
         }
         Returns: string
+      }
+      operator_save_business_profile: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_address: string
+          p_expected_updated_at: string
+          p_legal_name: string
+          p_org_id: string
+          p_payment_instructions: string
+          p_tax_label: string
+          p_tax_number: string
+        }
+        Returns: undefined
       }
       operator_save_pricing_version: {
         Args: {

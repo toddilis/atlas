@@ -22,18 +22,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!UUID.test(id)) return page(404, '<p>Invoice not found.</p>');
   const sb = await supabaseServer();
-  const [invoice, snapshot, org] = await Promise.all([
+  const [invoice, snapshot, org, profile] = await Promise.all([
     sb.from('invoices').select('id, state, invoice_number, account:accounts(name)').eq('org_id', operator.orgId).eq('id', id).maybeSingle(),
     sb.from('invoice_calculation_snapshots').select('document').eq('org_id', operator.orgId).eq('invoice_id', id).maybeSingle(),
     sb.from('orgs').select('display_name').eq('id', operator.orgId).single(),
+    sb.from('business_profiles').select('legal_name, tax_label, tax_number, address, payment_instructions').eq('org_id', operator.orgId).maybeSingle(),
   ]);
-  for (const r of [invoice, snapshot, org]) if (r.error) throw r.error;
+  for (const r of [invoice, snapshot, org, profile]) if (r.error) throw r.error;
   const back = `<p><a href="/invoices/${id}">Back to the invoice</a></p>`;
   if (!invoice.data || !snapshot.data) return page(404, `<p>This invoice has no stored document to print.</p>${back}`);
   if (!ISSUED.includes(invoice.data.state)) return page(409, `<p>Approve and issue this invoice before printing it.</p>${back}`);
   const account = invoice.data.account as unknown as { name: string } | null;
-  const html = renderInvoiceDocument(snapshot.data.document as unknown as InvoiceDocument,
-    { business: org.data!.display_name, retailer: account?.name ?? 'Unknown retailer' });
+  const html = renderInvoiceDocument(snapshot.data.document as unknown as InvoiceDocument, {
+    business: org.data!.display_name, retailer: account?.name ?? 'Unknown retailer',
+    legalName: profile.data?.legal_name, taxLabel: profile.data?.tax_label,
+    taxNumber: profile.data?.tax_number, address: profile.data?.address,
+    paymentInstructions: profile.data?.payment_instructions,
+  });
   // Screen-only toolbar; it does not print.
   const toolbar = `<style>@media print{.screen-only{display:none}}</style><div class="screen-only" style="margin-bottom:24px">`
     + `<button type="button" onclick="window.print()">Print</button> <a href="/invoices/${id}">Back to the invoice</a>`

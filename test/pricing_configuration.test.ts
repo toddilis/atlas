@@ -37,4 +37,14 @@ test('print renders immutable quantities/terms/order reference, escapes text and
   c.tiers[0]!.unitPrice='2000';assert.equal(renderInvoiceDocument(doc),html);
   const named=renderInvoiceDocument(doc,{business:'Synthetic <Co>',retailer:'Retailer & Sons'});
   assert.match(named,/From: Synthetic &lt;Co&gt;/);assert.match(named,/To: Retailer &amp; Sons/);assert.match(named,/NZD 379.50/);assert.doesNotMatch(named,/Account:/);
+  // The business profile (0045) prints around the immutable calculation: legal name as
+  // From, the tax number under the business's own label, address and payment
+  // instructions line-broken and escaped. Missing fields are simply not printed.
+  const profiled=renderInvoiceDocument(doc,{business:'Synthetic <Co>',retailer:'Retailer & Sons',
+    legalName:'Synthetic Fixtures Ltd',taxLabel:'GST number',taxNumber:'123-456-789',
+    address:'1 Example Street\nAuckland',paymentInstructions:'Bank 00-0000-0000000-00\n<b>Reference the invoice number</b>'});
+  assert.match(profiled,/From: Synthetic Fixtures Ltd/);assert.doesNotMatch(profiled,/From: Synthetic &lt;Co&gt;/);
+  assert.match(profiled,/GST number: 123-456-789/);assert.match(profiled,/1 Example Street<br>Auckland/);
+  assert.match(profiled,/Payment: Bank 00-0000-0000000-00<br>&lt;b&gt;Reference the invoice number&lt;\/b&gt;/);
+  assert.doesNotMatch(named,/Payment:/);assert.doesNotMatch(named,/Tax number:/);
 });
