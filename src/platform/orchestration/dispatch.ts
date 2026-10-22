@@ -53,6 +53,11 @@ export async function bootAgents(): Promise<void> {
     { agentName: 'operator', toolName: 'statements.generate', risk: 'notify' },
     // The business profile printed on documents (0045): setup, not money movement.
     { agentName: 'operator', toolName: 'profile.save', risk: 'notify' },
+    // Statement lifecycle (0047): recording that a person sent the document, and
+    // retiring a superseded snapshot — evidence on a read projection, the same class
+    // as recording an invoice print. The sending itself stays with the human.
+    { agentName: 'operator', toolName: 'statements.record_send', risk: 'notify' },
+    { agentName: 'operator', toolName: 'statements.void', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
   ]);

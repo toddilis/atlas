@@ -2989,7 +2989,11 @@ export type Database = {
           payments_cents: number
           period_start_at: string
           sent_at: string | null
+          sent_by: string | null
           state: Database["public"]["Enums"]["statement_state"]
+          voided_at: string | null
+          voided_by: string | null
+          voided_reason: string | null
         }
         Insert: {
           account_id: string
@@ -3012,7 +3016,11 @@ export type Database = {
           payments_cents: number
           period_start_at: string
           sent_at?: string | null
+          sent_by?: string | null
           state?: Database["public"]["Enums"]["statement_state"]
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_reason?: string | null
         }
         Update: {
           account_id?: string
@@ -3035,7 +3043,11 @@ export type Database = {
           payments_cents?: number
           period_start_at?: string
           sent_at?: string | null
+          sent_by?: string | null
           state?: Database["public"]["Enums"]["statement_state"]
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_reason?: string | null
         }
         Relationships: [
           {
@@ -3514,6 +3526,18 @@ export type Database = {
           orp_was_existing: boolean
         }[]
       }
+      operator_record_statement_sent: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_org_id: string
+          p_statement_id: string
+        }
+        Returns: {
+          orss_sent_at: string
+          orss_state: Database["public"]["Enums"]["statement_state"]
+        }[]
+      }
       operator_save_account: {
         Args: {
           p_account_id: string
@@ -3591,6 +3615,19 @@ export type Database = {
           p_reason: string
         }
         Returns: undefined
+      }
+      operator_void_statement: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_org_id: string
+          p_reason: string
+          p_statement_id: string
+        }
+        Returns: {
+          ovs_state: Database["public"]["Enums"]["statement_state"]
+          ovs_voided_at: string
+        }[]
       }
       overdue_days: {
         Args: { p_anchor: string; p_as_of: string; p_tz?: string }

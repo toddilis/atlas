@@ -41,5 +41,6 @@ the highest reservation.
 | 0043 | `operator_payment` | PAY-01 (console bank payment) | main (PR #51) |
 | 0044 | `operator_statement` | STMT-01 (console statement generation) | main (PR #52) |
 | 0045 | `business_profile` | CONFIG-01c (profile on documents) | main (PR #53) |
-| 0046 | `tenant_surface` | TENANT-01a (close anon/authenticated function surface) | claimed 22 Oct (queue row), in progress |
-| **0047** | **next unclaimed** | — | — |
+| 0046 | `tenant_surface` | TENANT-01a (close anon/authenticated function surface) | main (PR #54) |
+| 0047 | `statement_lifecycle` | CLOSE-01b (record sent / void in the console) | claimed 22 Oct (queue row), in progress |
+| **0048** | **next unclaimed** | — | — |

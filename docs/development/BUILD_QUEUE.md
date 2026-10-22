@@ -27,7 +27,8 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 14 | PAY-01 (FLOW-01 manual leg): record a bank payment against an invoice in the console | Claude | — (#51 merged) | Done: `payments.record` never seeded — the business flips it | — |
 | 15 | STMT-01 (CLOSE-01 slice): generate a statement from the console | Claude | — (#52 merged) | Done | — |
 | 16 | CONFIG-01c: business profile on printed invoices | Claude | — (#53 merged) | Done | — |
-| 17 | TENANT-01a: structural isolation surface — CI probe + close the anon/authenticated function surface (migration 0046 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 17 | TENANT-01a: structural isolation surface — CI probe + closed function surface | Claude | — (#54 merged) | Done: probe gates every future migration | — |
+| 18 | CLOSE-01b: statement lifecycle — printable document, record sent, void (migration 0047 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
