@@ -84,6 +84,23 @@ begin
   return query select v_inv.state,v_inv.voided_at,v_txn_id;
 end $$;
 
+-- The 0028 snapshot guard lets lifecycle fields change on a snapshot-bearing invoice
+-- while accepted BILL content stays immutable. The void evidence columns are lifecycle,
+-- not content — without this, voiding a REAL dispatch part (the only invoices VICE
+-- issues) is refused with 'invoice snapshot content is immutable'; the browser journey
+-- caught exactly that against a hand-inserted probe fixture that carried no snapshot.
+-- Exactly the 0028 body with the three columns added to the invoices allowlist.
+create or replace function protect_billing_snapshot() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
+begin
+  if TG_TABLE_NAME='invoices' then
+    if exists(select 1 from invoice_calculation_snapshots where invoice_id=old.id) and
+      (TG_OP='DELETE' or (to_jsonb(new)-array['state','issued_at','paid_at','updated_at','stripe_invoice_id','voided_at','voided_by','voided_reason']) is distinct from
+       (to_jsonb(old)-array['state','issued_at','paid_at','updated_at','stripe_invoice_id','voided_at','voided_by','voided_reason'])) then raise exception 'invoice snapshot content is immutable'; end if;
+  elsif exists(select 1 from invoice_calculation_snapshots where invoice_id=case when TG_OP='INSERT' then new.invoice_id else old.invoice_id end)
+    or (TG_OP='UPDATE' and exists(select 1 from invoice_calculation_snapshots where invoice_id=new.invoice_id)) then raise exception 'snapshot invoice lines are immutable'; end if;
+  if TG_OP='DELETE' then return old; end if; return new;
+end $$;
+
 -- post_payment_received, exactly the 0018 body plus the void guard after the invoice
 -- lock. CREATE OR REPLACE keeps the function's existing privileges.
 create or replace function post_payment_received(

@@ -16,6 +16,7 @@ declare
   company uuid:='83000000-0000-4000-8000-000000000001'; rival uuid:='83000000-0000-4000-8000-000000000002';
   operator uuid:='83000000-0000-4000-8000-0000000000aa';
   account uuid; inv_void uuid; inv_paid uuid; inv_draft uuid; r record; stmt record; voidcmd text; late_payment uuid;
+  src uuid; disp uuid; part uuid; pv uuid;
 begin
   insert into orgs(id,slug,display_name) values
     (company,'void-fixture','Synthetic void drill'),(rival,'void-rival','Synthetic void rival');
@@ -27,6 +28,18 @@ begin
   insert into invoices(org_id,account_id,invoice_number,state,channel,currency,subtotal_cents,tax_cents,total_cents,due_at)
     values(company,account,'VOID-1','draft','wholesale','NZD',17391,2609,20000,now()+interval '20 days') returning id into inv_void;
   perform issue_invoice_atomic(company,inv_void,'void-probe-issue-1');
+  -- The voidable invoice carries a REAL calculation snapshot, like every dispatch part
+  -- VICE issues: the 0028 immutability guard then covers it, and the void must pass as
+  -- a lifecycle change. A fixture without the snapshot once hid exactly that refusal.
+  insert into dispatch_sources(org_id,provider,connection_key) values(company,'probe','void-conn') returning id into src;
+  insert into dispatches(org_id,source_id,source_dispatch_key,order_key,source_revision,source_status,state,snapshot)
+    values(company,src,'void-dispatch','void-order',now(),'fulfilled','eligible','{}'::jsonb) returning id into disp;
+  insert into dispatch_invoice_parts(org_id,source_id,dispatch_id,claim_key,source_revision)
+    values(company,src,disp,'void-claim',now()) returning id into part;
+  insert into pricing_versions(org_id,version_key,revision,config,actor,reason)
+    values(company,'void-v1',1,jsonb_build_object('businessId',company::text,'version','void-v1','schemaVersion','1'),'probe','void probe') returning id into pv;
+  insert into invoice_calculation_snapshots(org_id,invoice_id,part_id,source_id,dispatch_id,source_revision,pricing_version_id,snapshot,content_hash,document)
+    values(company,inv_void,part,src,disp,now(),pv,'{}'::jsonb,'void-probe-hash','{}'::jsonb);
   insert into invoices(org_id,account_id,invoice_number,state,channel,currency,subtotal_cents,tax_cents,total_cents,due_at)
     values(company,account,'VOID-2','draft','wholesale','NZD',26087,3913,30000,now()+interval '20 days') returning id into inv_paid;
   perform issue_invoice_atomic(company,inv_paid,'void-probe-issue-2');
