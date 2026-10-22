@@ -66,6 +66,24 @@ export async function recordPayment(request: Request, invoiceId: string) {
   return back(invoiceId, code);
 }
 
+export async function voidInvoice(request: Request, invoiceId: string) {
+  const { operator, refused } = await operatorOr(request);
+  if (!operator) return refused;
+  if (!UUID.test(invoiceId)) return new Response(null, { status: 404 });
+  const form = await request.formData();
+  const reason = (text(form.get('reason'), 500) ?? '').trim();
+  if (reason.length < 3) return back(invoiceId, 'void_note');
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc('operator_void_invoice', {
+    p_org_id: operator.orgId, p_invoice_id: invoiceId, p_reason: reason,
+    p_actor_id: operator.actorId, p_actor_email: operator.email,
+  });
+  if (!error) return back(invoiceId, 'invoice_voided');
+  const code = invoiceOutcomeFor('void', error.message);
+  if (code === 'failed') console.error('invoices.void_failed', { invoice_id: invoiceId, error: error.message });
+  return back(invoiceId, code);
+}
+
 export async function recordPrint(request: Request, invoiceId: string) {
   const { operator, refused } = await operatorOr(request);
   if (!operator) return refused;

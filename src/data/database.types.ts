@@ -1781,6 +1781,9 @@ export type Database = {
           tax_cents: number
           total_cents: number
           updated_at: string
+          voided_at: string | null
+          voided_by: string | null
+          voided_reason: string | null
         }
         Insert: {
           account_id?: string | null
@@ -1801,6 +1804,9 @@ export type Database = {
           tax_cents?: number
           total_cents: number
           updated_at?: string
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_reason?: string | null
         }
         Update: {
           account_id?: string | null
@@ -1821,6 +1827,9 @@ export type Database = {
           tax_cents?: number
           total_cents?: number
           updated_at?: string
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_reason?: string | null
         }
         Relationships: [
           {
@@ -3615,6 +3624,20 @@ export type Database = {
           p_reason: string
         }
         Returns: undefined
+      }
+      operator_void_invoice: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_invoice_id: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: {
+          ovi_reversal_transaction_id: string
+          ovi_state: Database["public"]["Enums"]["invoice_state"]
+          ovi_voided_at: string
+        }[]
       }
       operator_void_statement: {
         Args: {
