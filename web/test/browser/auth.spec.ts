@@ -533,6 +533,9 @@ test('the worker drafts a wholesale shipment\'s invoice part; ones it cannot pri
 // carries the loaded row's timestamp so a stale page cannot overwrite a newer change.
 test('an operator sets up the catalogue in the console: list, create, duplicate refusal, edit', async ({ page }) => {
   await login(page);
+  // Wait for the signed-in landing before navigating: a goto during the login's token
+  // request aborts it, leaving no session.
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
   await page.goto('/catalog');
   await expect(page.getByRole('heading', { name: 'Catalogue' })).toBeVisible();
   // This business's rows, never the other business's. Values live in form inputs, so
