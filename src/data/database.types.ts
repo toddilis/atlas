@@ -2448,6 +2448,7 @@ export type Database = {
           shopify_variant_id: string | null
           sku: string
           unit: string
+          updated_at: string
         }
         Insert: {
           active?: boolean
@@ -2459,6 +2460,7 @@ export type Database = {
           shopify_variant_id?: string | null
           sku: string
           unit?: string
+          updated_at?: string
         }
         Update: {
           active?: boolean
@@ -2470,6 +2472,7 @@ export type Database = {
           shopify_variant_id?: string | null
           sku?: string
           unit?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -3436,6 +3439,22 @@ export type Database = {
         }
         Returns: string
       }
+      operator_save_account: {
+        Args: {
+          p_account_id: string
+          p_actor_email: string
+          p_actor_id: string
+          p_billing_email: string
+          p_currency: string
+          p_expected_updated_at: string
+          p_name: string
+          p_org_id: string
+          p_payment_terms_days: number
+          p_status: string
+          p_tax_exempt: boolean
+        }
+        Returns: string
+      }
       operator_save_pricing_version: {
         Args: {
           p_actor_email: string
@@ -3444,6 +3463,20 @@ export type Database = {
           p_expected_revision: number
           p_org_id: string
           p_reason: string
+        }
+        Returns: string
+      }
+      operator_save_product: {
+        Args: {
+          p_active: boolean
+          p_actor_email: string
+          p_actor_id: string
+          p_display_name: string
+          p_expected_updated_at: string
+          p_org_id: string
+          p_product_id: string
+          p_sku: string
+          p_unit: string
         }
         Returns: string
       }

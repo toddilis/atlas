@@ -441,3 +441,4 @@ psql_run -f "$SCRIPT_DIR/verify-jobs.sql"
 # PORT-01: a contrasting synthetic business through the same pipeline (same database,
 # after the VICE-shaped probes, so the isolation assertions see both businesses).
 { npx tsx "$SCRIPT_DIR/portability-fixtures.ts"; cat "$SCRIPT_DIR/verify-portability.sql"; } | psql_run
+psql_run -f "$SCRIPT_DIR/verify-catalog.sql"
