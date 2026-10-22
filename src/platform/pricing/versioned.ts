@@ -221,3 +221,18 @@ export function previewPricing(config: unknown, input: unknown) {
   try { return { status: 'ready' as const, snapshot: calculatePricing(config, input) }; }
   catch (error) { return { status: 'blocked' as const, reason: (error as Error).message }; }
 }
+
+/** Activation ordering is stored by pricing_activations; caller supplies activated
+ * versions only. A newer expired version cannot resurrect an older price book. Lives
+ * here (zod-only imports) so the console can bundle it like the calculator. */
+export function selectPricingVersion(versions: unknown[], businessId: string, pricingAt: string): PricingConfig {
+  const timestamp = Date.parse(pricingAt);
+  if (!Number.isFinite(timestamp)) throw new Error('pricing: valid pricing instant required');
+  const parsed = versions.map(v => PricingConfigSchema.parse(v));
+  if (parsed.some(v => v.businessId !== businessId)) throw new Error('pricing: cross-business configuration result');
+  const eligible = parsed.filter(v => Date.parse(v.effectiveFrom) <= timestamp).sort((a,b) => Date.parse(b.effectiveFrom)-Date.parse(a.effectiveFrom));
+  const chosen = eligible[0];
+  if (!chosen || (chosen.effectiveUntil && timestamp >= Date.parse(chosen.effectiveUntil))) throw new Error('pricing: no effective configuration');
+  if (eligible[1] && Date.parse(eligible[1].effectiveFrom) === Date.parse(chosen.effectiveFrom)) throw new Error('pricing: conflicting active versions');
+  return chosen;
+}

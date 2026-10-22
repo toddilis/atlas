@@ -3433,6 +3433,22 @@ export type Database = {
         }
         Returns: string
       }
+      operator_generate_statement: {
+        Args: {
+          p_account_id: string
+          p_actor_email: string
+          p_actor_id: string
+          p_as_of_at: string
+          p_org_id: string
+          p_period_start_at: string
+          p_timezone: string
+        }
+        Returns: {
+          ogs_closing_balance_cents: number
+          ogs_line_count: number
+          ogs_statement_id: string
+        }[]
+      }
       operator_record_invoice_print: {
         Args: {
           p_actor_email: string

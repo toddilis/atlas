@@ -1,18 +1,6 @@
-import { PricingConfigSchema, type PricingConfig } from './versioned.js';
+import { PricingConfigSchema } from './versioned.js';
 
-/** Activation ordering is stored by pricing_activations; caller supplies activated
- * versions only. A newer expired version cannot resurrect an older price book. */
-export function selectPricingVersion(versions: unknown[], businessId: string, pricingAt: string): PricingConfig {
-  const timestamp = Date.parse(pricingAt);
-  if (!Number.isFinite(timestamp)) throw new Error('pricing: valid pricing instant required');
-  const parsed = versions.map(v => PricingConfigSchema.parse(v));
-  if (parsed.some(v => v.businessId !== businessId)) throw new Error('pricing: cross-business configuration result');
-  const eligible = parsed.filter(v => Date.parse(v.effectiveFrom) <= timestamp).sort((a,b) => Date.parse(b.effectiveFrom)-Date.parse(a.effectiveFrom));
-  const chosen = eligible[0];
-  if (!chosen || (chosen.effectiveUntil && timestamp >= Date.parse(chosen.effectiveUntil))) throw new Error('pricing: no effective configuration');
-  if (eligible[1] && Date.parse(eligible[1].effectiveFrom) === Date.parse(chosen.effectiveFrom)) throw new Error('pricing: conflicting active versions');
-  return chosen;
-}
+export { selectPricingVersion } from './versioned.js';
 
 export interface ImportRow { sourceRow: number; productId: string; unitPrice: string; }
 /** Workbook adapters normalize rows into exact IDs/minor-unit strings. Import is a
