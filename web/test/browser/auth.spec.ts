@@ -510,7 +510,8 @@ test('an operator records a bank payment against the issued invoice', async ({ p
   await page.getByRole('button', { name: 'Record payment', exact: true }).click();
   await expect(page.getByTestId('invoice-notice')).toContainText('Payment recorded against this invoice, exactly once');
   await expect(page.locator('body')).toContainText('BANK-DRILL-1');
-  await expect(page.locator('body')).toContainText('NZD 141.50');
+  // The summary grid renders symbol-style money ($141.50), unlike the printable view.
+  await expect(page.locator('body')).toContainText('$141.50');
 
   // The same reference is a retry, not a second payment: still exactly one row.
   await page.getByLabel('Payment amount', { exact: true }).fill('100.00');
