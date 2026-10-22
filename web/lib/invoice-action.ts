@@ -7,7 +7,7 @@
 import 'server-only';
 import { OperatorAuthError, requireOperator } from './auth-server';
 import { supabaseServer } from './supabase';
-import { invoiceOutcomeFor, type InvoiceOutcome } from './invoice-part';
+import { invoiceOutcomeFor, parseAmountCents, type InvoiceOutcome } from './invoice-part';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -41,6 +41,29 @@ export async function approveInvoice(request: Request, invoiceId: string) {
   const outcome = invoiceOutcomeFor('approve', error.message);
   if (outcome === 'failed') console.error('invoices.approve_failed', { invoice_id: invoiceId, error: error.message });
   return back(invoiceId, outcome);
+}
+
+export async function recordPayment(request: Request, invoiceId: string) {
+  const { operator, refused } = await operatorOr(request);
+  if (!operator) return refused;
+  if (!UUID.test(invoiceId)) return new Response(null, { status: 404 });
+  const form = await request.formData();
+  const amount = parseAmountCents(text(form.get('amount'), 20) ?? '');
+  const reference = (text(form.get('reference'), 100) ?? '').trim();
+  const receivedOn = text(form.get('received_on'), 10) ?? '';
+  if (amount === null || reference.length < 3 || !/^\d{4}-\d{2}-\d{2}$/.test(receivedOn)) return back(invoiceId, 'payment_invalid');
+  const sb = await supabaseServer();
+  // A date-only bank value date is sent as that date's UTC midnight; the database
+  // allows today's date from any timezone and refuses tomorrow and beyond.
+  const { error } = await sb.rpc('operator_record_payment', {
+    p_org_id: operator.orgId, p_invoice_id: invoiceId, p_amount_cents: amount,
+    p_received_at: `${receivedOn}T00:00:00Z`, p_reference: reference,
+    p_actor_id: operator.actorId, p_actor_email: operator.email,
+  });
+  if (!error) return back(invoiceId, 'payment_recorded');
+  const code = invoiceOutcomeFor('payment', error.message);
+  if (code === 'failed') console.error('payments.record_failed', { invoice_id: invoiceId, error: error.message });
+  return back(invoiceId, code);
 }
 
 export async function recordPrint(request: Request, invoiceId: string) {

@@ -2148,6 +2148,7 @@ export type Database = {
           posted_at: string | null
           raw: Json | null
           received_at: string
+          reference: string | null
           stripe_payment_id: string | null
         }
         Insert: {
@@ -2161,6 +2162,7 @@ export type Database = {
           posted_at?: string | null
           raw?: Json | null
           received_at: string
+          reference?: string | null
           stripe_payment_id?: string | null
         }
         Update: {
@@ -2174,6 +2176,7 @@ export type Database = {
           posted_at?: string | null
           raw?: Json | null
           received_at?: string
+          reference?: string | null
           stripe_payment_id?: string | null
         }
         Relationships: [
@@ -3441,6 +3444,22 @@ export type Database = {
           p_outcome: string
         }
         Returns: string
+      }
+      operator_record_payment: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_amount_cents: number
+          p_invoice_id: string
+          p_org_id: string
+          p_received_at: string
+          p_reference: string
+        }
+        Returns: {
+          orp_invoice_state: Database["public"]["Enums"]["invoice_state"]
+          orp_payment_id: string
+          orp_was_existing: boolean
+        }[]
       }
       operator_save_account: {
         Args: {

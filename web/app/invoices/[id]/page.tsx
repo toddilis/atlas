@@ -45,6 +45,7 @@ interface PaymentRow {
   currency: string;
   method: string;
   stripe_payment_id: string | null;
+  reference: string | null;
   received_at: string;
 }
 
@@ -70,6 +71,7 @@ async function loadInvoice(id: string): Promise<{
   lines: InvoiceLine[];
   payments: PaymentRow[];
   ledgerTxns: LedgerTxnRow[];
+  canRecordPayment: boolean;
 } | null> {
   const sb = await supabaseServer();
   const org = orgId();
@@ -85,7 +87,7 @@ async function loadInvoice(id: string): Promise<{
   if (invErr) throw invErr;
   if (!invoice) return null;
 
-  const [linesRes, paymentsRes, ledgerRes] = await Promise.all([
+  const [linesRes, paymentsRes, ledgerRes, paymentGrant, paymentControls] = await Promise.all([
     sb
       .from('invoice_lines')
       .select('id, description, quantity, unit_price_cents, total_cents')
@@ -94,7 +96,7 @@ async function loadInvoice(id: string): Promise<{
       .order('id'),
     sb
       .from('payments')
-      .select('id, amount_cents, currency, method, stripe_payment_id, received_at')
+      .select('id, amount_cents, currency, method, stripe_payment_id, reference, received_at')
       .eq('org_id', org)
       .eq('invoice_id', id)
       .order('received_at', { ascending: false }),
@@ -107,11 +109,15 @@ async function loadInvoice(id: string): Promise<{
       .eq('source_ref_type', 'invoice')
       .eq('source_ref', id)
       .order('occurred_at', { ascending: true }),
+    sb.from('tool_grants').select('enabled').eq('org_id', org).eq('agent_name', 'operator').eq('tool_name', 'payments.record'),
+    sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
   ]);
 
   if (linesRes.error) throw linesRes.error;
   if (paymentsRes.error) throw paymentsRes.error;
   if (ledgerRes.error) throw ledgerRes.error;
+  if (paymentGrant.error) throw paymentGrant.error;
+  if (paymentControls.error) throw paymentControls.error;
 
   return {
     part: await loadPart(id, invoice as unknown as InvoiceDetail),
@@ -119,6 +125,9 @@ async function loadInvoice(id: string): Promise<{
     lines: ((linesRes.data as unknown) as InvoiceLine[]) ?? [],
     payments: ((paymentsRes.data as unknown) as PaymentRow[]) ?? [],
     ledgerTxns: ((ledgerRes.data as unknown) as LedgerTxnRow[]) ?? [],
+    // Shown so the operator knows before trying; the database enforces the never-seeded
+    // payments.record grant and pause on every entry (0043).
+    canRecordPayment: (paymentGrant.data ?? []).some(g => g.enabled) && !paymentControls.data?.paused,
   };
 }
 
@@ -161,7 +170,7 @@ export default async function InvoiceDetailPage({
   const [{ id }, { outcome }] = await Promise.all([params, searchParams]);
   const result = await loadInvoice(id);
   if (!result) notFound();
-  const { invoice, lines, payments, ledgerTxns, part } = result;
+  const { invoice, lines, payments, ledgerTxns, part, canRecordPayment } = result;
   // Only the fixed messages are shown from the URL; nothing from it is echoed.
   const notice = isInvoiceOutcome(outcome) ? INVOICE_OUTCOMES[outcome] : null;
 
@@ -250,6 +259,31 @@ export default async function InvoiceDetailPage({
       </Section>
 
       <Section title="Payments">
+        {['issued', 'partial'].includes(invoice.state) ? (
+          canRecordPayment ? (
+            <form method="post" action={`/invoices/${invoice.id}/payment`}
+              className="mb-4 flex flex-wrap items-end gap-2 rounded border border-zinc-200 dark:border-zinc-800 p-3">
+              <label className="text-sm">Amount ({invoice.currency})<br />
+                <input name="amount" aria-label="Payment amount" required inputMode="decimal" pattern="\d+(\.\d{1,2})?"
+                  placeholder="0.00" className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-sm w-32 font-mono" /></label>
+              <label className="text-sm">Received on<br />
+                <input name="received_on" aria-label="Payment date" type="date" required
+                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-sm" /></label>
+              <label className="text-sm">Bank reference<br />
+                <input name="reference" aria-label="Payment reference" required minLength={3} maxLength={100}
+                  placeholder="Statement line reference" className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-sm w-56" /></label>
+              <button type="submit" className="rounded bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-3 py-1 text-sm font-medium">
+                Record payment
+              </button>
+              <span className="pb-1 text-xs text-zinc-500">Records the bank transfer and posts it; the same reference on this invoice is a retry, never a second payment.</span>
+            </form>
+          ) : (
+            <div className="mb-4 text-xs text-zinc-500">
+              Recording payments is switched off for this business (the operator payments.record grant is off, or actions are paused); a business turns it on deliberately.
+            </div>
+          )
+        ) : null}
         {payments.length === 0 ? (
           <Empty>No payments received yet.</Empty>
         ) : (
@@ -268,7 +302,7 @@ export default async function InvoiceDetailPage({
                   <td className="py-2">{formatDateTime(p.received_at)}</td>
                   <td className="py-2">{p.method}</td>
                   <td className="py-2 font-mono text-xs text-zinc-500">
-                    {p.stripe_payment_id ?? '—'}
+                    {p.reference ?? p.stripe_payment_id ?? '—'}
                   </td>
                   <td className="py-2 text-right font-mono">
                     {formatCents(p.amount_cents, p.currency)}

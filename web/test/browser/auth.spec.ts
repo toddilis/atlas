@@ -491,6 +491,43 @@ test('owner approves the exact invoice part, issues it, prints it and records th
   await page.screenshot({ path: 'test-results/invoice-printed.png', fullPage: true });
 });
 
+// A bank payment lands against the issued part (0043): recorded once from the invoice
+// page, posted, and the invoice turns partial. Runs after the approve → print journey
+// issued it. The payments.record grant comes from this fixture's seed only — it is
+// never seeded at boot; a business turns manual payment entry on deliberately.
+test('an operator records a bank payment against the issued invoice', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const rows = await (await request.get(`${rest}/dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-print-1&select=id`, { headers: service })).json();
+  const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto(`/invoices/${parts[0].invoice_id}`);
+  await page.getByLabel('Payment amount', { exact: true }).fill('100.00');
+  await page.getByLabel('Payment reference', { exact: true }).fill('BANK-DRILL-1');
+  await page.getByRole('button', { name: 'Record payment', exact: true }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Payment recorded against this invoice, exactly once');
+  await expect(page.locator('body')).toContainText('BANK-DRILL-1');
+  // The summary grid renders symbol-style money ($141.50), unlike the printable view.
+  await expect(page.locator('body')).toContainText('$141.50');
+
+  // The same reference is a retry, not a second payment: still exactly one row.
+  await page.getByLabel('Payment amount', { exact: true }).fill('100.00');
+  await page.getByLabel('Payment reference', { exact: true }).fill('BANK-DRILL-1');
+  await page.getByRole('button', { name: 'Record payment', exact: true }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Payment recorded against this invoice, exactly once');
+  await expect(page.getByText('BANK-DRILL-1')).toHaveCount(1);
+
+  // More than what is outstanding is refused with its reason.
+  await page.getByLabel('Payment amount', { exact: true }).fill('999.00');
+  await page.getByLabel('Payment reference', { exact: true }).fill('BANK-DRILL-2');
+  await page.getByRole('button', { name: 'Record payment', exact: true }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('exceeds what is outstanding');
+  await page.screenshot({ path: 'test-results/payment-recorded.png', fullPage: true });
+});
+
 // Runs after the pricing journeys (a version is active). The worker's own invoice part pass
 // runs against the disposable stack in its own process from the repository root, as the
 // worker does on each tick.
