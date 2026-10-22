@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { supabaseServer, orgId } from '@/lib/supabase';
 import { formatCents } from '@/lib/format';
 import { briefingView, refHref, type BriefingRow } from '@/lib/briefing';
+import { CONTROLS_OUTCOMES, isControlsOutcome, type PauseState } from '@/lib/controls';
 import type { JobRow } from '@/lib/jobs';
 import {
   DAY_MS, draftParts, expiringSoon, jobAttention, lastSuccessByJob, nextSyncAt, receivables, sourceFreshness, withinLastDay,
@@ -20,7 +21,7 @@ async function loadToday(now: Date) {
   const org = orgId();
   const cutoff = new Date(now.getTime() - DAY_MS).toISOString();
   const [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls] = await Promise.all([
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant] = await Promise.all([
     sb.from('approvals').select('id, expires_at').eq('org_id', org).eq('state', 'pending').limit(500),
     sb.from('approvals').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('decided_at', cutoff),
     sb.from('approved_actions').select('id', { count: 'exact', head: true }).eq('org_id', org).in('state', ['UNRESOLVED', 'RECONCILIATION_REQUIRED']),
@@ -38,12 +39,13 @@ async function loadToday(now: Date) {
     sb.from('invoices').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('issued_at', cutoff),
     sb.from('carrier_cost_evidence').select('recorded_at').eq('org_id', org).order('recorded_at', { ascending: false }).limit(1),
     sb.from('carrier_cost_evidence').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('recorded_at', cutoff),
-    sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
+    sb.from('action_controls').select('paused, changed_by, reason, changed_at').eq('org_id', org).maybeSingle(),
+    sb.from('tool_grants').select('enabled').eq('org_id', org).eq('agent_name', 'operator').eq('tool_name', 'actions.pause'),
   ]);
   const briefing = await sb.from('daily_briefings').select('generated_at, narration, refs, status, model')
     .eq('org_id', org).eq('status', 'ok').order('generated_at', { ascending: false }).limit(1).maybeSingle();
   for (const r of [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls, briefing]) if (r.error) throw r.error;
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, briefing]) if (r.error) throw r.error;
 
   const jobRows = (jobs.data ?? []) as JobRow[];
   const sourceRows = (sources.data ?? []) as SyncSourceRow[];
@@ -52,7 +54,15 @@ async function loadToday(now: Date) {
   const drafts = (draftInvoices.data ?? []) as unknown as TodayInvoiceRow[];
   return {
     briefing: briefingView((briefing.data ?? null) as BriefingRow | null, now),
-    paused: Boolean(controls.data?.paused),
+    // The pause row is the durable control (0022); the grant decides whether this
+    // console may flip it. The database enforces both on every change.
+    pause: {
+      paused: Boolean(controls.data?.paused),
+      changedBy: controls.data?.changed_by ?? null,
+      reason: controls.data?.reason ?? null,
+      changedAt: controls.data?.changed_at ?? null,
+      can: (pauseGrant.data ?? []).some(g => g.enabled),
+    } satisfies PauseState,
     pendingApprovals: (pendingApprovals.data ?? []).length,
     expiringApprovals: expiringSoon((pendingApprovals.data ?? []).map(a => a.expires_at as string | null), now),
     uncertainActions: uncertain.count ?? 0,
@@ -83,8 +93,10 @@ function relative(iso: string, now: Date): string {
   return ms >= 0 ? `in ${span}` : `${span} ago`;
 }
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ outcome?: string }> }) {
   const now = new Date();
+  const { outcome } = await searchParams;
+  const notice = isControlsOutcome(outcome) ? CONTROLS_OUTCOMES[outcome] : null;
   const today = await loadToday(now);
   const needsYou = today.pendingApprovals + today.jobs.blocked + today.jobs.quarantined + today.parts.length + today.uncertainActions;
 
@@ -95,9 +107,31 @@ export default async function HomePage() {
         <p className="mt-2 text-zinc-600 dark:text-zinc-400">Today, from the stored records alone.</p>
       </div>
 
-      {today.paused ? (
-        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200 p-4 text-sm">
-          Business actions are paused. Nothing is claimed or executed until they are resumed.
+      {notice ? (
+        <div data-testid="controls-notice" role="status" className={`rounded-lg border p-4 text-sm ${notice.ok
+          ? 'border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-200'
+          : 'border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200'}`}>
+          {notice.text}
+        </div>
+      ) : null}
+
+      {today.pause.paused ? (
+        <div role="alert" data-testid="pause-banner" className="rounded-lg border border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200 p-4 text-sm space-y-3">
+          <div>
+            Business actions are paused{today.pause.changedBy ? ` by ${today.pause.changedBy}` : ''}
+            {today.pause.reason ? `: “${today.pause.reason}”` : ''}. Nothing is claimed or executed until they are resumed.
+          </div>
+          {today.pause.can ? (
+            <form method="post" action="/controls/pause" className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="paused" value="false" />
+              <label className="text-xs">Reason<br />
+                <input name="reason" aria-label="Resume reason" required minLength={3} maxLength={500}
+                  className="rounded border border-red-300 dark:border-red-800 bg-white dark:bg-zinc-900 px-2 py-1 text-sm" /></label>
+              <button type="submit" className="rounded bg-red-700 text-white px-3 py-1 text-sm font-medium">Resume business actions</button>
+            </form>
+          ) : (
+            <div className="text-xs">Resuming from here is switched off (the operator actions.pause grant is missing or revoked).</div>
+          )}
         </div>
       ) : null}
 
@@ -217,6 +251,30 @@ export default async function HomePage() {
           {today.recent.approvalsDecided} {today.recent.approvalsDecided === 1 ? 'approval' : 'approvals'} decided
         </div>
       </section>
+
+      {today.pause.paused ? null : (
+        <section className="space-y-3" aria-label="Emergency stop" data-testid="emergency-stop">
+          <h2 className="text-lg font-semibold">Emergency stop</h2>
+          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-5 text-sm text-zinc-700 dark:text-zinc-300 space-y-3">
+            <div>
+              Pausing stops every business action — claims, executions, decisions and edits — until an operator resumes
+              them here. The pause is stored durably, so it survives restarts.
+              {today.pause.changedAt ? ` Last changed by ${today.pause.changedBy}: “${today.pause.reason}”.` : ''}
+            </div>
+            {today.pause.can ? (
+              <form method="post" action="/controls/pause" className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="paused" value="true" />
+                <label className="text-xs">Reason<br />
+                  <input name="reason" aria-label="Pause reason" required minLength={3} maxLength={500}
+                    className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-sm" /></label>
+                <button type="submit" className="rounded bg-red-700 text-white px-3 py-1 text-sm font-medium">Pause business actions</button>
+              </form>
+            ) : (
+              <div className="text-xs text-zinc-500">The emergency stop is switched off (the operator actions.pause grant is missing or revoked).</div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -3480,6 +3480,16 @@ export type Database = {
         }
         Returns: string
       }
+      operator_set_action_pause: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_org_id: string
+          p_paused: boolean
+          p_reason: string
+        }
+        Returns: undefined
+      }
       overdue_days: {
         Args: { p_anchor: string; p_as_of: string; p_tz?: string }
         Returns: number

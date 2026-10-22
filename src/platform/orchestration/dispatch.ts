@@ -41,6 +41,10 @@ export async function bootAgents(): Promise<void> {
     // (0040), on the same terms as pricing: setup, not money movement.
     { agentName: 'operator', toolName: 'catalog.save', risk: 'notify' },
     { agentName: 'operator', toolName: 'accounts.save', risk: 'notify' },
+    // The emergency stop (0041): pause/resume all business actions from the console.
+    // Seeded so a business never has to switch on its own kill switch; revoking the
+    // grant removes the control.
+    { agentName: 'operator', toolName: 'actions.pause', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
   ]);

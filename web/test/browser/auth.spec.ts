@@ -573,3 +573,31 @@ test('an operator sets up the catalogue in the console: list, create, duplicate 
     .getByLabel('Terms days of Browser Retail', { exact: true })).toHaveValue('30');
   await page.screenshot({ path: 'test-results/catalog.png', fullPage: true });
 });
+
+// The emergency stop (0041): runs last of all — it pauses the business, which every
+// earlier journey's forms must not see. The pause lands durably with who and why, the
+// catalogue page says so and hides its forms, and resume works from the banner while
+// paused.
+test('an operator pauses and resumes all business actions from the console', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.getByLabel('Pause reason', { exact: true }).fill('Browser drill');
+  await page.getByRole('button', { name: 'Pause business actions', exact: true }).click();
+  await expect(page.getByTestId('controls-notice')).toContainText('Business actions are paused.');
+  const banner = page.getByTestId('pause-banner');
+  await expect(banner).toContainText('operator@example.test');
+  await expect(banner).toContainText('Browser drill');
+  await page.screenshot({ path: 'test-results/paused.png', fullPage: true });
+
+  // Every page reads the same durable control; the catalogue hides its forms.
+  await page.goto('/catalog');
+  await expect(page.locator('body')).toContainText('Business actions are paused, so the catalogue cannot be changed');
+  await expect(page.getByRole('button', { name: 'Add product', exact: true })).toHaveCount(0);
+
+  await page.goto('/');
+  await page.getByLabel('Resume reason', { exact: true }).fill('Drill over');
+  await page.getByRole('button', { name: 'Resume business actions', exact: true }).click();
+  await expect(page.getByTestId('controls-notice')).toContainText('Business actions are resumed.');
+  await expect(page.getByTestId('pause-banner')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/pause-resumed.png', fullPage: true });
+});
