@@ -528,6 +528,22 @@ test('an operator records a bank payment against the issued invoice', async ({ p
   await page.screenshot({ path: 'test-results/payment-recorded.png', fullPage: true });
 });
 
+// A statement closes the loop (0044): generated from the console after the payment
+// above, it reflects the issued invoice minus what was paid, aged in the business's own
+// calendar. Runs after the payment journey.
+test('an operator generates a retailer statement that reflects the recorded payment', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/statements');
+  await page.getByLabel('Statement retailer', { exact: true }).selectOption({ label: 'Synthetic Retail North' });
+  await page.getByLabel('Statement period start', { exact: true }).fill('2026-10-01');
+  await page.getByRole('button', { name: 'Generate statement', exact: true }).click();
+  await expect(page.getByTestId('statement-notice')).toContainText('Statement generated from the stored records');
+  const row = page.locator('tbody tr').filter({ hasText: 'Synthetic Retail North' }).first();
+  await expect(row).toContainText('$141.50');
+  await page.screenshot({ path: 'test-results/statement-generated.png', fullPage: true });
+});
+
 // Runs after the pricing journeys (a version is active). The worker's own invoice part pass
 // runs against the disposable stack in its own process from the repository root, as the
 // worker does on each tick.
