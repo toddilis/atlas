@@ -574,6 +574,36 @@ test('an operator sets up the catalogue in the console: list, create, duplicate 
   await page.screenshot({ path: 'test-results/catalog.png', fullPage: true });
 });
 
+// The Shopify connection (0042): the seeded business already has its one connection
+// with a blocked sync job, so the journey edits it — cadence, disable with its warning,
+// re-enable — and sees the fixed domain and the sync's honest blocked reason.
+test('an operator manages the Shopify connection in the console', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/connections');
+  await expect(page.getByRole('heading', { name: 'Connections' })).toBeVisible();
+  const connection = page.getByTestId('connection');
+  await expect(connection).toContainText('jobs-1111.myshopify.com');
+  await expect(connection).toContainText('cannot change');
+  await expect(page.getByTestId('connection-sync')).toContainText('Sync blocked: SHOPIFY_ADMIN_API_TOKEN must be set');
+
+  await connection.getByLabel('Sync cadence minutes', { exact: true }).fill('30');
+  await connection.getByRole('button', { name: 'Save connection', exact: true }).click();
+  await expect(page.getByTestId('connection-notice')).toContainText('Connection saved.');
+  await expect(page.getByTestId('connection').getByLabel('Sync cadence minutes', { exact: true })).toHaveValue('30');
+
+  // Disable, see the warning, re-enable: the journey leaves the connection enabled.
+  await page.getByTestId('connection').getByRole('checkbox').uncheck();
+  await page.getByTestId('connection').getByRole('button', { name: 'Save connection', exact: true }).click();
+  await expect(page.getByTestId('connection-notice')).toContainText('Connection saved.');
+  await expect(page.getByTestId('connection')).toContainText('Disabled: nothing syncs');
+  await page.getByTestId('connection').getByRole('checkbox').check();
+  await page.getByTestId('connection').getByRole('button', { name: 'Save connection', exact: true }).click();
+  await expect(page.getByTestId('connection-notice')).toContainText('Connection saved.');
+  await expect(page.getByTestId('connection')).not.toContainText('Disabled: nothing syncs');
+  await page.screenshot({ path: 'test-results/connections.png', fullPage: true });
+});
+
 // The emergency stop (0041): runs last of all — it pauses the business, which every
 // earlier journey's forms must not see. The pause lands durably with who and why, the
 // catalogue page says so and hides its forms, and resume works from the banner while

@@ -45,6 +45,9 @@ export async function bootAgents(): Promise<void> {
     // Seeded so a business never has to switch on its own kill switch; revoking the
     // grant removes the control.
     { agentName: 'operator', toolName: 'actions.pause', risk: 'notify' },
+    // The Shopify connection (0042): connect, cadence, enable/disable in the console,
+    // on the same terms as catalogue setup.
+    { agentName: 'operator', toolName: 'connections.save', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
   ]);

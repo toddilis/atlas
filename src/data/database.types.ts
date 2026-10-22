@@ -947,6 +947,7 @@ export type Database = {
           org_id: string
           provider: string
           sync_every_minutes: number
+          updated_at: string
         }
         Insert: {
           connection_key: string
@@ -955,6 +956,7 @@ export type Database = {
           org_id: string
           provider: string
           sync_every_minutes?: number
+          updated_at?: string
         }
         Update: {
           connection_key?: string
@@ -963,6 +965,7 @@ export type Database = {
           org_id?: string
           provider?: string
           sync_every_minutes?: number
+          updated_at?: string
         }
         Relationships: [
           {
@@ -3477,6 +3480,19 @@ export type Database = {
           p_product_id: string
           p_sku: string
           p_unit: string
+        }
+        Returns: string
+      }
+      operator_save_shopify_connection: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_connection_key: string
+          p_enabled: boolean
+          p_expected_updated_at: string
+          p_org_id: string
+          p_source_id: string
+          p_sync_every_minutes: number
         }
         Returns: string
       }
