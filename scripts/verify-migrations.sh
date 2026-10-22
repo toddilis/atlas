@@ -443,3 +443,4 @@ psql_run -f "$SCRIPT_DIR/verify-jobs.sql"
 { npx tsx "$SCRIPT_DIR/portability-fixtures.ts"; cat "$SCRIPT_DIR/verify-portability.sql"; } | psql_run
 psql_run -f "$SCRIPT_DIR/verify-catalog.sql"
 psql_run -f "$SCRIPT_DIR/verify-pause.sql"
+psql_run -f "$SCRIPT_DIR/verify-connections.sql"

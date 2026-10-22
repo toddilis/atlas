@@ -22,7 +22,8 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 9 | AI-01b (PR-T): read-only console assistant | Claude | — (#46 merged) | Done: spend off until the `assistant.ask` grant + console key are set | — |
 | 10 | PORT-01: contrasting synthetic business profile through the full invoice loop | Claude | — (#47 merged) | Done: timezone fix + portability probe in CI | — |
 | 11 | CONFIG-01a: operator catalogue setup — products and retailers in the console | Claude | — (#48 merged) | Done | — |
-| 12 | UI-01b: pause and resume business actions in the console (migration 0041 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 12 | UI-01b: pause and resume business actions in the console | Claude | — (#49 merged) | Done | — |
+| 13 | CONFIG-01b: the Shopify connection in the console — connect, cadence, enable/disable (migration 0042 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
