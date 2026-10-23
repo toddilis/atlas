@@ -116,7 +116,14 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  -- Never seeded at boot either; manual payment entry is turned on deliberately (0043).
  ('11111111-1111-4111-8111-111111111111','operator','payments.record','notify'),
  -- Never seeded at boot either; reversing a posted receivable is deliberate (0048).
- ('11111111-1111-4111-8111-111111111111','operator','invoices.void','notify');
+ ('11111111-1111-4111-8111-111111111111','operator','invoices.void','notify'),
+ -- Never seeded at boot either; deciding who operates a business is deliberate (0049).
+ ('11111111-1111-4111-8111-111111111111','operator','members.save','notify');
+
+-- Membership (0049): the fixture operator is a member, so the console's membership
+-- enforcement is live (not bootstrap mode) for every journey.
+insert into org_members (org_id, email, added_by) values
+ ('11111111-1111-4111-8111-111111111111','operator@example.test','seed');
 -- Approvals (0037): two pending bound proposals the journey decides, and another
 -- business's pending approval that must never be shown.
 do $$

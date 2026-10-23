@@ -2,6 +2,7 @@ import 'server-only';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { authEnv, operatorAllowed, sameOriginRequest } from './auth';
+import { memberAllowed } from './membership';
 import WebSocket from 'ws';
 import type { RealtimeClientOptions } from '@supabase/supabase-js';
 
@@ -40,5 +41,10 @@ export async function requireOperator(request?: Request) {
   const { data: { user }, error } = await auth.auth.getUser();
   if (error || !user) throw new OperatorAuthError(401, 'Sign in required.');
   if (!operatorAllowed(user.email)) throw new OperatorAuthError(403, 'Operator access denied.');
+  // Membership (0049), on top of the allowlist. The proxy enforces this too (and signs
+  // the denied session out); here it fails closed for any path the proxy did not cover.
+  const member = await memberAllowed(orgId, user.email!);
+  if (member === 'unavailable') throw new OperatorAuthError(503, 'Membership could not be checked.');
+  if (!member) throw new OperatorAuthError(403, 'Operator access denied.');
   return { actorId: user.id, email: user.email!, orgId };
 }

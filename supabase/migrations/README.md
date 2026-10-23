@@ -43,5 +43,6 @@ the highest reservation.
 | 0045 | `business_profile` | CONFIG-01c (profile on documents) | main (PR #53) |
 | 0046 | `tenant_surface` | TENANT-01a (close anon/authenticated function surface) | main (PR #54) |
 | 0047 | `statement_lifecycle` | CLOSE-01b (record sent / void in the console) | main (PR #55) |
-| 0048 | `invoice_void` | CLOSE-01c (void an issued invoice; reversal + webhook guard) | claimed 22 Oct (queue row), in progress |
-| **0049** | **next unclaimed** | — | — |
+| 0048 | `invoice_void` | CLOSE-01c (void an issued invoice; reversal + webhook guard) | main (PR #56) |
+| 0049 | `org_members` | TENANT-01b (per-business operator membership) | claimed 23 Oct (queue row), in progress |
+| **0050** | **next unclaimed** | — | — |

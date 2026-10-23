@@ -12,12 +12,15 @@ async function login(page: Page, email = 'operator@example.test') {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 }
 test.beforeAll(async ({ request }) => {
-  for (const email of ['operator@example.test', 'denied@example.test']) {
+  for (const email of ['operator@example.test', 'denied@example.test', 'second@example.test']) {
     const response = await request.post(`${authUrl}/admin/users`, {
       headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
       data: { email, password, email_confirm: true },
     });
-    expect(response.ok(), await response.text()).toBeTruthy();
+    // Idempotent: a failed test restarts the worker and re-runs this hook, so an
+    // already-registered user is fine — anything else would fail every later journey.
+    const body = await response.text();
+    expect(response.ok() || body.includes('already been registered'), body).toBeTruthy();
   }
 });
 
@@ -742,6 +745,50 @@ test('an operator manages the Shopify connection in the console', async ({ page 
   await expect(page.getByTestId('connection-notice')).toContainText('Connection saved.');
   await expect(page.getByTestId('connection')).not.toContainText('Disabled: nothing syncs');
   await page.screenshot({ path: 'test-results/connections.png', fullPage: true });
+});
+
+// Membership (0049): second@ is on the environment allowlist but is NOT a seeded member,
+// so until added here they cannot sign in — membership gates on top of the allowlist.
+// Disabling them cuts access on their next request; the lockout guards hold.
+test('membership gates the console on top of the allowlist; disabling a member takes effect at once', async ({ page, browser }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+
+  // Not yet a member: the allowlist alone does not admit them.
+  const outsider = await browser.newContext();
+  const outsiderPage = await outsider.newPage();
+  await login(outsiderPage, 'second@example.test');
+  await expect(outsiderPage.getByText('This account is not on the operator allowlist.')).toBeVisible();
+
+  await page.goto('/members');
+  await expect(page.getByTestId('member-row').filter({ hasText: 'operator@example.test' })).toContainText('(you)');
+  await page.getByLabel('Member email', { exact: true }).fill('second@example.test');
+  await page.getByRole('button', { name: 'Add member', exact: true }).click();
+  await expect(page.getByTestId('member-notice')).toContainText('Membership saved');
+
+  // Now a member: they reach the console.
+  await login(outsiderPage, 'second@example.test');
+  await expect(outsiderPage.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+
+  // Disable them; their very next request is refused and their session is cleared.
+  await page.getByRole('button', { name: 'Disable second@example.test', exact: true }).click();
+  await expect(page.getByTestId('member-notice')).toContainText('Membership saved');
+  await outsiderPage.goto('/invoices');
+  await expect(outsiderPage.getByText('This account is not on the operator allowlist.')).toBeVisible();
+
+  // Re-enable restores access on a fresh sign-in.
+  await page.getByRole('button', { name: 'Enable second@example.test', exact: true }).click();
+  await expect(page.getByTestId('member-notice')).toContainText('Membership saved');
+  await login(outsiderPage, 'second@example.test');
+  await expect(outsiderPage.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await outsider.close();
+
+  // Lockout guard: you can never disable your own membership.
+  await page.getByRole('button', { name: 'Disable operator@example.test', exact: true }).click();
+  await expect(page.getByTestId('member-notice')).toContainText('You cannot disable your own membership');
+  // Still enabled: the row still offers Disable (a disabled row would offer Enable).
+  await expect(page.getByRole('button', { name: 'Disable operator@example.test', exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/members.png', fullPage: true });
 });
 
 // The emergency stop (0041): runs last of all — it pauses the business, which every

@@ -29,7 +29,8 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 16 | CONFIG-01c: business profile on printed invoices | Claude | — (#53 merged) | Done | — |
 | 17 | TENANT-01a: structural isolation surface — CI probe + closed function surface | Claude | — (#54 merged) | Done: probe gates every future migration | — |
 | 18 | CLOSE-01b: statement lifecycle — printable document, record sent, void | Claude | — (#55 merged) | Done | — |
-| 19 | CLOSE-01c: void a wrongly issued invoice — ledger reversal + webhook guard (migration 0048 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 19 | CLOSE-01c: void a wrongly issued invoice — ledger reversal + webhook guard | Claude | — (#56 merged) | Done | — |
+| 20 | TENANT-01b: per-business operator membership enforced in the console (migration 0049 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
 
