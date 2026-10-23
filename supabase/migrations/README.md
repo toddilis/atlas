@@ -44,5 +44,6 @@ the highest reservation.
 | 0046 | `tenant_surface` | TENANT-01a (close anon/authenticated function surface) | main (PR #54) |
 | 0047 | `statement_lifecycle` | CLOSE-01b (record sent / void in the console) | main (PR #55) |
 | 0048 | `invoice_void` | CLOSE-01c (void an issued invoice; reversal + webhook guard) | main (PR #56) |
-| 0049 | `org_members` | TENANT-01b (per-business operator membership) | claimed 23 Oct (queue row), in progress |
-| **0050** | **next unclaimed** | — | — |
+| 0049 | `org_members` | TENANT-01b (per-business operator membership) | main (PR #57) |
+| 0050 | `tenant_fk_binding` | TENANT-01c (org_id on every org-scoped foreign key) | claimed 23 Oct (queue row), in progress |
+| **0051** | **next unclaimed** | — | — |
