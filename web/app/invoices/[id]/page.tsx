@@ -28,6 +28,9 @@ interface InvoiceDetail {
   stripe_invoice_id: string | null;
   notes: string | null;
   fulfillment_event_id: string | null;
+  voided_at: string | null;
+  voided_by: string | null;
+  voided_reason: string | null;
   account: { id: string; name: string } | null;
 }
 
@@ -72,6 +75,7 @@ async function loadInvoice(id: string): Promise<{
   payments: PaymentRow[];
   ledgerTxns: LedgerTxnRow[];
   canRecordPayment: boolean;
+  canVoidInvoice: boolean;
 } | null> {
   const sb = await supabaseServer();
   const org = orgId();
@@ -79,7 +83,7 @@ async function loadInvoice(id: string): Promise<{
   const { data: invoice, error: invErr } = await sb
     .from('invoices')
     .select(
-      'id, invoice_number, state, channel, currency, subtotal_cents, tax_cents, total_cents, issued_at, due_at, paid_at, created_at, stripe_invoice_id, notes, fulfillment_event_id, account:accounts(id, name)',
+      'id, invoice_number, state, channel, currency, subtotal_cents, tax_cents, total_cents, issued_at, due_at, paid_at, created_at, stripe_invoice_id, notes, fulfillment_event_id, voided_at, voided_by, voided_reason, account:accounts(id, name)',
     )
     .eq('org_id', org)
     .eq('id', id)
@@ -109,7 +113,7 @@ async function loadInvoice(id: string): Promise<{
       .eq('source_ref_type', 'invoice')
       .eq('source_ref', id)
       .order('occurred_at', { ascending: true }),
-    sb.from('tool_grants').select('enabled').eq('org_id', org).eq('agent_name', 'operator').eq('tool_name', 'payments.record'),
+    sb.from('tool_grants').select('tool_name, enabled').eq('org_id', org).eq('agent_name', 'operator').in('tool_name', ['payments.record', 'invoices.void']),
     sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
   ]);
 
@@ -126,8 +130,9 @@ async function loadInvoice(id: string): Promise<{
     payments: ((paymentsRes.data as unknown) as PaymentRow[]) ?? [],
     ledgerTxns: ((ledgerRes.data as unknown) as LedgerTxnRow[]) ?? [],
     // Shown so the operator knows before trying; the database enforces the never-seeded
-    // payments.record grant and pause on every entry (0043).
-    canRecordPayment: (paymentGrant.data ?? []).some(g => g.enabled) && !paymentControls.data?.paused,
+    // payments.record and invoices.void grants and pause on every entry (0043, 0048).
+    canRecordPayment: (paymentGrant.data ?? []).some(g => g.tool_name === 'payments.record' && g.enabled) && !paymentControls.data?.paused,
+    canVoidInvoice: (paymentGrant.data ?? []).some(g => g.tool_name === 'invoices.void' && g.enabled) && !paymentControls.data?.paused,
   };
 }
 
@@ -170,7 +175,7 @@ export default async function InvoiceDetailPage({
   const [{ id }, { outcome }] = await Promise.all([params, searchParams]);
   const result = await loadInvoice(id);
   if (!result) notFound();
-  const { invoice, lines, payments, ledgerTxns, part, canRecordPayment } = result;
+  const { invoice, lines, payments, ledgerTxns, part, canRecordPayment, canVoidInvoice } = result;
   // Only the fixed messages are shown from the URL; nothing from it is echoed.
   const notice = isInvoiceOutcome(outcome) ? INVOICE_OUTCOMES[outcome] : null;
 
@@ -202,6 +207,31 @@ export default async function InvoiceDetailPage({
           {notice.text}
         </p>
       )}
+
+      {invoice.state === 'void' ? (
+        <div data-testid="invoice-voided" className="rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-900 dark:text-red-200">
+          Voided {formatDateTime(invoice.voided_at)}{invoice.voided_by ? ` by ${invoice.voided_by}` : ''}: {invoice.voided_reason}.
+          Its issue posting was reversed in the ledger below; the dispatch&rsquo;s billing claim stays consumed.
+        </div>
+      ) : invoice.state === 'issued' && payments.length === 0 ? (
+        canVoidInvoice ? (
+          <form method="post" action={`/invoices/${invoice.id}/void`}
+            className="flex flex-wrap items-end gap-2 rounded border border-zinc-200 dark:border-zinc-800 p-3">
+            <label className="text-sm">Void reason<br />
+              <input name="reason" aria-label="Invoice void reason" required minLength={3} maxLength={500} size={44}
+                placeholder="Why this invoice must not be collected"
+                className="rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-sm" /></label>
+            <button type="submit" className="rounded border border-red-300 dark:border-red-800 text-red-700 dark:text-red-400 px-3 py-1 text-sm font-medium">
+              Void invoice
+            </button>
+            <span className="pb-1 text-xs text-zinc-500">Reverses the issue posting; nothing is deleted. An invoice with payments cannot be voided.</span>
+          </form>
+        ) : (
+          <div className="text-xs text-zinc-500">
+            Voiding invoices is switched off for this business (the operator invoices.void grant is off, or actions are paused); a business turns it on deliberately.
+          </div>
+        )
+      ) : null}
 
       <SummaryGrid invoice={invoice} paidToDate={paidToDate} outstanding={outstanding} dueDate={part?.snapshot.terms.dueDate} />
 

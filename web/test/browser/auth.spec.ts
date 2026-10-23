@@ -614,6 +614,32 @@ test('the worker drafts a wholesale shipment\'s invoice part; ones it cannot pri
   await page.screenshot({ path: 'test-results/invoice-part-jobs.png', fullPage: true });
 });
 
+// Runs after the worker journey: its drafted part is issued here and then voided (0048),
+// so a wrongly issued invoice stops being a live receivable.
+test('an operator voids a wrongly issued invoice with a reason; the posting reverses', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const rows = await (await request.get(`${rest}/dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-auto-1&select=id`, { headers: service })).json();
+  const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto(`/invoices/${parts[0].invoice_id}`);
+  await page.getByRole('button', { name: 'Approve and issue NZD 103.50' }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Invoice approved and issued exactly as shown');
+
+  await page.getByLabel('Invoice void reason', { exact: true }).fill('issued against the wrong retailer');
+  await page.getByRole('button', { name: 'Void invoice', exact: true }).click();
+  await expect(page.getByTestId('invoice-notice')).toContainText('Invoice voided and its issue posting reversed');
+  await expect(page.getByTestId('invoice-voided')).toContainText('issued against the wrong retailer');
+  await expect(page.getByRole('button', { name: 'Void invoice', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Record payment', exact: true })).toHaveCount(0);
+  // The reversal is visible beside the issue posting in the invoice's own ledger.
+  await expect(page.getByText('Invoice ATL-', { exact: false }).filter({ hasText: 'voided' }).first()).toBeVisible();
+  await page.screenshot({ path: 'test-results/invoice-voided.png', fullPage: true });
+});
+
 
 // Catalogue (0040, CONFIG-01a): runs last — it adds a product and a retailer, which
 // earlier journeys' counts must not see. Cross-business rows stay invisible, creates

@@ -23,8 +23,9 @@ begin
     values(company,account,'PAY-1','issued','wholesale','NZD',10000,10000,now()-interval '2 days',now()+interval '12 days') returning id into invoice;
   insert into invoices(org_id,account_id,invoice_number,state,channel,currency,subtotal_cents,total_cents)
     values(company,account,'PAY-2','draft','wholesale','NZD',5000,5000) returning id into draft_invoice;
-  insert into invoices(org_id,account_id,invoice_number,state,channel,currency,subtotal_cents,total_cents)
-    values(company,account,'PAY-3','void','wholesale','NZD',5000,5000) returning id into void_invoice;
+  -- A voided invoice now carries its evidence (0048 constraint).
+  insert into invoices(org_id,account_id,invoice_number,state,channel,currency,subtotal_cents,total_cents,voided_at,voided_by,voided_reason)
+    values(company,account,'PAY-3','void','wholesale','NZD',5000,5000,now(),'probe','void fixture') returning id into void_invoice;
   pay:=format('select * from operator_record_payment(%L,%L,4000,%L,%L,%L,%L)',company,invoice,now()-interval '1 day','BANK-REF-1',operator,'ops@example.test');
 
   -- Off until the business grants it (never seeded at boot); approve_required refused;

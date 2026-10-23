@@ -63,3 +63,17 @@ test('payment refusals map to fixed outcomes, and money entry parses exactly or 
   assert.equal(parseAmountCents('1e3'), null);
   assert.equal(parseAmountCents(''), null);
 });
+
+test('void refusals map to fixed messages (0048)', () => {
+  assert.equal(invoiceOutcomeFor('void', 'invoice already voided'), 'void_already');
+  assert.equal(invoiceOutcomeFor('void', 'an invoice with recorded payments cannot be voided; reallocate the payment first'), 'void_payments');
+  assert.equal(invoiceOutcomeFor('void', 'only an issued invoice can be voided'), 'void_state');
+  assert.equal(invoiceOutcomeFor('void', 'void reason required'), 'void_note');
+  assert.equal(invoiceOutcomeFor('void', 'void reason too long'), 'void_note');
+  assert.equal(invoiceOutcomeFor('void', 'invoice not found'), 'void_missing');
+  assert.equal(invoiceOutcomeFor('void', 'tool entitlement missing or revoked'), 'void_off');
+  assert.equal(invoiceOutcomeFor('void', 'voiding an invoice cannot itself require an approval; its grant must not require approval'), 'void_off');
+  assert.equal(invoiceOutcomeFor('void', 'business actions paused'), 'paused');
+  assert.equal(invoiceOutcomeFor('void', 'socket hang up'), 'failed');
+  assert.equal(isInvoiceOutcome('invoice_voided'), true);
+});

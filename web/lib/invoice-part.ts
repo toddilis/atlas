@@ -22,6 +22,13 @@ export const INVOICE_OUTCOMES = {
   payment_paid: { ok: false, text: 'This invoice is already fully paid. An overpayment or refund is an explicit correction, not a payment entry; nothing was recorded.' },
   payment_invalid: { ok: false, text: 'Check the fields: a reference of at least 3 characters, a positive amount with at most two decimals, and a date not in the future. Nothing was recorded.' },
   payment_off: { ok: false, text: 'Recording payments is switched off for this business (its operator grant is missing, revoked, or set to require approval); a business turns it on deliberately. Nothing was recorded.' },
+  invoice_voided: { ok: true, text: 'Invoice voided and its issue posting reversed in the ledger. The dispatch’s billing claim stays consumed; re-billing it is a separate correction.' },
+  void_already: { ok: false, text: 'This invoice is already voided. Nothing changed.' },
+  void_state: { ok: false, text: 'Only an issued invoice can be voided. Nothing changed.' },
+  void_payments: { ok: false, text: 'This invoice has recorded payments, so it cannot be voided. Reallocate the payment first; nothing changed.' },
+  void_note: { ok: false, text: 'A void needs a reason (3–500 characters). Nothing changed.' },
+  void_missing: { ok: false, text: 'That invoice no longer exists for this business. Nothing changed.' },
+  void_off: { ok: false, text: 'Voiding invoices is switched off for this business (its operator grant is missing, revoked, or set to require approval); a business turns it on deliberately. Nothing changed.' },
   paused: { ok: false, text: 'Business actions are paused, so nothing changed. Resume them first.' },
   failed: { ok: false, text: 'The action could not be recorded. Nothing changed; try again.' },
 } as const;
@@ -54,8 +61,16 @@ const PAYMENT: Array<[RegExp, InvoiceOutcome]> = [
   [/payment reference required|amount must be positive|must not be in the future/, 'payment_invalid'],
   [/tool entitlement missing or revoked|must not require approval|agent disabled/, 'payment_off'],
 ];
-export function invoiceOutcomeFor(action: 'approve' | 'print' | 'payment', message: string): InvoiceOutcome {
-  return [...COMMON, ...(action === 'approve' ? APPROVE : action === 'print' ? PRINT : PAYMENT)]
+const VOID: Array<[RegExp, InvoiceOutcome]> = [
+  [/already voided/, 'void_already'],
+  [/recorded payments cannot be voided/, 'void_payments'],
+  [/only an issued invoice can be voided/, 'void_state'],
+  [/void reason required|void reason too long/, 'void_note'],
+  [/invoice not found/, 'void_missing'],
+  [/tool entitlement missing or revoked|must not require approval|agent disabled/, 'void_off'],
+];
+export function invoiceOutcomeFor(action: 'approve' | 'print' | 'payment' | 'void', message: string): InvoiceOutcome {
+  return [...COMMON, ...(action === 'approve' ? APPROVE : action === 'print' ? PRINT : action === 'payment' ? PAYMENT : VOID)]
     .find(([p]) => p.test(message))?.[1] ?? 'failed';
 }
 

@@ -60,6 +60,8 @@ export async function bootAgents(): Promise<void> {
     { agentName: 'operator', toolName: 'statements.void', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
+    // invoices.void (0048) is never seeded either: reversing a posted receivable is a
+    // deliberate business switch, the same class as issuing and payment entry.
   ]);
 
   booted = true;
