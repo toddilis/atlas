@@ -12,7 +12,9 @@ const environment = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: key('anon'),
   SUPABASE_SERVICE_ROLE_KEY: key('service_role'),
   ATLAS_ORG_ID: '11111111-1111-4111-8111-111111111111',
-  ATLAS_OPERATOR_EMAILS: 'operator@example.test',
+  // second@ is allowlisted but NOT seeded as a member: the membership journey (0049)
+  // adds, disables and re-enables them, proving membership gates on top of this list.
+  ATLAS_OPERATOR_EMAILS: 'operator@example.test,second@example.test',
 };
 if (!process.env.GITHUB_ENV) throw new Error('Run in disposable CI; environment is test-only.');
 appendFileSync(process.env.GITHUB_ENV, Object.entries(environment).map(([k,v]) => `${k}=${v}\n`).join(''));

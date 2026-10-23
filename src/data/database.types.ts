@@ -2094,6 +2094,43 @@ export type Database = {
           },
         ]
       }
+      org_members: {
+        Row: {
+          added_by: string
+          created_at: string
+          email: string
+          enabled: boolean
+          id: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          added_by: string
+          created_at?: string
+          email: string
+          enabled?: boolean
+          id?: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          added_by?: string
+          created_at?: string
+          email?: string
+          enabled?: boolean
+          id?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "org_members_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orgs: {
         Row: {
           base_currency: string
@@ -3576,6 +3613,21 @@ export type Database = {
           p_tax_number: string
         }
         Returns: undefined
+      }
+      operator_save_member: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_email: string
+          p_enabled: boolean
+          p_expected_updated_at: string
+          p_member_id: string
+          p_org_id: string
+        }
+        Returns: {
+          osm_member_id: string
+          osm_updated_at: string
+        }[]
       }
       operator_save_pricing_version: {
         Args: {
