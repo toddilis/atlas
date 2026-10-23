@@ -43,7 +43,9 @@ jobs:
           path: |
             web/playwright-report
             web/test-results
+      # Bounded: the full dump overflows the job-log API window and buries the
+      # Playwright failure output above it; the complete evidence is in the artifact.
       - if: failure()
-        run: docker compose -f web/test/auth/compose.yml logs
+        run: docker compose -f web/test/auth/compose.yml logs --tail=120
       - if: always()
         run: docker compose -f web/test/auth/compose.yml down -v

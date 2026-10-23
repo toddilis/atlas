@@ -17,7 +17,10 @@ test.beforeAll(async ({ request }) => {
       headers: { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` },
       data: { email, password, email_confirm: true },
     });
-    expect(response.ok(), await response.text()).toBeTruthy();
+    // Idempotent: a failed test restarts the worker and re-runs this hook, so an
+    // already-registered user is fine — anything else would fail every later journey.
+    const body = await response.text();
+    expect(response.ok() || body.includes('already been registered'), body).toBeTruthy();
   }
 });
 
@@ -783,8 +786,8 @@ test('membership gates the console on top of the allowlist; disabling a member t
   // Lockout guard: you can never disable your own membership.
   await page.getByRole('button', { name: 'Disable operator@example.test', exact: true }).click();
   await expect(page.getByTestId('member-notice')).toContainText('You cannot disable your own membership');
-  await expect(page.getByTestId('member-row').filter({ hasText: 'operator@example.test' })
-    .getByText('enabled', { exact: true })).toBeVisible();
+  // Still enabled: the row still offers Disable (a disabled row would offer Enable).
+  await expect(page.getByRole('button', { name: 'Disable operator@example.test', exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/members.png', fullPage: true });
 });
 
