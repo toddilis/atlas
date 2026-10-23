@@ -1,11 +1,12 @@
 // Auth gate for every console route (PR-P). Session cookies are refreshed on each
 // request; anyone without a session — or with a session whose email isn't on the
-// operator allowlist — lands on /login. Fails closed: missing auth config blocks the
-// console rather than opening it.
+// operator allowlist or in the business's membership (0049) — lands on /login, signed
+// out. Fails closed: missing auth config blocks the console rather than opening it.
 
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { authEnv, operatorAllowed } from './lib/auth';
+import { memberAllowed } from './lib/membership';
 import { redirectWithCookies } from './lib/auth-response';
 import WebSocket from 'ws';
 import type { RealtimeClientOptions } from '@supabase/supabase-js';
@@ -51,7 +52,13 @@ export async function proxy(request: NextRequest) {
     return redirectWithCookies(new URL('/login', request.url), response);
   }
 
-  if (!operatorAllowed(user.email)) {
+  // Membership (0049) is denied exactly like the allowlist: signed out, so the denied
+  // session cannot bounce between / and /login. 'unavailable' falls through — the page
+  // layer (requireOperator) fails closed with an honest 503 instead of a wrong denial.
+  const allowlisted = operatorAllowed(user.email);
+  const orgId = process.env.ATLAS_ORG_ID;
+  const member = allowlisted && user.email && orgId ? await memberAllowed(orgId, user.email) : 'unavailable';
+  if (!allowlisted || member === false) {
     await supabase.auth.signOut();
     if (isApi) {
       const denied = NextResponse.json({ error: 'Operator access denied.' }, { status: 403 });
