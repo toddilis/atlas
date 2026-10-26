@@ -226,9 +226,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "agent_activity_event_id_fkey"
-            columns: ["event_id"]
+            columns: ["org_id", "event_id"]
             referencedRelation: "event_log"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "agent_activity_org_id_fkey"
@@ -385,9 +385,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "approved_actions_approval_id_fkey"
-            columns: ["approval_id"]
+            columns: ["org_id", "approval_id"]
             referencedRelation: "approvals"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "approved_actions_org_id_fkey"
@@ -492,9 +492,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "audit_log_approval_id_fkey"
-            columns: ["approval_id"]
+            columns: ["org_id", "approval_id"]
             referencedRelation: "approvals"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "audit_log_org_id_fkey"
@@ -535,9 +535,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "billing_order_groups_account_id_fkey"
-            columns: ["account_id"]
+            columns: ["org_id", "account_id"]
             referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "billing_order_groups_org_id_fkey"
@@ -700,9 +700,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "consignment_movements_account_id_fkey"
-            columns: ["account_id"]
+            columns: ["org_id", "account_id"]
             referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "consignment_movements_org_id_fkey"
@@ -712,15 +712,15 @@ export type Database = {
           },
           {
             foreignKeyName: "consignment_movements_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             referencedRelation: "products"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "consignment_movements_shopify_fulfillment_id_fkey"
-            columns: ["shopify_fulfillment_id"]
+            columns: ["org_id", "shopify_fulfillment_id"]
             referencedRelation: "shopify_fulfillments"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -844,9 +844,9 @@ export type Database = {
           },
           {
             foreignKeyName: "dispatch_corrections_revision_id_fkey"
-            columns: ["revision_id"]
+            columns: ["org_id", "revision_id"]
             referencedRelation: "dispatch_revisions"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -1197,9 +1197,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "event_projections_event_id_fkey"
-            columns: ["event_id"]
+            columns: ["org_id", "event_id"]
             referencedRelation: "event_log"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "event_projections_org_id_fkey"
@@ -1532,9 +1532,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "fulfillment_events_account_id_fkey"
-            columns: ["account_id"]
+            columns: ["org_id", "account_id"]
             referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "fulfillment_events_org_id_fkey"
@@ -1544,15 +1544,15 @@ export type Database = {
           },
           {
             foreignKeyName: "fulfillment_events_shopify_fulfillment_id_fkey"
-            columns: ["shopify_fulfillment_id"]
+            columns: ["org_id", "shopify_fulfillment_id"]
             referencedRelation: "shopify_fulfillments"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "fulfillment_events_shopify_order_id_fkey"
-            columns: ["shopify_order_id"]
+            columns: ["org_id", "shopify_order_id"]
             referencedRelation: "shopify_orders"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -1605,9 +1605,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "invoice_calculation_snapshots_invoice_id_fkey"
-            columns: ["invoice_id"]
+            columns: ["org_id", "invoice_id"]
             referencedRelation: "invoices"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "invoice_calculation_snapshots_org_id_fkey"
@@ -1629,9 +1629,9 @@ export type Database = {
           },
           {
             foreignKeyName: "invoice_calculation_snapshots_part_id_fkey"
-            columns: ["part_id"]
+            columns: ["org_id", "part_id"]
             referencedRelation: "dispatch_invoice_parts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -1694,9 +1694,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "invoice_lines_invoice_id_fkey"
-            columns: ["invoice_id"]
+            columns: ["org_id", "invoice_id"]
             referencedRelation: "invoices"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "invoice_lines_org_id_fkey"
@@ -1706,9 +1706,9 @@ export type Database = {
           },
           {
             foreignKeyName: "invoice_lines_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             referencedRelation: "products"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -1749,9 +1749,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "invoice_print_outcomes_invoice_id_fkey"
-            columns: ["invoice_id"]
+            columns: ["org_id", "invoice_id"]
             referencedRelation: "invoices"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "invoice_print_outcomes_org_id_fkey"
@@ -1834,15 +1834,15 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "invoices_account_id_fkey"
-            columns: ["account_id"]
+            columns: ["org_id", "account_id"]
             referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "invoices_fulfillment_event_id_fkey"
-            columns: ["fulfillment_event_id"]
+            columns: ["org_id", "fulfillment_event_id"]
             referencedRelation: "fulfillment_events"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "invoices_org_id_fkey"
@@ -1960,9 +1960,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "ledger_lines_ledger_account_id_fkey"
-            columns: ["ledger_account_id"]
+            columns: ["org_id", "ledger_account_id"]
             referencedRelation: "ledger_accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "ledger_lines_org_id_fkey"
@@ -1972,9 +1972,9 @@ export type Database = {
           },
           {
             foreignKeyName: "ledger_lines_transaction_id_fkey"
-            columns: ["transaction_id"]
+            columns: ["org_id", "transaction_id"]
             referencedRelation: "ledger_transactions"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -2082,15 +2082,15 @@ export type Database = {
           },
           {
             foreignKeyName: "observations_source_event_id_fkey"
-            columns: ["source_event_id"]
+            columns: ["org_id", "source_event_id"]
             referencedRelation: "event_log"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "observations_superseded_by_fkey"
-            columns: ["superseded_by"]
+            columns: ["org_id", "superseded_by"]
             referencedRelation: "observations"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -2265,9 +2265,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "payments_invoice_id_fkey"
-            columns: ["invoice_id"]
+            columns: ["org_id", "invoice_id"]
             referencedRelation: "invoices"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "payments_org_id_fkey"
@@ -2308,9 +2308,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "platform_events_log_id_fkey"
-            columns: ["log_id"]
+            columns: ["org_id", "log_id"]
             referencedRelation: "event_log"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "platform_events_org_id_fkey"
@@ -2397,15 +2397,15 @@ export type Database = {
           },
           {
             foreignKeyName: "price_book_entries_price_book_id_fkey"
-            columns: ["price_book_id"]
+            columns: ["org_id", "price_book_id"]
             referencedRelation: "price_books"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "price_book_entries_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["org_id", "product_id"]
             referencedRelation: "products"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -2705,9 +2705,9 @@ export type Database = {
           },
           {
             foreignKeyName: "semantic_facts_superseded_by_fkey"
-            columns: ["superseded_by"]
+            columns: ["org_id", "superseded_by"]
             referencedRelation: "semantic_facts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -2760,9 +2760,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "shopify_customers_account_id_fkey"
-            columns: ["account_id"]
+            columns: ["org_id", "account_id"]
             referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "shopify_customers_org_id_fkey"
@@ -2833,9 +2833,9 @@ export type Database = {
           },
           {
             foreignKeyName: "shopify_fulfillments_shopify_order_id_fkey"
-            columns: ["shopify_order_id"]
+            columns: ["org_id", "shopify_order_id"]
             referencedRelation: "shopify_orders"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -2888,9 +2888,9 @@ export type Database = {
           },
           {
             foreignKeyName: "shopify_order_lines_shopify_order_id_fkey"
-            columns: ["shopify_order_id"]
+            columns: ["org_id", "shopify_order_id"]
             referencedRelation: "shopify_orders"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -3007,9 +3007,9 @@ export type Database = {
           },
           {
             foreignKeyName: "statement_lines_statement_id_fkey"
-            columns: ["statement_id"]
+            columns: ["org_id", "statement_id"]
             referencedRelation: "statements"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
         ]
       }
@@ -3098,9 +3098,9 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "statements_account_id_fkey"
-            columns: ["account_id"]
+            columns: ["org_id", "account_id"]
             referencedRelation: "accounts"
-            referencedColumns: ["id"]
+            referencedColumns: ["org_id", "id"]
           },
           {
             foreignKeyName: "statements_org_id_fkey"
