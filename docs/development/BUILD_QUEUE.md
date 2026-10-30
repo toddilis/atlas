@@ -36,13 +36,15 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
-Proposed next, in order, awaiting Todd's go-ahead: FLOW-01B bank import and exception
+Proposed next, in order, awaiting Todd's go-ahead: FLOW-01B bank import, built as a shared
+source that keeps every bank line for the Bookkeeper module (PLAN D18), and its exception
 screens on synthetic data (the real Wise/ASB format becomes the contract when the sample
 arrives); CLOSE-01 overdue/ageing and approved reminders; TENANT-01 isolation of jobs,
 retrieval, files, secrets and export (the worker still serves one business named by
-`ATLAS_ORG_ID`); then INV-01, reading VICE's stock levels from Shopify (PLAN D17). The
-first deploy (Fly.io + Vercel, DEPLOY.md) is Todd's action and is not evidenced here.
-Business inputs still needed are listed in
+`ATLAS_ORG_ID`); then INV-01, reading VICE's stock levels from Shopify (PLAN D17). After
+the Controller pilot the module order is Quartermaster, then Bookkeeper (D18). The first
+deploy (Fly.io + Vercel, DEPLOY.md) is Todd's action and is not evidenced here. Business
+inputs still needed are listed in
 [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
 
 ## Standing backlog and historical snapshots
@@ -57,7 +59,7 @@ data and pricing slices; it is not a reason to defer business boundaries until v
 
 Prepared 25 September 2026 against main `210e3e59d7366ac80b8fdd72b52acf733f9feaa2`. This queue makes the proposed first milestone executable. Read current code and open PRs again before claiming work. Task readiness does not grant authority outside the user's current mandate.
 
-`PLAN.md` remains the standing product plan. Preserve PR-P through PR-T references; they correspond to existing product slices. This queue supplies their missing prerequisite repairs and the autonomous-development setup. Controller is the first responsibility targeted for full completion; the module order remains Controller → Quartermaster → Rep → Marketer → Concierge → Registrar.
+`PLAN.md` remains the standing product plan. Preserve PR-P through PR-T references; they correspond to existing product slices. This queue supplies their missing prerequisite repairs and the autonomous-development setup. Controller is the first responsibility targeted for full completion; the module order remains Controller → Quartermaster → Rep → Marketer → Concierge → Registrar (PLAN D18 later inserted Bookkeeper after Quartermaster).
 
 | Task | Outcome | Prerequisites | Completion evidence |
 | --- | --- | --- | --- |

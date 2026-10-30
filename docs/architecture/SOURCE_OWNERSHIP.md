@@ -13,8 +13,8 @@ missing required limits or source coverage block dependent consequential actions
 | Carrier freight cost | Configured GoSweetSpot evidence/adapter | Keep separate from customer charge; actual-cost policies require matched evidence |
 | Approved invoice content and terms | Immutable Atlas invoice/document snapshot for supported workflow | Later configuration changes do not rewrite history; repricing creates revision and invalidates approval |
 | Delivery status | Declared connector evidence or local artifact generation | Keep generated, accepted and delivered distinct; unknown remains unresolved |
-| Bank transaction identity and settlement evidence | Confirmed Wise/ASB import or feed, still to be configured | Preserve source transaction IDs; repeat import is idempotent; ambiguous/amount-only matches need an owned exception |
-| Accounting balances/postings | VICE uses no accounting system (PLAN D17); the handoff is the system-neutral ledger CSV. Whether the Atlas ledger is VICE's book of record is still to be confirmed | Do not assume Atlas or Stripe owns final accounting truth; live completion blocked until owner/source agreed |
+| Bank transaction identity and settlement evidence | Confirmed Wise/ASB import or feed, still to be configured; one shared import keeps every line for Controller matching and Bookkeeper coding (PLAN D18) | Preserve source transaction IDs; repeat import is idempotent; ambiguous/amount-only matches need an owned exception |
+| Accounting balances/postings | Atlas ledger, becoming VICE's book of record through the Bookkeeper module (PLAN D18); until then it holds receivables only and the ledger CSV is the handoff | Until Bookkeeper's close gates pass, do not present the receivables-only ledger as complete books or final accounting truth; Stripe never owns it |
 | Authority, caps, tool grants and pause | Authorized governance configuration | Current checks at execution; memory cannot override |
 | Memory and learned patterns | Derived Atlas evidence-backed knowledge | Never substitute for current quantities, balances, policy or provider confirmation |
 

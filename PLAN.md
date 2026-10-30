@@ -125,6 +125,7 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D15 | 2026-10-15 | Owner confirmed freight on partial dispatches: the first shipment's invoice part is charged the GoSweetSpot rate for that shipment, and the second and every later part is freight-free (third and later parts confirmed the same day). No order-level freight amount is split across parts, so a part never depends on dispatches that have not happened yet. This is VICE configuration of a reusable freight rule, not a platform-wide default. See [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md). |
 | D16 | 2026-10-16 | Controller v1 `ExecutionV1` gains `revision`: each recorded state of one execution (e.g. EXECUTING, then UNRESOLVED, then CONFIRMED) is a new revision and becomes the event's `subject_version`, so a later state is an ordered successor rather than a same-version conflict. Changed in place within v1 because no producer or stored ExecutionV1 data exists yet; outcome events stay append-only at version 1. Recorded in #30. |
 | D17 | 2026-10-30 | Owner confirmed two VICE inputs. VICE uses no accounting system such as Xero or MYOB, so no system-specific export mapping is planned; the handoff is the system-neutral ledger CSV (CLOSE-01d, #59). Whether the Atlas ledger is VICE's book of record is not yet confirmed. VICE keeps its stock numbers in Shopify, so VICE's inventory slice (INV-01) reads Shopify inventory levels through the Shopify adapter; the current sync does not import quantities yet. Both are VICE configuration, not platform defaults. |
+| D18 | 2026-10-30 | Owner decided Atlas becomes VICE's official books (book of record), settling the open point in D17; the owner prepares GST returns and year-end by hand today. The books are their own module, **Bookkeeper** (working name), not part of the Controller, and it is built after Quartermaster: Controller → Quartermaster → Bookkeeper → Rep → Marketer → Concierge → Registrar. Bookkeeper owns the chart of accounts, matching or coding every bank line, approved manual journals, period close and lock, the trial balance, profit and loss and balance sheet, GST return figures (filing stays manual), supplier bills and payables, online-store payouts and fees, and stock value. The Controller keeps receivables and keeps posting its invoices, payments and voids to the platform ledger. Until Bookkeeper's close gates pass, the ledger covers receivables only and is not presented as complete books. The Wise/ASB import built for FLOW-01B is a shared platform source that keeps every bank line, so Bookkeeper reuses it. Tax rules and the chart of accounts are per-business configuration, NZ GST first. See [SEGMENTED_ROADMAP.md](docs/development/SEGMENTED_ROADMAP.md) segment 8. |
 
 ---
 
@@ -300,6 +301,10 @@ escalated items → ask the assistant a follow-up → done.
 
 ## 8 · Phase 4 — Widen the finance module
 
+D18 moves online-store (DTC) posting, supplier bills/AP and period close to the Bookkeeper
+module ([roadmap segment 8](docs/development/SEGMENTED_ROADMAP.md)); consignment stays
+with the Controller.
+
 - [ ] Consignment v1.1: movements → consignment statements
 - [ ] DTC ledger posting (chart codes already seeded)
 - [ ] Inter-co v1.2
@@ -331,7 +336,7 @@ backlog, fixed in the platform, not patched in the module.
 
 ---
 
-## 10 · Module roadmap (D6)
+## 10 · Module roadmap (D6, D18)
 
 Modules beyond #2 are sequenced by **build trigger, not calendar** — each becomes a
 numbered phase when its trigger fires. A domain qualifies as a module when it has:
@@ -341,15 +346,18 @@ with judgment only at the edges, and (4) actions that fit the approvals model.
 
 | # | Module | Owns | Build trigger |
 |---|---|---|---|
-| 1 | **Controller** (finance) | AR, invoicing, ledger, statements; AP later | Shipped; deepens in Phase 4 |
+| 1 | **Controller** (finance) | AR, invoicing, statements; posts receivables to the platform ledger | Shipped; deepens in Phase 4 |
 | 2 | **Quartermaster** (ops & inventory) | Stock across locations, demand forecast, reorders/POs, channel allocation, consignment reconciliation | Phase 2b operator loop live (§9) |
-| 3 | **Rep** (wholesale accounts) | Ordering cadence, dormancy detection, reorder nudges, account onboarding, price-book proposals | Quartermaster stable + enough wholesale accounts that cadence-watching is real work |
-| 4 | **Marketer** (growth) | Klaviyo/Shopify campaigns, promos, content proposals through the queue | After Rep — or merged with Rep into one Growth module if either is thin |
-| 5 | **Concierge** (DTC support) | Inbox triage, order-status replies, returns; refund proposals through the queue (highest Claude usage, every write gated) | DTC support volume warrants it; needs only Gmail + Shopify lookups |
-| 6 | **Registrar** (compliance & back-office) | GST return prep from the ledger, filings/renewals calendar, document filing | Phase 4 finance depth (a GST-complete ledger makes this nearly free) |
+| 3 | **Bookkeeper** (the books; working name) | Chart of accounts, every bank line matched or coded, manual journals, period close/lock, financial reports, GST return figures, supplier bills/AP, online-store payouts/fees, stock value | After Quartermaster (D18) |
+| 4 | **Rep** (wholesale accounts) | Ordering cadence, dormancy detection, reorder nudges, account onboarding, price-book proposals | Quartermaster stable + enough wholesale accounts that cadence-watching is real work |
+| 5 | **Marketer** (growth) | Klaviyo/Shopify campaigns, promos, content proposals through the queue | After Rep — or merged with Rep into one Growth module if either is thin |
+| 6 | **Concierge** (DTC support) | Inbox triage, order-status replies, returns; refund proposals through the queue (highest Claude usage, every write gated) | DTC support volume warrants it; needs only Gmail + Shopify lookups |
+| 7 | **Registrar** (compliance & back-office) | Filings/renewals calendar (GST due dates over Bookkeeper's figures), document filing | Bookkeeper's GST figures exist (D18) |
 
 Boundary worth preserving as Rep arrives: the **Controller owns money owed** (statements,
 dunning); the **Rep owns revenue growth** (the next order). Same account, different verbs.
+Likewise the Controller owns what customers owe; the **Bookkeeper owns the books** those
+receivables post into (D18).
 
 **Deliberately not modules:** analytics/insights (a platform capability — the assistant
 and dashboard answer across modules; an analytics module would be an anti-pattern here),

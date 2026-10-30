@@ -24,13 +24,29 @@ It does not silently override specialist modules or policy.
 **Mission:** Maintain financial operating truth and improve financial
 control.
 
-Initial responsibilities: - invoices, receivables and payables - payment
-workflows - cash visibility - reconciliation - financial exceptions -
+Initial responsibilities: - invoices and receivables (payables move to
+Bookkeeper, PLAN D18) - payment workflows - cash visibility - reconciliation - financial exceptions -
 spend/cash risk - financial proposals and approvals - later:
 forecasting, scenario analysis and management reporting
 
 Controller is the first vertical slice and should establish reusable
 evidence, approval, execution and recovery patterns.
+
+## Bookkeeper --- Books (PLAN D18)
+
+**Mission:** Keep the business's official books complete, reconciled and
+closed.
+
+Responsibilities: - chart of accounts and approved manual journals -
+every bank line matched or coded - period close and lock - trial
+balance, profit and loss and balance sheet - tax return figures (NZ GST
+first) - supplier bills and payables - online-store payouts/fees and
+stock value
+
+The Controller keeps receivables and posts to the platform ledger.
+Bookkeeper consumes those postings, the shared bank import and
+Quartermaster's receipts and costs through platform contracts. It is
+built after Quartermaster.
 
 ## Quartermaster --- Supply / Inventory / Purchasing
 
