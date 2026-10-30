@@ -2,13 +2,14 @@
 
 ## Current status
 
-Updated 18 October 2026. This section is the live status and supersedes the dated sections below, which are
+Updated 30 October 2026. This section is the live status and supersedes the dated sections below, which are
 history. Steps 1–4 are merged: AUTH-01 + AUTHZ-02 (#31), EVENT-01 + EVIDENCE-01 (#30),
 PRICING-01 + BILL-01 (#28), the GoSweetSpot carrier cost sync with the JOBS-01 core (#35), the
 pricing editor (step 4a, #38), approve → issue → print for an invoice part (step 4b, #39) and the
 invoice part draft jobs (step 4c, #40). Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
 and a PR merges only after that approval and green CI. Commit and CI evidence lives in
 each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October.
+Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 
 | Order | Task | Owner | PR | State | Next step |
 | --- | --- | --- | --- | --- | --- |
@@ -33,10 +34,15 @@ each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October
 | 20 | TENANT-01b: per-business operator membership enforced in the console | Claude | — (#57 merged) | Done | — |
 | 21 | TENANT-01c: every org-scoped foreign key carries org_id — cross-business references unrepresentable (migration 0050 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
-| — | BUILD-02 automation | — | #27 (#21, #26 closed into it) | Parked, off the critical path | Revisit after step 4 |
+| — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
-After ingestion: FLOW-01 bank reconciliation (needs the export sample above), UI-01,
-TODAY-01, AI-01, CLOSE-01. Business inputs still needed are listed in
+Proposed next, in order, awaiting Todd's go-ahead: FLOW-01B bank import and exception
+screens on synthetic data (the real Wise/ASB format becomes the contract when the sample
+arrives); CLOSE-01 overdue/ageing and approved reminders; TENANT-01 isolation of jobs,
+retrieval, files, secrets and export (the worker still serves one business named by
+`ATLAS_ORG_ID`); then INV-01, reading VICE's stock levels from Shopify (PLAN D17). The
+first deploy (Fly.io + Vercel, DEPLOY.md) is Todd's action and is not evidenced here.
+Business inputs still needed are listed in
 [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
 
 ## Standing backlog and historical snapshots

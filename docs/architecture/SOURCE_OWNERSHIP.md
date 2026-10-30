@@ -8,12 +8,13 @@ missing required limits or source coverage block dependent consequential actions
 | Data | Authoritative source / owner | Atlas behavior on conflict or staleness |
 | --- | --- | --- |
 | VICE order and successful dispatch lines | Configured Shopify connection and supported fulfillment status; DATA-01 | Preserve order-line/dispatch identity, cancelled/corrected history and invoice allocations; stale or conflicting eligibility blocks new billing |
+| VICE stock quantities | Configured Shopify connection's inventory levels per location (PLAN D17); INV-01 | Not yet ingested. A missing or stale snapshot is unknown stock, not zero; no write-back to Shopify without a source-of-truth and conflict policy |
 | Product prices, retailer agreements and customer freight rules | Versioned Atlas configuration maintained by entitled operator; PRICING-01 | Explicit precedence and effective date; missing/conflicting rules block; never infer a free price or freight charge |
 | Carrier freight cost | Configured GoSweetSpot evidence/adapter | Keep separate from customer charge; actual-cost policies require matched evidence |
 | Approved invoice content and terms | Immutable Atlas invoice/document snapshot for supported workflow | Later configuration changes do not rewrite history; repricing creates revision and invalidates approval |
 | Delivery status | Declared connector evidence or local artifact generation | Keep generated, accepted and delivered distinct; unknown remains unresolved |
 | Bank transaction identity and settlement evidence | Confirmed Wise/ASB import or feed, still to be configured | Preserve source transaction IDs; repeat import is idempotent; ambiguous/amount-only matches need an owned exception |
-| Accounting balances/postings | Accounting system and handoff contract still to be confirmed | Do not assume Atlas or Stripe owns final accounting truth; live completion blocked until owner/source agreed |
+| Accounting balances/postings | VICE uses no accounting system (PLAN D17); the handoff is the system-neutral ledger CSV. Whether the Atlas ledger is VICE's book of record is still to be confirmed | Do not assume Atlas or Stripe owns final accounting truth; live completion blocked until owner/source agreed |
 | Authority, caps, tool grants and pause | Authorized governance configuration | Current checks at execution; memory cannot override |
 | Memory and learned patterns | Derived Atlas evidence-backed knowledge | Never substitute for current quantities, balances, policy or provider confirmation |
 
