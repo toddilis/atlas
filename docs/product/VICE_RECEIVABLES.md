@@ -21,7 +21,8 @@ deployed behavior or authorize automatic customer communication.
 | Delivery | Usually a printed invoice in the shipment; sometimes email. The invoice carries the Shopify order number. |
 | Approval | The owner approves invoices initially. Automatic sending is a future capability requiring separately granted authority once outcomes are trusted. |
 | Payment | Bank transfer; full payment is the expected supported settlement. Customers use the invoice number, or sometimes the invoice total, as a reference. |
-| Banks | Wise and ASB are used. Bank connections, export availability and the official accounting record are not yet confirmed. |
+| Banks | Wise and ASB are used. Bank connections and export availability are not yet confirmed. |
+| Accounting | VICE uses no accounting system such as Xero or MYOB (owner-confirmed 30 October 2026, PLAN D17). The handoff is Atlas's system-neutral ledger CSV. Whether the Atlas ledger is VICE's book of record is not yet confirmed. |
 | Coverage | New shipments only. Historical outstanding receivables are outside the initial scope. Exact activation cutoff remains unset. |
 
 ## First operator journey
@@ -91,8 +92,9 @@ issue invoices, email customers or access live bank data during development.
 4. Whether the usual 20th follows the invoice month or dispatch month; export tax
    configuration. Case-specific terms will be entered by the owner per invoice,
    rather than requiring a universal custom-design terms rule.
-5. The official accounting record and available Wise/ASB payment input (for example,
-   bank CSVs), plus a representative redacted payment record. Bank names alone do
+5. Whether the Atlas ledger is VICE's book of record (VICE uses no accounting system,
+   PLAN D17), and the available Wise/ASB payment input (for example, bank CSVs), plus
+   a representative redacted payment record. Bank names alone do
    not establish an available feed, file format, access or connection authority.
 6. The activation cutoff and handling of orders already invoiced before that cutoff;
    per-customer print/email preferences and invoice recipient mappings.

@@ -124,6 +124,7 @@ Surfaces: **console** (dashboard, queue, browse, policy settings — the single 
 | D14 | 2026-10-15 | D13's target was not met: the parallel tracks produced draft PRs but none merged. Owner ended the parallel Codex tracks and the single-combined-candidate integration plan. Foundation PRs now land one at a time in the order recorded in BUILD_QUEUE.md. The owner reviews each PR on GitHub; a PR merges only after that approval and green CI, including the browser and database gates that apply. Builders run `npm run check` before pushing. No deployment or live-action authority is added. |
 | D15 | 2026-10-15 | Owner confirmed freight on partial dispatches: the first shipment's invoice part is charged the GoSweetSpot rate for that shipment, and the second and every later part is freight-free (third and later parts confirmed the same day). No order-level freight amount is split across parts, so a part never depends on dispatches that have not happened yet. This is VICE configuration of a reusable freight rule, not a platform-wide default. See [VICE_RECEIVABLES.md](docs/product/VICE_RECEIVABLES.md). |
 | D16 | 2026-10-16 | Controller v1 `ExecutionV1` gains `revision`: each recorded state of one execution (e.g. EXECUTING, then UNRESOLVED, then CONFIRMED) is a new revision and becomes the event's `subject_version`, so a later state is an ordered successor rather than a same-version conflict. Changed in place within v1 because no producer or stored ExecutionV1 data exists yet; outcome events stay append-only at version 1. Recorded in #30. |
+| D17 | 2026-10-30 | Owner confirmed two VICE inputs. VICE uses no accounting system such as Xero or MYOB, so no system-specific export mapping is planned; the handoff is the system-neutral ledger CSV (CLOSE-01d, #59). Whether the Atlas ledger is VICE's book of record is not yet confirmed. VICE keeps its stock numbers in Shopify, so VICE's inventory slice (INV-01) reads Shopify inventory levels through the Shopify adapter; the current sync does not import quantities yet. Both are VICE configuration, not platform defaults. |
 
 ---
 
@@ -249,29 +250,40 @@ escalated items → ask the assistant a follow-up → done.
       browser-side credential, used solely for session handling)
 
 ### PR-Q — Approve/deny in the console + module-aware shell
-- [ ] Server actions → `decideApproval` → hardened `executeApproved`
-- [ ] Decision reason captured (required on reject) — this is the training signal
+- [x] Server actions → `decideApproval` → hardened `executeApproved` *(UI-01, #43: the
+      console decides through `/approvals/decide`; the worker executes the stored action
+      through `executeApproved`)*
+- [x] Decision reason captured (required on reject) — this is the training signal *(#43:
+      required on every decision)*
 - [ ] Activity stream view (per-module filter)
 - [ ] Console nav driven by a module manifest (finance today; marketing slots in)
 
 ### PR-R — Worker process (D4)
 - [ ] Long-running worker: schedules Shopify sync, outbox drain, approval expiry,
-      projection replay, dashboard rollup build
-- [ ] Job runs recorded (start/finish/error) and surfaced on the dashboard
+      projection replay, dashboard rollup build *(JOBS-01, #35/#42: all but the
+      approval-expiry sweep; the dashboard reads live rows rather than a stored rollup)*
+- [x] Job runs recorded (start/finish/error) and surfaced on the dashboard *(`job_runs`,
+      shown on `/jobs` and the home page)*
 - [ ] Acceptance: Atlas processes a full day unattended — sync → draft → escalate →
       (operator decides) → issue → payment → ledger — with no manual endpoint pokes
+      *(not yet demonstrated in a running environment)*
 
 ### PR-S — Dashboard digest (D2)
-- [ ] Console home = tailored dashboard: daily/weekly deterministic rollup
+- [ ] Console home = tailored dashboard: daily/weekly deterministic rollup *(TODAY-01,
+      #44: daily; no weekly view yet)*
 - [ ] First production Claude call: narration over the rollup (never computes figures)
+      *(AI-01a, #45: built; off until the business sets the `assistant.narrate` grant and key)*
 - [ ] Needs-attention list: pending approvals, overdue accounts, dead-lettered outbox,
-      projection failures
+      projection failures *(#44 shows pending approvals, overdue invoices, blocked or
+      quarantined jobs and uncertain executions; not dead letters or projection failures)*
 - [ ] Built from per-module digest contributions (finance first)
 
 ### PR-T — Assistant v1
-- [ ] In-console chat; read-only by contract (`assistant.ts` §10 boundary)
-- [ ] Whitelisted query tools over read-models + activity + memory; no write tools
-- [ ] Answers cite the rows/queries they used
+- [x] In-console chat; read-only by contract (`assistant.ts` §10 boundary) *(AI-01b, #46;
+      off until the business sets the `assistant.ask` grant and console key)*
+- [ ] Whitelisted query tools over read-models + activity + memory; no write tools *(#46:
+      invoice, job and approval tools, no write tools; activity and memory tools not built)*
+- [x] Answers cite the rows/queries they used *(#46)*
 
 ---
 

@@ -13,25 +13,36 @@ with isolation verified before shared-business use. Portability is not deferred 
 
 ## What happens next
 
-DATA-01, AUTHZ-01 and the architecture foundation are merged. The current order of
-work and each PR's state are in the [build queue's current status](BUILD_QUEUE.md#current-status):
-authentication and exact-action approvals, then events/evidence, then pricing and
-invoice parts, then the pricing editor and approve → print journey (PLAN D13/D14).
+Updated 30 October 2026. The order of work and each PR's state are in the
+[build queue's current status](BUILD_QUEUE.md#current-status).
+
+Segments 1 and 2 are built and verified in CI. Segment 3 is built except FLOW-01B bank
+reconciliation, which waits for a Wise/ASB export sample; payments are recorded by hand
+until then. Segment 4's dashboard, scheduled jobs, console approvals and read-only
+assistant are built, but its exit demonstration, a controlled operating cycle without
+manual endpoint calls, has not run outside CI. The repository holds no evidence that any
+of it is deployed or validated with real VICE operations. PORT-01 runs a contrasting synthetic business through the
+invoice loop in CI. TENANT-01 has closed the database function surface, per-business
+membership and cross-business references; jobs, retrieval, files, secrets and export
+are still to isolate.
 
 DATA-01 also establishes its part of PLAT-01: business-scoped canonical records and
 source mappings, with Shopify-specific interpretation in an adapter. PRICING-01 must
 support separate business configurations and optional shipping. These requirements
 shape the current slices rather than postponing them for a future generalisation pass.
 
-The next new operator-facing deliverable is [PRICING-01](tasks/PRICING-01.md): a usable
-product, retailer and shipping pricing editor with a calculation preview.
-
-The first business milestone remains: a new Shopify dispatch becomes an accurately
+The first business milestone is unchanged: a new Shopify dispatch becomes an accurately
 priced invoice, Todd approves it, the printable/selected email outcome is recorded,
 and a Wise/ASB bank receipt reconciles or becomes a visible exception. This includes
 the operator screen and recovery after interruption.
 
+VICE uses no separate accounting system and keeps its stock numbers in Shopify (PLAN
+D17). Its accounting handoff is therefore the system-neutral ledger export, and its
+inventory foundation (segment 5) starts from Shopify inventory levels.
+
 ## Verified starting position
+
+This section records 25 September 2026; the build queue has the current state.
 
 At the start of this update, these PRs were open, draft and unmerged, with no submitted
 GitHub reviews. Their inspected workflow runs passed. CI success does not establish
@@ -118,6 +129,9 @@ module. Inventory is its data/operator foundation, delivered before planning and
 
 - INV-01: identify the authoritative count/movement source for each location and SKU;
   import an opening snapshot with its timestamp, units and reconciliation evidence.
+  VICE keeps its counts in Shopify (PLAN D17), so its INV-01 reads Shopify inventory
+  levels per location through the Shopify adapter. The current sync imports product
+  identities, orders and fulfilments, not quantities.
 - INV-02: model on-hand, reserved, available, incoming, in-transit, damaged/quarantined
   and consigned stock without overlapping counts. Define availability explicitly.
 - INV-03: ingest sales/dispatches, receipts, returns, transfers and reasoned adjustments.
@@ -236,7 +250,7 @@ integration access; this plan does not invent dates from an unestimated backlog.
 | Before | Needed from the business |
 | --- | --- |
 | First invoice pilot | Initial price/retailer/shipping rules, numbering/terms/tax/rounding configuration, bank-input sample, recipients and activation cutoff; template already received |
-| Inventory reconciliation | Locations/ownership, where counts are maintained, a dated opening snapshot, units and treatment of reserved/damaged/consigned stock |
+| Inventory reconciliation | Locations/ownership, where counts are maintained (VICE: Shopify, D17), a dated opening snapshot, units and treatment of reserved/damaged/consigned stock |
 | Quartermaster proposals | Suppliers, product mapping, lead times, minimums/pack sizes, purchase costs, target coverage and approval/spend limits |
 | Supplier ordering | Supplier communication route, receiving process, purchasing terms and authority |
 | Later modules | Channel access, operating volume, business policies and success measures for that module |
