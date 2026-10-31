@@ -219,7 +219,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
           <table className="w-full text-sm">
             <thead className="text-left text-zinc-500">
               <tr><th className="py-1">When</th><th>Account</th><th>File</th><th>Dates</th><th className="text-right">Rows</th>
-                <th className="text-right">New</th><th className="text-right">Already held</th><th>By</th></tr>
+                <th className="text-right">New</th><th className="text-right">Already held</th><th className="pl-6">By</th></tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
               {batches.map(b => (
@@ -231,7 +231,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
                   <td className="text-right">{b.line_count}</td>
                   <td className="text-right">{b.new_count}</td>
                   <td className="text-right">{b.existing_count}</td>
-                  <td className="text-zinc-500">{b.imported_by}</td>
+                  <td className="pl-6 text-zinc-500">{b.imported_by}</td>
                 </tr>
               ))}
             </tbody>
@@ -259,7 +259,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
           <table data-testid="bank-lines" className="w-full text-sm">
             <thead className="text-left text-zinc-500">
               <tr><th className="py-1">Date</th><th>Description</th><th>Reference</th><th>Counterparty</th>
-                {account ? null : <th>Account</th>}<th className="text-right">Amount</th><th>Status</th></tr>
+                {account ? null : <th>Account</th>}<th className="text-right">Amount</th><th className="pl-6">Status</th></tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
               {lines.map(l => (
@@ -270,7 +270,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
                   <td>{l.counterparty ?? ''}</td>
                   {account ? null : <td className="text-zinc-500">{nameOf(l.bank_account_id)}</td>}
                   <td className={`text-right font-mono ${l.amount_cents < 0 ? '' : 'text-green-700 dark:text-green-300'}`}>{formatCents(l.amount_cents, l.currency)}</td>
-                  <td className="text-xs text-zinc-500">Not matched yet</td>
+                  <td className="pl-6 text-xs text-zinc-500">Not matched yet</td>
                 </tr>
               ))}
             </tbody>
