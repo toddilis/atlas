@@ -140,6 +140,11 @@ export function parseBankFile(text: string, currency: string, todayUtc: string):
   return { ok: true, lines };
 }
 
+/** A statement date as a calendar day ("2 Oct 2026"), whatever the server's timezone. */
+export function statementDay(d: string | null | undefined): string {
+  return d ? new Intl.DateTimeFormat('en-NZ', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T00:00:00Z`)) : '—';
+}
+
 /** A safe display name for the uploaded file: its base name, bounded. */
 export function statementFileName(name: string): string {
   const base = name.split(/[\\/]/).pop()?.trim() ?? '';
@@ -162,6 +167,24 @@ export const BANK_OUTCOMES = {
   paused: { ok: false, text: 'Business actions are paused, so nothing changed. Resume them first.' },
   not_found: { ok: false, text: 'That bank account no longer exists for this business. Nothing changed.' },
   failed: { ok: false, text: 'The change could not be saved. Nothing changed; try again.' },
+  // Receipt matching (0052).
+  allocated: { ok: true, text: 'Payment recorded from the bank line, exactly once.' },
+  not_receipt: { ok: true, text: 'Bank line marked as not a customer receipt.' },
+  reopened: { ok: true, text: 'Bank line reopened for matching.' },
+  line_not_found: { ok: false, text: 'That bank line no longer exists for this business. Nothing changed.' },
+  line_debit: { ok: false, text: 'Only money received can pay an invoice or be marked as not a receipt. Nothing changed.' },
+  line_not_receipt: { ok: false, text: 'That line is marked as not a customer receipt; reopen it first. Nothing changed.' },
+  line_exceeds: { ok: false, text: 'That is more than remains unapplied on the bank line. Nothing changed.' },
+  line_allocated: { ok: false, text: 'That line already pays an invoice, so it cannot be marked as not a receipt. Nothing changed.' },
+  pair_conflict: { ok: false, text: 'That bank line already pays that invoice a different amount. Nothing changed.' },
+  currency_mismatch: { ok: false, text: 'The bank line and the invoice are in different currencies. Nothing changed.' },
+  invoice_not_found: { ok: false, text: 'That invoice no longer exists for this business. Nothing changed.' },
+  invoice_exceeds: { ok: false, text: 'That is more than the invoice has outstanding. Nothing changed.' },
+  invoice_unpayable: { ok: false, text: 'That invoice cannot take a payment: it is paid, void or not yet issued. Nothing changed.' },
+  amount_invalid: { ok: false, text: 'Enter a positive amount like 41.50. Nothing changed.' },
+  reason_required: { ok: false, text: 'Give a reason of at least three characters. Nothing changed.' },
+  already_marked: { ok: false, text: 'That line is already marked as not a customer receipt. Nothing changed.' },
+  not_marked: { ok: false, text: 'That line is not marked as not a receipt, so there is nothing to reopen. Nothing changed.' },
 } as const;
 export type BankOutcome = keyof typeof BANK_OUTCOMES;
 export interface BankResult { outcome: BankOutcome; row?: number | null; why?: FileProblem; column?: string }
@@ -206,13 +229,14 @@ const isProblem = (v: unknown): v is FileProblem => typeof v === 'string' && Obj
 const COLUMNS: readonly string[] = [...ATLAS_CSV_V1.required, ...ATLAS_CSV_V1.optional];
 
 /** The page's query string after an action, rebuilt from fixed parts only. */
-export function bankResultQuery(result: BankResult & { batch?: string; account?: string }): string {
+export function bankResultQuery(result: BankResult & { batch?: string; account?: string; allocation?: string }): string {
   const q = new URLSearchParams({ outcome: result.outcome });
   if (result.why) q.set('why', result.why);
   if (result.row != null) q.set('row', String(result.row));
   if (result.column) q.set('column', result.column);
   if (result.batch) q.set('batch', result.batch);
   if (result.account) q.set('account', result.account);
+  if (result.allocation) q.set('allocation', result.allocation);
   return q.toString();
 }
 

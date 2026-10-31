@@ -617,6 +617,116 @@ export type Database = {
           },
         ]
       }
+      bank_line_reviews: {
+        Row: {
+          actor_id: string
+          bank_transaction_id: string
+          created_at: string
+          decided_by: string
+          decision: string
+          id: string
+          org_id: string
+          reason: string
+          seq: number
+        }
+        Insert: {
+          actor_id: string
+          bank_transaction_id: string
+          created_at?: string
+          decided_by: string
+          decision: string
+          id?: string
+          org_id: string
+          reason: string
+          seq?: never
+        }
+        Update: {
+          actor_id?: string
+          bank_transaction_id?: string
+          created_at?: string
+          decided_by?: string
+          decision?: string
+          id?: string
+          org_id?: string
+          reason?: string
+          seq?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_line_reviews_org_id_bank_transaction_id_fkey"
+            columns: ["org_id", "bank_transaction_id"]
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_line_reviews_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_receipt_allocations: {
+        Row: {
+          actor_id: string
+          allocated_by: string
+          amount_cents: number
+          bank_transaction_id: string
+          created_at: string
+          id: string
+          invoice_id: string
+          org_id: string
+          payment_id: string
+        }
+        Insert: {
+          actor_id: string
+          allocated_by: string
+          amount_cents: number
+          bank_transaction_id: string
+          created_at?: string
+          id?: string
+          invoice_id: string
+          org_id: string
+          payment_id: string
+        }
+        Update: {
+          actor_id?: string
+          allocated_by?: string
+          amount_cents?: number
+          bank_transaction_id?: string
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          org_id?: string
+          payment_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_receipt_allocations_org_id_bank_transaction_id_fkey"
+            columns: ["org_id", "bank_transaction_id"]
+            referencedRelation: "bank_transactions"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_receipt_allocations_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_receipt_allocations_org_id_invoice_id_fkey"
+            columns: ["org_id", "invoice_id"]
+            referencedRelation: "invoices"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_receipt_allocations_org_id_payment_id_fkey"
+            columns: ["org_id", "payment_id"]
+            referencedRelation: "payments"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
       bank_transactions: {
         Row: {
           amount_cents: number
@@ -3708,6 +3818,23 @@ export type Database = {
         }
         Returns: string
       }
+      operator_allocate_bank_receipt: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_amount_cents: number
+          p_bank_transaction_id: string
+          p_invoice_id: string
+          p_org_id: string
+        }
+        Returns: {
+          oab_allocation_id: string
+          oab_invoice_state: Database["public"]["Enums"]["invoice_state"]
+          oab_payment_id: string
+          oab_remaining_cents: number
+          oab_was_existing: boolean
+        }[]
+      }
       operator_approve_invoice_part: {
         Args: {
           p_actor_email: string
@@ -3803,6 +3930,17 @@ export type Database = {
           orss_sent_at: string
           orss_state: Database["public"]["Enums"]["statement_state"]
         }[]
+      }
+      operator_review_bank_line: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_bank_transaction_id: string
+          p_decision: string
+          p_org_id: string
+          p_reason: string
+        }
+        Returns: string
       }
       operator_save_account: {
         Args: {

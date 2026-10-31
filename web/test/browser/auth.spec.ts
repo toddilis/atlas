@@ -890,6 +890,59 @@ test('an operator imports bank statements; every line is stored exactly once', a
   await page.screenshot({ path: 'test-results/bank.png', fullPage: true });
 });
 
+// Receipt matching (0052, FLOW-01B-b): a receipt naming the part-paid invoice from the
+// earlier journeys is proposed for exactly its outstanding amount; confirming records the
+// payment once and the invoice turns paid. A transfer that is not a customer receipt is
+// marked with a reason, and can be reopened.
+test('an operator matches a bank receipt to its invoice and marks a transfer as not a receipt', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const rows = await (await request.get(`${rest}/dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-print-1&select=id`, { headers: service })).json();
+  const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
+  const invoiceUrl = `${rest}/invoices?org_id=eq.${org}&id=eq.${parts[0].invoice_id}&select=invoice_number,total_cents,state,payments(amount_cents)`;
+  const [invoice] = await (await request.get(invoiceUrl, { headers: service })).json();
+  expect(invoice.state).toBe('partial');
+  const outstanding = invoice.total_cents - invoice.payments.reduce((n: number, p: { amount_cents: number }) => n + p.amount_cents, 0);
+  const amount = (outstanding / 100).toFixed(2);
+  mkdirSync('test-results', { recursive: true });
+  const file = path.join('test-results', 'bank-receipts.csv');
+  writeFileSync(file, ['date,amount,description,reference,counterparty',
+    `2026-10-20,${amount},RETAILER PAYMENT OCT,${invoice.invoice_number},Synthetic Retail North`,
+    '2026-10-21,75.00,TRANSFER FROM SAVINGS,,Owner'].join('\r\n') + '\r\n');
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/bank');
+  await page.getByLabel('Statement file', { exact: true }).setInputFiles(file);
+  await page.getByRole('button', { name: 'Import file', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('2 rows, 2 new, 0 already held.');
+
+  const receipt = page.getByTestId('bank-receipt').filter({ hasText: 'RETAILER PAYMENT OCT' });
+  await expect(receipt).toContainText(`Pays ${invoice.invoice_number} in full; the invoice is named in the bank reference.`);
+  await receipt.getByRole('button', { name: new RegExp(`^Record .* against ${invoice.invoice_number}$`) }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText(`against ${invoice.invoice_number}; the invoice is now paid.`);
+  await expect(page.getByTestId('bank-receipt').filter({ hasText: 'RETAILER PAYMENT OCT' })).toHaveCount(0);
+  await expect(page.getByTestId('bank-line').filter({ hasText: 'RETAILER PAYMENT OCT' })).toContainText(`Paid ${invoice.invoice_number}`);
+  const [paid] = await (await request.get(invoiceUrl, { headers: service })).json();
+  expect(paid.state).toBe('paid');
+  expect(paid.payments.length).toBe(invoice.payments.length + 1);
+
+  // Not a customer receipt: marked with a reason, then reopened.
+  const transfer = page.getByTestId('bank-receipt').filter({ hasText: 'TRANSFER FROM SAVINGS' });
+  await transfer.getByLabel('Reason', { exact: true }).fill('Owner moving savings');
+  await transfer.getByRole('button', { name: 'Not a customer receipt', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('Bank line marked as not a customer receipt.');
+  const marked = page.getByTestId('bank-marked').filter({ hasText: 'TRANSFER FROM SAVINGS' });
+  await expect(marked).toContainText('Owner moving savings');
+  await expect(page.getByTestId('bank-line').filter({ hasText: 'TRANSFER FROM SAVINGS' })).toContainText('Not a customer receipt');
+  await marked.getByLabel('Reopen reason', { exact: true }).fill('Marked by mistake');
+  await marked.getByRole('button', { name: 'Reopen', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('Bank line reopened for matching.');
+  await expect(page.getByTestId('bank-receipt').filter({ hasText: 'TRANSFER FROM SAVINGS' })).toHaveCount(1);
+  await page.screenshot({ path: 'test-results/bank-receipts.png', fullPage: true });
+});
+
 // The emergency stop (0041): runs last of all — it pauses the business, which every
 // earlier journey's forms must not see. The pause lands durably with who and why, the
 // catalogue page says so and hides its forms, and resume works from the banner while

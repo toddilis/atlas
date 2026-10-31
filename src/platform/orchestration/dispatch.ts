@@ -63,6 +63,9 @@ export async function bootAgents(): Promise<void> {
     // payment against an invoice from a bank line stays behind payments.record.
     { agentName: 'operator', toolName: 'bank_accounts.save', risk: 'notify' },
     { agentName: 'operator', toolName: 'bank.import', risk: 'notify' },
+    // Marking a bank line as not a customer receipt, or reopening it (0052): classifying
+    // evidence. Recording a payment from a receipt stays behind payments.record.
+    { agentName: 'operator', toolName: 'bank.review', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
     // invoices.void (0048) is never seeded either: reversing a posted receivable is a

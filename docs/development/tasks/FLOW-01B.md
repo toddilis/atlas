@@ -22,7 +22,7 @@ receipts stay visible as exceptions until resolved. Nothing in a refused file is
 
 ## Scope and slices
 
-### FLOW-01B-a — bank accounts and statement import (migration 0051)
+### FLOW-01B-a — bank accounts and statement import (migration 0051, #62 merged)
 
 - Bank accounts per business: display name, bank, account reference and currency. Bank,
   reference and currency are the account's identity, and there is one account per
@@ -50,7 +50,7 @@ receipts stay visible as exceptions until resolved. Nothing in a refused file is
   columns, recent imports and recent lines ("not matched yet"), with explicit empty,
   refused, paused and switched-off states.
 
-### FLOW-01B-b — receipt matching and exceptions (next slice)
+### FLOW-01B-b — receipt matching and exceptions (migration 0052)
 
 - Deterministic matching of credit lines to issued invoices, on the invoice number in the
   reference or description and the outstanding amount in the same currency. A matching
@@ -61,8 +61,9 @@ receipts stay visible as exceptions until resolved. Nothing in a refused file is
 - Confirming a proposal records the payment through `operator_record_payment` (the
   `payments.record` grant, the outstanding cap and exactly-once posting) with the bank
   line as its reference. One bank line settles at most its own amount across invoices.
-- The operator resolves exceptions in the console: choose the invoice, split across
-  invoices or mark the line as not a receipt, each with a reason.
+- The operator resolves exceptions in the console: choose the invoice and amount (one
+  payment per line and invoice, so a split is one confirmation per invoice), or mark the
+  line as not a receipt with a reason. A marked line can be reopened with a reason.
 
 ### FLOW-01B-c — Wise and ASB formats (when the sample arrives)
 

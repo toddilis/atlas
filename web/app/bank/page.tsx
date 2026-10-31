@@ -1,21 +1,21 @@
-// Bank (FLOW-01B-a, 0051) — the business's bank accounts and the statement lines imported
-// for them, every line kept once as evidence: the shared bank source the Controller will
-// match receipts from (FLOW-01B-b) and the Bookkeeper module will later code (PLAN D18).
-// The database enforces the grants, pause, each account's fixed identity, stale edits,
-// whole-file refusals and exactly-once storage; this page shows state and collects the
-// change.
+// Bank (FLOW-01B, 0051/0052) — the business's bank accounts and the statement lines
+// imported for them, every line kept once as evidence: the shared bank source the
+// Controller matches customer receipts from and the Bookkeeper module will later code
+// (PLAN D18). The database enforces the grants, pause, each account's fixed identity,
+// stale edits, whole-file refusals, exactly-once storage and the payment rules; this page
+// shows state, proposes receipt matches and collects the decisions.
 
 import Link from 'next/link';
 import { supabaseServer, orgId } from '@/lib/supabase';
 import { formatCents, formatDateTime } from '@/lib/format';
-import { bankNoticeText, BANK_OUTCOMES, readBankResult } from '@/lib/bank-import';
+import { bankNoticeText, BANK_OUTCOMES, readBankResult, statementDay } from '@/lib/bank-import';
+import { classifyReceipt, type OpenInvoice } from '@/lib/bank-match';
+import { Receipts, type MarkedRow, type ReceiptRow } from './receipts';
 
 export const dynamic = 'force-dynamic';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-// Statement dates are calendar days, not instants: shown as written, whatever the server's timezone.
-const day = (d: string | null) => d
-  ? new Intl.DateTimeFormat('en-NZ', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${d}T00:00:00Z`)) : '—';
+const day = statementDay;
 
 interface AccountRow {
   id: string; display_name: string; bank_name: string; account_ref: string; currency: string;
@@ -28,26 +28,48 @@ interface BatchRow {
 interface LineRow {
   id: string; bank_account_id: string; posted_on: string; amount_cents: number; currency: string;
   description: string; reference: string | null; counterparty: string | null;
+  allocations: Array<{ amount_cents: number; invoice: { invoice_number: string } | null }> | null;
+  reviews: Array<{ seq: number; decision: 'not_receipt' | 'reopened'; reason: string; decided_by: string }> | null;
+}
+const LINE_SELECT = 'id, bank_account_id, posted_on, amount_cents, currency, description, reference, counterparty, '
+  + 'allocations:bank_receipt_allocations(amount_cents, invoice:invoices(invoice_number)), reviews:bank_line_reviews(seq, decision, reason, decided_by)';
+const latestReview = (l: LineRow) => [...(l.reviews ?? [])].sort((a, b) => b.seq - a.seq)[0] ?? null;
+const allocatedOf = (l: LineRow) => (l.allocations ?? []).reduce((n, a) => n + Number(a.amount_cents), 0);
+
+/** What has become of a line: applied, marked, paid out, or still waiting. */
+function lineStatus(l: LineRow): string {
+  if (l.amount_cents < 0) return 'Paid out: for the books';
+  if (l.amount_cents === 0) return '—';
+  if (latestReview(l)?.decision === 'not_receipt') return 'Not a customer receipt';
+  const allocated = allocatedOf(l);
+  const numbers = (l.allocations ?? []).map(a => a.invoice?.invoice_number).filter(Boolean).join(', ');
+  if (allocated >= l.amount_cents) return `Paid ${numbers}`;
+  if (allocated > 0) return `Part-applied to ${numbers}`;
+  return 'Not matched yet';
 }
 
 async function loadBank(selected: string | undefined) {
   const sb = await supabaseServer();
   const org = orgId();
-  const [accounts, grants, controls, batches] = await Promise.all([
+  const [accounts, grants, controls, batches, credits, invoices] = await Promise.all([
     sb.from('bank_accounts').select('id, display_name, bank_name, account_ref, currency, enabled, updated_at')
       .eq('org_id', org).order('created_at', { ascending: true }),
     sb.from('tool_grants').select('tool_name, enabled').eq('org_id', org).eq('agent_name', 'operator')
-      .in('tool_name', ['bank_accounts.save', 'bank.import']),
+      .in('tool_name', ['bank_accounts.save', 'bank.import', 'payments.record', 'bank.review']),
     sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
     sb.from('bank_import_batches').select('id, bank_account_id, file_name, line_count, new_count, existing_count, first_posted_on, last_posted_on, imported_by, created_at')
       .eq('org_id', org).order('created_at', { ascending: false }).limit(10),
+    sb.from('bank_transactions').select(LINE_SELECT).eq('org_id', org).gt('amount_cents', 0)
+      .order('posted_on', { ascending: false }).order('source_row', { ascending: true }).limit(200),
+    sb.from('invoices').select('id, invoice_number, currency, total_cents, payments(amount_cents)')
+      .eq('org_id', org).in('state', ['issued', 'partial']).order('invoice_number', { ascending: true }).limit(500),
   ]);
-  for (const r of [accounts, grants, controls, batches]) if (r.error) throw r.error;
+  for (const r of [accounts, grants, controls, batches, credits, invoices]) if (r.error) throw r.error;
   const accountRows = (accounts.data ?? []) as AccountRow[];
   const account = selected && accountRows.some(a => a.id === selected) ? selected : null;
 
   let lineQuery = sb.from('bank_transactions')
-    .select('id, bank_account_id, posted_on, amount_cents, currency, description, reference, counterparty')
+    .select(LINE_SELECT)
     .eq('org_id', org).order('posted_on', { ascending: false }).order('created_at', { ascending: false })
     .order('source_row', { ascending: true }).limit(50);
   if (account) lineQuery = lineQuery.eq('bank_account_id', account);
@@ -63,10 +85,41 @@ async function loadBank(selected: string | undefined) {
   const paused = Boolean(controls.data?.paused);
   const granted = (tool: string) => (grants.data ?? []).some(g => g.tool_name === tool && g.enabled);
   const off = [granted('bank_accounts.save') ? null : 'Account editing', granted('bank.import') ? null : 'Statement import'].filter(Boolean);
+
+  // Receipt matching (0052): open invoices with what they still have outstanding, and every
+  // credit line not yet fully applied, with the proposal for it.
+  const nameOf = (id: string) => accountRows.find(a => a.id === id)?.display_name ?? '—';
+  const open: OpenInvoice[] = ((invoices.data ?? []) as Array<{ id: string; invoice_number: string; currency: string; total_cents: number;
+    payments: Array<{ amount_cents: number }> | null }>)
+    .map(i => ({ id: i.id, invoice_number: i.invoice_number, currency: String(i.currency),
+      outstanding_cents: Number(i.total_cents) - (i.payments ?? []).reduce((n, p) => n + Number(p.amount_cents), 0) }))
+    .filter(i => i.outstanding_cents > 0);
+  const receipts: ReceiptRow[] = [], marked: MarkedRow[] = [];
+  for (const l of (credits.data ?? []) as unknown as LineRow[]) {
+    const review = latestReview(l);
+    if (review?.decision === 'not_receipt') {
+      marked.push({ id: l.id, account: nameOf(l.bank_account_id), posted_on: l.posted_on, amount_cents: l.amount_cents,
+        currency: l.currency, description: l.description, reason: review.reason, decided_by: review.decided_by });
+      continue;
+    }
+    const allocated = allocatedOf(l);
+    if (allocated >= l.amount_cents) continue;
+    receipts.push({ id: l.id, account: nameOf(l.bank_account_id), posted_on: l.posted_on, amount_cents: l.amount_cents,
+      remaining_cents: l.amount_cents - allocated, currency: l.currency, description: l.description, reference: l.reference,
+      counterparty: l.counterparty,
+      match: classifyReceipt({ amount_cents: l.amount_cents, currency: l.currency, reference: l.reference, description: l.description,
+        allocated_cents: allocated, not_receipt: false }, open) });
+  }
+  const canAllocate = !paused && granted('payments.record'), canReview = !paused && granted('bank.review');
   return {
+    receipts, marked, open, canAllocate, canReview,
+    receiptsNote: paused ? null : [
+      canAllocate ? null : 'Recording payments is switched off for this business (the operator payments.record grant is missing or revoked); a business turns it on deliberately.',
+      canReview ? null : 'Marking lines as not a receipt is switched off for this business (the operator bank.review grant is missing or revoked).',
+    ].filter(Boolean).join(' ') || null,
     accounts: accountRows.map((a, i) => ({ ...a, lines: stats[i].count ?? 0, latest: (stats[i].data?.[0]?.posted_on as string | undefined) ?? null })),
     batches: (batches.data ?? []) as BatchRow[],
-    lines: (lines.data ?? []) as LineRow[],
+    lines: (lines.data ?? []) as unknown as LineRow[],
     account,
     canSave: !paused && granted('bank_accounts.save'),
     canImport: !paused && granted('bank.import'),
@@ -90,6 +143,17 @@ async function noticeFor(params: Record<string, string | undefined>, accounts: A
       ? `Imported ${data.file_name} into ${name}: ${data.line_count} rows, ${data.new_count} new, ${data.existing_count} already held.`
       : `This exact file (${data.file_name}) was already imported into ${name} on ${formatDateTime(data.created_at)} by ${data.imported_by}; nothing new was added.`;
   }
+  if (result.outcome === 'allocated' && params.allocation && UUID.test(params.allocation)) {
+    const sb = await supabaseServer();
+    const { data, error } = await sb.from('bank_receipt_allocations')
+      .select('amount_cents, invoice:invoices(invoice_number, state, currency), line:bank_transactions(posted_on)')
+      .eq('org_id', orgId()).eq('id', params.allocation).maybeSingle();
+    if (error) throw error;
+    const invoice = data?.invoice as unknown as { invoice_number: string; state: string; currency: string } | null;
+    const line = data?.line as unknown as { posted_on: string } | null;
+    if (data && invoice && line) text = `Recorded ${formatCents(data.amount_cents, invoice.currency)} from the ${statementDay(line.posted_on)} bank line `
+      + `against ${invoice.invoice_number}; the invoice is now ${invoice.state === 'paid' ? 'paid' : 'part-paid'}.`;
+  }
   return { ok: BANK_OUTCOMES[result.outcome].ok, text };
 }
 
@@ -98,7 +162,8 @@ const button = 'rounded bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-9
 
 export default async function BankPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const params = await searchParams;
-  const { accounts, batches, lines, account, canSave, canImport, note } = await loadBank(params.account);
+  const { accounts, batches, lines, account, canSave, canImport, note, receipts, marked, open, canAllocate, canReview, receiptsNote } =
+    await loadBank(params.account);
   const notice = await noticeFor(params, accounts);
   const nameOf = (id: string) => accounts.find(a => a.id === id)?.display_name ?? '—';
   const importable = accounts.filter(a => a.enabled);
@@ -115,8 +180,8 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
       </div>
       <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-3xl">
         Every statement line, kept once as evidence: importing the same file again, or an export
-        that overlaps an earlier one, never stores a line twice. Matching customer receipts to
-        invoices comes next; until then every line shows as not matched yet.
+        that overlaps an earlier one, never stores a line twice. Money received is matched to the
+        invoices it pays below; money paid out waits for the books.
       </p>
 
       {notice ? (
@@ -211,6 +276,10 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
         </section>
       ) : null}
 
+      {accounts.length > 0 ? (
+        <Receipts receipts={receipts} marked={marked} open={open} canAllocate={canAllocate} canReview={canReview} note={receiptsNote} />
+      ) : null}
+
       <section className="space-y-3" aria-label="Recent imports">
         <h2 className="text-lg font-semibold">Recent imports</h2>
         {batches.length === 0 ? (
@@ -270,7 +339,7 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
                   <td>{l.counterparty ?? ''}</td>
                   {account ? null : <td className="text-zinc-500">{nameOf(l.bank_account_id)}</td>}
                   <td className={`text-right font-mono ${l.amount_cents < 0 ? '' : 'text-green-700 dark:text-green-300'}`}>{formatCents(l.amount_cents, l.currency)}</td>
-                  <td className="pl-6 text-xs text-zinc-500">Not matched yet</td>
+                  <td className="pl-6 text-xs text-zinc-500">{lineStatus(l)}</td>
                 </tr>
               ))}
             </tbody>
