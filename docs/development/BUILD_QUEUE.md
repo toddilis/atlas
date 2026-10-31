@@ -35,12 +35,13 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 21 | TENANT-01c: every org-scoped foreign key carries org_id — cross-business references unrepresentable | Claude | — (#58 merged) | Done | — |
 | 22 | CLOSE-01d: ledger page + period CSV export for the accounting handoff (no migration) | Claude | — (#59 merged) | Done | — |
 | 23 | FLOW-01B-a: bank accounts and statement import, the shared bank source ([brief](tasks/FLOW-01B.md)) | Claude | — (#62 merged) | Done | — |
-| 24 | FLOW-01B-b: receipts matched to invoices, payments recorded from them; not-a-receipt marking (migration 0052 claimed) | Claude | `claude/flow-01b-receipt-matching` | In progress | `npm run check`, PR, Todd's review |
+| 24 | FLOW-01B-b: receipts matched to invoices, payments recorded from them; not-a-receipt marking (migration 0052 claimed) | Claude | `claude/flow-01b-receipt-matching` | PR #63 open | Todd's review |
+| 25 | CLOSE-01e: receivables ageing — what each retailer owes and how late, in the business's calendar (no migration) | Claude | `claude/close-01e-receivables` (stacked on #63) | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
 Next, in order (Todd's go-ahead, 31 October): FLOW-01B-b receipt matching (row 24);
-CLOSE-01 overdue/ageing and approved reminders; TENANT-01 isolation of jobs, retrieval,
+CLOSE-01 overdue/ageing (row 25), then approved reminders; TENANT-01 isolation of jobs, retrieval,
 files, secrets and export (the worker still serves one business named by `ATLAS_ORG_ID`);
 then INV-01, reading VICE's stock levels from Shopify (PLAN D17). The Wise/ASB layouts
 (FLOW-01B-c) wait for the export sample. After the Controller pilot the module order is
