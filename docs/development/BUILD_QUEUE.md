@@ -32,7 +32,8 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 18 | CLOSE-01b: statement lifecycle — printable document, record sent, void | Claude | — (#55 merged) | Done | — |
 | 19 | CLOSE-01c: void a wrongly issued invoice — ledger reversal + webhook guard | Claude | — (#56 merged) | Done | — |
 | 20 | TENANT-01b: per-business operator membership enforced in the console | Claude | — (#57 merged) | Done | — |
-| 21 | TENANT-01c: every org-scoped foreign key carries org_id — cross-business references unrepresentable (migration 0050 claimed) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
+| 21 | TENANT-01c: every org-scoped foreign key carries org_id — cross-business references unrepresentable | Claude | — (#58 merged) | Done | — |
+| 22 | CLOSE-01d: ledger page + period CSV export for the accounting handoff (no migration) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 

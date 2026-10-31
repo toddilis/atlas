@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { calculatePricing } from '../../../src/platform/pricing/versioned';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const authUrl = 'http://127.0.0.1:54321/auth/v1';
@@ -641,6 +642,37 @@ test('an operator voids a wrongly issued invoice with a reason; the posting reve
   // The reversal is visible beside the issue posting in the invoice's own ledger.
   await expect(page.getByText('Invoice ATL-', { exact: false }).filter({ hasText: 'voided' }).first()).toBeVisible();
   await page.screenshot({ path: 'test-results/invoice-voided.png', fullPage: true });
+});
+
+// Runs after the void journey, so the ledger carries issues, a payment and a reversal.
+test('the ledger page shows postings and exports the period as exact CSV', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/ledger');
+  await expect(page.getByTestId('ledger-txn').filter({ hasText: 'voided' }).first()).toBeVisible();
+  await expect(page.getByTestId('ledger-txn').filter({ hasText: 'Payment received' }).first()).toBeVisible();
+
+  await page.getByLabel('Export from', { exact: true }).fill('2026-01-01');
+  await page.getByLabel('Export to', { exact: true }).fill('2027-01-01');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Export CSV', exact: true }).click(),
+  ]);
+  const file = await download.path();
+  const csv = readFileSync(file!, 'utf8');
+  const lines = csv.trim().split('\r\n');
+  expect(lines[0]).toBe('posted_at,occurred_at,transaction_id,source,description,account_code,account_name,memo,amount,currency');
+  // The voided part's issue and its reversal both export, and they cancel exactly.
+  expect(csv).toContain('invoice_voided');
+  expect(csv).toContain(',103.50,');
+  expect(csv).toContain(',-103.50,');
+  expect(csv).toContain('payment_received');
+  expect(lines.length).toBeGreaterThan(6);
+
+  // A nonsense period exports nothing and says so.
+  await page.goto('/ledger/export?from=2026-12-31&to=2026-01-01');
+  await expect(page.getByTestId('ledger-notice')).toContainText('Check the period');
+  await page.screenshot({ path: 'test-results/ledger.png', fullPage: true });
 });
 
 
