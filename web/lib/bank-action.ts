@@ -1,21 +1,23 @@
-// Console bank actions (0051): save a bank account, and import a statement file into one.
-// The operator is verified here (session, allowlist, membership, same origin) and the
-// file is parsed here; the database enforces pause, the bank_accounts.save and
-// bank.import grants, the account's fixed identity, stale edits, every row again,
-// exactly-once storage and the audit trail. The browser gets back fixed outcome codes.
+// Console bank actions: save a bank account and import a statement file into one (0051);
+// record a payment from a receipt and mark a line as not a receipt (0052). The operator is
+// verified here (session, allowlist, membership, same origin) and the file is parsed here;
+// the database enforces pause, the grants, the account's fixed identity, stale edits,
+// every row again, exactly-once storage, the payment rules and the audit trail. The
+// browser gets back fixed outcome codes.
 
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { OperatorAuthError, requireOperator } from './auth-server';
 import { supabaseServer } from './supabase';
 import {
-  BANK_FILE_MAX_BYTES, bankResultQuery, importOutcomeFor, parseBankFile, saveOutcomeFor, statementFileName,
+  BANK_FILE_MAX_BYTES, bankResultQuery, centsFromDecimal, importOutcomeFor, parseBankFile, saveOutcomeFor, statementFileName,
   type BankResult,
 } from './bank-import';
+import { allocateOutcomeFor, reviewOutcomeFor } from './bank-match';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Relative Location: request.url names Next's own hostname, not the browser's.
-const back = (result: BankResult & { batch?: string; account?: string }) =>
+const back = (result: BankResult & { batch?: string; account?: string; allocation?: string }) =>
   new Response(null, { status: 303, headers: { Location: `/bank?${bankResultQuery(result)}` } });
 
 async function operatorOr(request: Request) {
@@ -90,4 +92,49 @@ export async function importBankFileAction(request: Request) {
   }
   const stored = (data as Array<{ oib_batch_id: string; oib_was_existing: boolean }>)[0];
   return back({ outcome: stored.oib_was_existing ? 'already_imported' : 'imported', batch: stored.oib_batch_id, account: accountId });
+}
+
+export async function allocateReceiptAction(request: Request) {
+  const { operator, refused } = await operatorOr(request);
+  if (!operator) return refused;
+  const form = await request.formData();
+  const lineId = form.get('line_id'), invoiceId = form.get('invoice_id'), amount = form.get('amount');
+  if (typeof lineId !== 'string' || !UUID.test(lineId)) return back({ outcome: 'line_not_found' });
+  if (typeof invoiceId !== 'string' || !UUID.test(invoiceId)) return back({ outcome: 'invoice_not_found' });
+  const cents = typeof amount === 'string' && amount.length <= 20 ? centsFromDecimal(amount) : null;
+  if (cents === null || BigInt(cents) <= 0n) return back({ outcome: 'amount_invalid' });
+
+  const sb = await supabaseServer();
+  const { data, error } = await sb.rpc('operator_allocate_bank_receipt', {
+    p_org_id: operator.orgId, p_bank_transaction_id: lineId, p_invoice_id: invoiceId, p_amount_cents: Number(cents),
+    p_actor_id: operator.actorId, p_actor_email: operator.email,
+  });
+  if (error) {
+    const outcome = allocateOutcomeFor(error.message);
+    if (outcome === 'failed') console.error('bank.allocate_failed', { line_id: lineId, invoice_id: invoiceId, error: error.message });
+    return back({ outcome });
+  }
+  const stored = (data as Array<{ oab_allocation_id: string }>)[0];
+  return back({ outcome: 'allocated', allocation: stored.oab_allocation_id });
+}
+
+export async function reviewBankLineAction(request: Request) {
+  const { operator, refused } = await operatorOr(request);
+  if (!operator) return refused;
+  const form = await request.formData();
+  const lineId = form.get('line_id'), decision = form.get('decision'), reason = form.get('reason');
+  if (typeof lineId !== 'string' || !UUID.test(lineId)) return back({ outcome: 'line_not_found' });
+  if (decision !== 'not_receipt' && decision !== 'reopened') return back({ outcome: 'failed' });
+  const why = typeof reason === 'string' && reason.length <= 500 ? reason.trim() : '';
+  if (why.length < 3) return back({ outcome: 'reason_required' });
+
+  const sb = await supabaseServer();
+  const { error } = await sb.rpc('operator_review_bank_line', {
+    p_org_id: operator.orgId, p_bank_transaction_id: lineId, p_decision: decision, p_reason: why,
+    p_actor_id: operator.actorId, p_actor_email: operator.email,
+  });
+  if (!error) return back({ outcome: decision === 'not_receipt' ? 'not_receipt' : 'reopened' });
+  const outcome = reviewOutcomeFor(error.message);
+  if (outcome === 'failed') console.error('bank.review_failed', { line_id: lineId, error: error.message });
+  return back({ outcome });
 }

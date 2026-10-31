@@ -34,19 +34,18 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 20 | TENANT-01b: per-business operator membership enforced in the console | Claude | — (#57 merged) | Done | — |
 | 21 | TENANT-01c: every org-scoped foreign key carries org_id — cross-business references unrepresentable | Claude | — (#58 merged) | Done | — |
 | 22 | CLOSE-01d: ledger page + period CSV export for the accounting handoff (no migration) | Claude | — (#59 merged) | Done | — |
-| 23 | FLOW-01B-a: bank accounts and statement import, the shared bank source (migration 0051 claimed; [brief](tasks/FLOW-01B.md)) | Claude | `claude/flow-01b-bank-import` | In progress | `npm run check`, PR, Todd's review |
+| 23 | FLOW-01B-a: bank accounts and statement import, the shared bank source ([brief](tasks/FLOW-01B.md)) | Claude | — (#62 merged) | Done | — |
+| 24 | FLOW-01B-b: receipts matched to invoices, payments recorded from them; not-a-receipt marking (migration 0052 claimed) | Claude | `claude/flow-01b-receipt-matching` | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
-Proposed next, in order, awaiting Todd's go-ahead: FLOW-01B bank import, built as a shared
-source that keeps every bank line for the Bookkeeper module (PLAN D18), and its exception
-screens on synthetic data (the real Wise/ASB format becomes the contract when the sample
-arrives); CLOSE-01 overdue/ageing and approved reminders; TENANT-01 isolation of jobs,
-retrieval, files, secrets and export (the worker still serves one business named by
-`ATLAS_ORG_ID`); then INV-01, reading VICE's stock levels from Shopify (PLAN D17). After
-the Controller pilot the module order is Quartermaster, then Bookkeeper (D18). The first
-deploy (Fly.io + Vercel, DEPLOY.md) is Todd's action and is not evidenced here. Business
-inputs still needed are listed in
+Next, in order (Todd's go-ahead, 31 October): FLOW-01B-b receipt matching (row 24);
+CLOSE-01 overdue/ageing and approved reminders; TENANT-01 isolation of jobs, retrieval,
+files, secrets and export (the worker still serves one business named by `ATLAS_ORG_ID`);
+then INV-01, reading VICE's stock levels from Shopify (PLAN D17). The Wise/ASB layouts
+(FLOW-01B-c) wait for the export sample. After the Controller pilot the module order is
+Quartermaster, then Bookkeeper (D18). The first deploy (Fly.io + Vercel, DEPLOY.md) is
+Todd's action and is not evidenced here. Business inputs still needed are listed in
 [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
 
 ## Standing backlog and historical snapshots
