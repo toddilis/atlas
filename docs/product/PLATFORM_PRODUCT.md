@@ -11,7 +11,7 @@ support. It applies to work now, rather than waiting for a later rewrite.
 | Layer | Owns | Examples |
 | --- | --- | --- |
 | Shared platform | Business identity, users/roles, permissions, audit, events, durable work, approvals, assistant context and console shell | A business-scoped approval/retry works the same way for each installed module |
-| Optional business modules | Domain data, deterministic rules, actions and operator screens | Controller, inventory/Quartermaster, Rep, Marketer, Concierge, Registrar |
+| Optional business modules | Domain data, deterministic rules, actions and operator screens | Controller, inventory/Quartermaster, Bookkeeper, Rep, Marketer, Concierge, Registrar |
 | Integration adapters | Provider authentication, source IDs, mapping, capabilities, retries and reconciliation | Shopify, carrier, bank/accounting and messaging connections |
 | Business configuration and templates | Enabled modules, branding, terminology, roles, prices, taxes, currencies/units, terms, approval limits, locations, suppliers and workflows | VICE's partial-shipment numbering, retailer agreements and GoSweetSpot charging policy |
 

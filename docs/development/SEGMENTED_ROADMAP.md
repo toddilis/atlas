@@ -36,9 +36,10 @@ priced invoice, Todd approves it, the printable/selected email outcome is record
 and a Wise/ASB bank receipt reconciles or becomes a visible exception. This includes
 the operator screen and recovery after interruption.
 
-VICE uses no separate accounting system and keeps its stock numbers in Shopify (PLAN
-D17). Its accounting handoff is therefore the system-neutral ledger export, and its
-inventory foundation (segment 5) starts from Shopify inventory levels.
+VICE keeps its stock numbers in Shopify (PLAN D17), so its inventory foundation
+(segment 5) starts from Shopify inventory levels. VICE uses no accounting system: Atlas
+becomes its official books through the Bookkeeper module, built after Quartermaster
+(PLAN D18). Until then the ledger covers receivables only and its CSV export is the handoff.
 
 ## Verified starting position
 
@@ -72,16 +73,17 @@ feed. Inventory requires explicit quantities, sources and reconciliation.
 | 5. Inventory | Stock by SKU/variant and location, available/reserved/incoming quantities, movement history and reconciliation | Shared identities/access; confirmed inventory sources | Opening balance plus movements ties to closing stock; duplicates, transfers, returns and stocktakes preserve correct balances |
 | 6. Quartermaster: planning | Low-stock/overstock view, demand and lead-time assumptions, replenishment and transfer proposals | Proven segment 5 balances; supplier/lead-time data; Controller operating loop | Each recommendation explains stock, demand, inbound supply, timing and quantity; stale/missing data blocks unsupported recommendations |
 | 7. Quartermaster: buying and receiving | Supplier catalogue, POs, approval, supplier acknowledgement, inbound tracking and goods receipt | Segment 6; purchasing policy and supplier channel | Approve a PO, record the supplier outcome and receive it in parts; shortages/damage and retries reconcile without double receipts |
-| 8. Controller: wider finance | Consignment settlement, DTC reconciliation, supplier bills/AP, purchase matching, costs and supported corrections | Receivables and inventory; receipts for AP matching | Inventory/receipt, invoice and ledger evidence reconcile; differences have an owner and resolution path |
+| 8. Bookkeeper: the books (D18), with the Controller's wider receivables | Every bank line matched or coded, chart of accounts, approved journals, period close and lock, financial reports, GST return figures, supplier bills/AP, online-store payouts/fees, stock value; consignment settlement and supported corrections | Controller postings; the shared bank import (FLOW-01B); Quartermaster receipts, balances and costs | A GST period closes: every bank line is matched or coded, the trial balance ties to the bank balances, GST figures trace to ledger lines, and a locked period rejects changes while corrections post to the open period |
 | 9. Rep: wholesale accounts | Account history, reorder opportunities, dormancy alerts, onboarding and offer proposals | Stable Quartermaster; enough account activity | A proposed reorder/offer uses current stock, approved pricing and account/payment context, with communication recorded |
 | 10. Marketer: growth | Campaign/content proposals, audience selection, stock-aware promotions and measured results | Rep/Quartermaster context; selected marketing channels | An approved campaign reaches its selected test audience with correct price/stock constraints and attributable results |
 | 11. Concierge: customer support | Order/payment/shipping answers, inbox triage and return/refund proposals | Reliable business records; support channel | A case resolves from traceable records; an authorized return/refund follows the financial and stock correction paths |
-| 12. Registrar: back office | Reconciled reporting packs, filing documents, renewal calendar and compliance reminders | Controller close/reporting data; applicable obligations confirmed | A reporting pack traces to reconciled records; an obligation has an owner, evidence and a deadline |
+| 12. Registrar: back office | Filing documents, renewal calendar and compliance reminders, using the Bookkeeper's reconciled reports | Bookkeeper close/reporting data; applicable obligations confirmed | A reporting pack traces to reconciled records; an obligation has an owner, evidence and a deadline |
 
 Segments 9–12 remain trigger-based: enough relevant work and trustworthy data must
 exist before each begins. External channels are selected during setup; the plan does
 not assume new accounts, access or spending. Quartermaster remains the second business
 module. Inventory is its data/operator foundation, delivered before planning and buying.
+The Bookkeeper module follows Quartermaster (PLAN D18).
 
 ## Work packages
 
@@ -113,7 +115,9 @@ module. Inventory is its data/operator foundation, delivered before planning and
 - FLOW-01A: approve the exact draft, produce its print document or authorized email,
   and distinguish generated, packed, requested, confirmed and failed outcomes.
 - FLOW-01B: ingest the selected Wise/ASB transaction input, deduplicate and match using
-  sufficient evidence; expose ambiguous, partial, excess and unmatched receipts.
+  sufficient evidence; expose ambiguous, partial, excess and unmatched receipts. Build the
+  import as a shared, business-scoped bank source that keeps every line, not only
+  receipts, so the Bookkeeper module (PLAN D18) can match or code the rest later.
 - UI-01 / CLOSE-01: complete invoice/approval/exception screens and validate the declared
   new-shipment scope. Existing unpaid balances remain excluded from this pilot.
 
@@ -170,14 +174,38 @@ pack rounding, thresholds and spending limits. Recommendations do not place orde
 - QM-FIN-01: publish receipt/cost events for Controller. Demonstrate PO -> part receipt
   -> remaining receipt -> supplier-bill match across the two modules.
 
-### 8. Wider finance
+### 8. Bookkeeper: the books
 
-- FIN-01: supported credits, voids, disputes, returns/refunds and statement corrections.
-- FIN-02: consignment sales/returns/settlement and DTC payment/fee reconciliation.
-- FIN-03: supplier bill capture, PO/receipt/bill matching, payable due dates and landed
-  cost allocation. Bill approval is separate from payment execution.
-- FIN-04: reconciled period close and accounting handoff; inter-company flows only when
-  actual entities and rules make them necessary.
+PLAN D18: Atlas becomes VICE's official books through the Bookkeeper module (working
+name), built after Quartermaster. The Controller keeps receivables and posts to the
+platform ledger; Bookkeeper owns the books. The chart of accounts and tax rules are
+per-business configuration, NZ GST first. Tax filing stays manual.
+
+- BOOK-01: chart of accounts per business, versioned; approved manual journals, corrected
+  by reversal, never by edit; account mapping for the Controller's postings.
+- BOOK-02: every bank line from the shared Wise/ASB import (built for FLOW-01B) is
+  matched or coded: customer receipt, supplier payment, expense, transfer between the
+  business's own accounts, owner drawings or capital. Coding rules need approval;
+  foreign-currency balances carry their exchange differences.
+- BOOK-03: period close and lock, enforced at the database; trial balance, profit and
+  loss and balance sheet. Corrections after a lock post to the open period.
+- BOOK-04: GST return figures traced to ledger lines, and a year-end pack for the owner
+  or accountant. Filing or submission authority is not inferred.
+- BOOK-05 (was FIN-03): supplier bill capture, PO/receipt/bill matching over
+  Quartermaster's read models, payable due dates and landed cost allocation. Bill
+  approval is separate from payment execution.
+- BOOK-06: online-store sales, payouts and fees through the store adapter; stock value and
+  cost of goods sold from Quartermaster's reconciled balances and costs.
+
+Controller follow-ons in this segment: FIN-01 supported credits, disputes, returns/refunds
+and statement corrections; FIN-02 consignment sales/returns/settlement. Inter-company
+flows only when actual entities and rules make them necessary.
+
+As the book of record, the ledger keeps records for the configured retention period
+(seven years for VICE), allows no edits after a period locks, and exports the business's
+full books on demand. Payroll and depreciation stay out at first and are posted as manual
+journals. The module's cross-module dependencies are declared in the Contract Map with its
+first slice.
 
 Essential receivables corrections/statements belong in segment 3/CLOSE-01. This segment
 expands coverage rather than postponing safe invoice operation.
@@ -231,8 +259,8 @@ acceptance criteria; this plan does not claim all business types are already sup
 
 The first critical path is DATA-01 + PRICING-01 -> BILL-01, with AUTH-01/AUTHZ-02
 protecting editing and approval -> FLOW-01/UI-01 -> JOBS-01/TODAY-01/CLOSE-01.
-Inventory enables Quartermaster planning -> purchasing/receiving. Wider finance
-consumes those records. Rep and later modules reuse that trusted context. Dependencies
+Inventory enables Quartermaster planning -> purchasing/receiving. The Bookkeeper module
+consumes those records and the Controller's postings. Rep and later modules reuse that trusted context. Dependencies
 govern delivery, not a requirement that all development happen serially.
 
 Every delivered slice includes persisted data, protected actions, its operator screen,
@@ -253,6 +281,7 @@ integration access; this plan does not invent dates from an unestimated backlog.
 | Inventory reconciliation | Locations/ownership, where counts are maintained (VICE: Shopify, D17), a dated opening snapshot, units and treatment of reserved/damaged/consigned stock |
 | Quartermaster proposals | Suppliers, product mapping, lead times, minimums/pack sizes, purchase costs, target coverage and approval/spend limits |
 | Supplier ordering | Supplier communication route, receiving process, purchasing terms and authority |
+| Bookkeeper (the books) | GST filing frequency and basis (invoice or payments), balance date, cutover date and opening balances, Wise currencies, and how owner drawings, capital and loans are recorded today |
 | Later modules | Channel access, operating volume, business policies and success measures for that module |
 
 The development process owns task breakdown, implementation, verification and routine
