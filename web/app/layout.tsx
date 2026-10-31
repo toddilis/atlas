@@ -27,6 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/statements" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                   Statements
                 </Link>
+                <Link href="/receivables" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+                  Receivables
+                </Link>
                 <Link href="/ledger" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                   Ledger
                 </Link>

@@ -823,6 +823,32 @@ test('membership gates the console on top of the allowlist; disabling a member t
   await page.screenshot({ path: 'test-results/members.png', fullPage: true });
 });
 
+// Receivables (CLOSE-01e): the invoice the earlier journeys issued and part-paid is owed
+// by its retailer, less the payment, aged in the business's calendar. Runs before the
+// bank journeys, which settle it.
+test('the receivables page shows what each retailer owes, less payments, and how late', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const rows = await (await request.get(`${rest}/dispatches?org_id=eq.${org}&source_dispatch_key=eq.ship-print-1&select=id`, { headers: service })).json();
+  const parts = await (await request.get(`${rest}/invoice_calculation_snapshots?org_id=eq.${org}&dispatch_id=eq.${rows[0].id}&select=invoice_id`, { headers: service })).json();
+  const [invoice] = await (await request.get(`${rest}/invoices?org_id=eq.${org}&id=eq.${parts[0].invoice_id}&select=invoice_number,total_cents,currency,state,account:accounts(name),payments(amount_cents)`, { headers: service })).json();
+  expect(invoice.state).toBe('partial');
+  const outstanding = invoice.total_cents - invoice.payments.reduce((n: number, p: { amount_cents: number }) => n + p.amount_cents, 0);
+  const money = new Intl.NumberFormat('en-NZ', { style: 'currency', currency: invoice.currency, minimumFractionDigits: 2 }).format(outstanding / 100);
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/receivables');
+  await expect(page.getByRole('heading', { name: 'Receivables', exact: true })).toBeVisible();
+  await expect(page.getByTestId('receivables-as-of')).toContainText('As of');
+  const retailer = page.getByTestId('ageing-row').filter({ hasText: invoice.account.name });
+  await expect(retailer).toHaveCount(1);
+  await expect(retailer).toContainText(money);
+  await expect(page.getByTestId('receivables-total').first()).toContainText('Outstanding');
+  await page.screenshot({ path: 'test-results/receivables.png', fullPage: true });
+});
+
 // Bank source (0051, FLOW-01B-a): add an account, import a statement and see every line
 // once. The same file again adds nothing, an overlapping export adds only its new line,
 // and a malformed file is refused whole, naming its row and the reason.

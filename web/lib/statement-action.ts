@@ -7,31 +7,13 @@
 import 'server-only';
 import { OperatorAuthError, requireOperator } from './auth-server';
 import { supabaseServer } from './supabase';
-import { selectPricingVersion } from '../../src/platform/pricing/versioned';
+import { businessTimezone } from './business-timezone';
 import { statementOutcomeFor, type StatementOutcome } from './statements';
 
 // Relative Location: request.url names Next's own hostname, not the browser's.
 const back = (outcome: StatementOutcome) => new Response(null, { status: 303, headers: { Location: `/statements?outcome=${outcome}` } });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The business timezone comes from the active pricing configuration at the as-of
- * instant. A business with no active pricing cannot have drafted BILL invoices, so only
- * then does the database default apply (null). Any other resolution error is surfaced,
- * never papered over with a default calendar. */
-async function businessTimezone(orgId: string, asOfIso: string): Promise<string | null> {
-  const sb = await supabaseServer();
-  const { data, error } = await sb.from('pricing_activations').select('version:pricing_versions!inner(config)').eq('org_id', orgId);
-  if (error) throw error;
-  const configs = (data ?? []).map(row => (row as unknown as { version: { config: unknown } }).version.config);
-  if (configs.length === 0) return null;
-  try {
-    return selectPricingVersion(configs, orgId, asOfIso).timezone;
-  } catch (cause) {
-    if (cause instanceof Error && cause.message.includes('no effective configuration')) return null;
-    throw cause;
-  }
-}
 
 export async function generateStatementAction(request: Request) {
   let operator: Awaited<ReturnType<typeof requireOperator>>;
