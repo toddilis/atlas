@@ -11,7 +11,7 @@ Claim a number by recording it in the current-status section of
 authoring the file. Do not take an unclaimed number mid-range; take the next one after
 the highest reservation.
 
-## Ledger (as of 2026-10-18, after step 4: #38, #39 and #40)
+## Ledger (as of 2026-10-31)
 
 | Number | Name | Track / owner | Where it lives |
 | --- | --- | --- | --- |
@@ -45,5 +45,6 @@ the highest reservation.
 | 0047 | `statement_lifecycle` | CLOSE-01b (record sent / void in the console) | main (PR #55) |
 | 0048 | `invoice_void` | CLOSE-01c (void an issued invoice; reversal + webhook guard) | main (PR #56) |
 | 0049 | `org_members` | TENANT-01b (per-business operator membership) | main (PR #57) |
-| 0050 | `tenant_fk_binding` | TENANT-01c (org_id on every org-scoped foreign key) | claimed 23 Oct (queue row), in progress |
-| **0051** | **next unclaimed** | — | — |
+| 0050 | `tenant_fk_binding` | TENANT-01c (org_id on every org-scoped foreign key) | main (PR #58) |
+| 0051 | `bank_source` | FLOW-01B-a (bank accounts and statement import) | claimed 31 Oct (queue row 23), in progress |
+| **0052** | **next unclaimed** | — | — |

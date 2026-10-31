@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { calculatePricing } from '../../../src/platform/pricing/versioned';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const authUrl = 'http://127.0.0.1:54321/auth/v1';
@@ -821,6 +821,73 @@ test('membership gates the console on top of the allowlist; disabling a member t
   // Still enabled: the row still offers Disable (a disabled row would offer Enable).
   await expect(page.getByRole('button', { name: 'Disable operator@example.test', exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/members.png', fullPage: true });
+});
+
+// Bank source (0051, FLOW-01B-a): add an account, import a statement and see every line
+// once. The same file again adds nothing, an overlapping export adds only its new line,
+// and a malformed file is refused whole, naming its row and the reason.
+test('an operator imports bank statements; every line is stored exactly once', async ({ page }) => {
+  mkdirSync('test-results', { recursive: true });
+  const statement = (name: string, rows: string[]) => {
+    const target = path.join('test-results', name);
+    writeFileSync(target, ['date,amount,description,reference,counterparty', ...rows].join('\r\n') + '\r\n');
+    return target;
+  };
+  const october = statement('bank-october.csv', [
+    '2026-10-01,141.50,DIRECT CREDIT,ATL-0001,Synthetic Retail North',
+    '2026-10-02,-10.00,CARD 1234 COFFEE,,',
+    '2026-10-02,-10.00,CARD 1234 COFFEE,,',
+    '2026-10-03,-1250.00,"RENT, OCTOBER",,Landlord Ltd',
+  ]);
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/bank');
+  await expect(page.getByRole('heading', { name: 'Bank', exact: true })).toBeVisible();
+  await expect(page.getByTestId('bank-empty')).toContainText('No bank accounts yet');
+
+  await page.getByLabel('Account name', { exact: true }).fill('ASB Everyday');
+  await page.getByLabel('Bank', { exact: true }).fill('ASB');
+  await page.getByLabel('Account reference', { exact: true }).fill('12-3456-0001234-00');
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('Bank account saved.');
+  await expect(page.getByTestId('bank-account')).toContainText('No statement imported yet');
+
+  await page.getByLabel('Statement file', { exact: true }).setInputFiles(october);
+  await page.getByRole('button', { name: 'Import file', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('Imported bank-october.csv into ASB Everyday: 4 rows, 4 new, 0 already held.');
+  await expect(page.getByTestId('bank-line')).toHaveCount(4);
+  // Two identical coffee lines on one day are two lines, not a duplicate.
+  await expect(page.getByTestId('bank-line').filter({ hasText: 'CARD 1234 COFFEE' })).toHaveCount(2);
+  await expect(page.getByTestId('bank-lines')).toContainText('RENT, OCTOBER');
+  await expect(page.getByTestId('bank-lines')).toContainText('Not matched yet');
+
+  // The same file again is a retry: nothing new is stored.
+  await page.getByLabel('Statement file', { exact: true }).setInputFiles(october);
+  await page.getByRole('button', { name: 'Import file', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('was already imported into ASB Everyday');
+  await expect(page.getByTestId('bank-line')).toHaveCount(4);
+
+  // An overlapping export stores only the line not yet held.
+  const overlap = statement('bank-overlap.csv', [
+    '2026-10-02,-10.00,CARD 1234 COFFEE,,',
+    '2026-10-02,-10.00,CARD 1234 COFFEE,,',
+    '2026-10-04,50.00,DIRECT CREDIT,ATL-0002,Synthetic Retail North',
+  ]);
+  await page.getByLabel('Statement file', { exact: true }).setInputFiles(overlap);
+  await page.getByRole('button', { name: 'Import file', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('3 rows, 1 new, 2 already held.');
+  await expect(page.getByTestId('bank-line')).toHaveCount(5);
+  await expect(page.getByTestId('bank-import')).toHaveCount(2);
+
+  // A malformed file is refused whole: its good first row is not imported either.
+  const bad = statement('bank-bad.csv', ['2026-10-05,20.00,FINE ROW,,', '2026-10-06,"-1,250.00",RENT,,']);
+  await page.getByLabel('Statement file', { exact: true }).setInputFiles(bad);
+  await page.getByRole('button', { name: 'Import file', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('Row 3: the amount must be a signed number');
+  await expect(page.getByTestId('bank-notice')).toContainText('Nothing was imported.');
+  await expect(page.getByTestId('bank-line')).toHaveCount(5);
+  await expect(page.getByTestId('bank-lines')).not.toContainText('FINE ROW');
+  await page.screenshot({ path: 'test-results/bank.png', fullPage: true });
 });
 
 // The emergency stop (0041): runs last of all — it pauses the business, which every
