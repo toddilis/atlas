@@ -58,6 +58,11 @@ export async function bootAgents(): Promise<void> {
     // as recording an invoice print. The sending itself stays with the human.
     { agentName: 'operator', toolName: 'statements.record_send', risk: 'notify' },
     { agentName: 'operator', toolName: 'statements.void', risk: 'notify' },
+    // The bank source (0051): adding bank accounts and importing statement lines —
+    // setup and evidence, which move no money and change no invoice. Recording a
+    // payment against an invoice from a bank line stays behind payments.record.
+    { agentName: 'operator', toolName: 'bank_accounts.save', risk: 'notify' },
+    { agentName: 'operator', toolName: 'bank.import', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
     // invoices.void (0048) is never seeded either: reversing a posted receivable is a

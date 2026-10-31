@@ -33,8 +33,9 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 19 | CLOSE-01c: void a wrongly issued invoice — ledger reversal + webhook guard | Claude | — (#56 merged) | Done | — |
 | 20 | TENANT-01b: per-business operator membership enforced in the console | Claude | — (#57 merged) | Done | — |
 | 21 | TENANT-01c: every org-scoped foreign key carries org_id — cross-business references unrepresentable | Claude | — (#58 merged) | Done | — |
-| 22 | CLOSE-01d: ledger page + period CSV export for the accounting handoff (no migration) | Claude | `claude/lucid-gauss-p1mjpy` | In progress | `npm run check`, PR, Todd's review |
-| 7 | FLOW-01 bank reconciliation | Todd | — | Blocked: needs a Wise/ASB export sample | Provide the sample; its format becomes the ingestion contract |
+| 22 | CLOSE-01d: ledger page + period CSV export for the accounting handoff (no migration) | Claude | — (#59 merged) | Done | — |
+| 23 | FLOW-01B-a: bank accounts and statement import, the shared bank source (migration 0051 claimed; [brief](tasks/FLOW-01B.md)) | Claude | `claude/flow-01b-bank-import` | In progress | `npm run check`, PR, Todd's review |
+| 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
 Proposed next, in order, awaiting Todd's go-ahead: FLOW-01B bank import, built as a shared

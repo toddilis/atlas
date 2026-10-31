@@ -504,6 +504,192 @@ export type Database = {
           },
         ]
       }
+      bank_accounts: {
+        Row: {
+          account_ref: string
+          added_by: string
+          bank_name: string
+          created_at: string
+          currency: string
+          display_name: string
+          enabled: boolean
+          id: string
+          import_format: string
+          org_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_ref: string
+          added_by: string
+          bank_name: string
+          created_at?: string
+          currency: string
+          display_name: string
+          enabled?: boolean
+          id?: string
+          import_format?: string
+          org_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_ref?: string
+          added_by?: string
+          bank_name?: string
+          created_at?: string
+          currency?: string
+          display_name?: string
+          enabled?: boolean
+          id?: string
+          import_format?: string
+          org_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_import_batches: {
+        Row: {
+          actor_id: string
+          bank_account_id: string
+          created_at: string
+          existing_count: number
+          file_name: string
+          file_sha256: string
+          first_posted_on: string
+          id: string
+          import_format: string
+          imported_by: string
+          last_posted_on: string
+          line_count: number
+          new_count: number
+          org_id: string
+        }
+        Insert: {
+          actor_id: string
+          bank_account_id: string
+          created_at?: string
+          existing_count: number
+          file_name: string
+          file_sha256: string
+          first_posted_on: string
+          id?: string
+          import_format: string
+          imported_by: string
+          last_posted_on: string
+          line_count: number
+          new_count: number
+          org_id: string
+        }
+        Update: {
+          actor_id?: string
+          bank_account_id?: string
+          created_at?: string
+          existing_count?: number
+          file_name?: string
+          file_sha256?: string
+          first_posted_on?: string
+          id?: string
+          import_format?: string
+          imported_by?: string
+          last_posted_on?: string
+          line_count?: number
+          new_count?: number
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_import_batches_org_id_bank_account_id_fkey"
+            columns: ["org_id", "bank_account_id"]
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_import_batches_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_transactions: {
+        Row: {
+          amount_cents: number
+          bank_account_id: string
+          counterparty: string | null
+          created_at: string
+          currency: string
+          description: string
+          id: string
+          import_batch_id: string
+          line_key: string
+          org_id: string
+          posted_on: string
+          provider_txn_id: string | null
+          raw: NonNullable<Json>
+          reference: string | null
+          source_row: number
+        }
+        Insert: {
+          amount_cents: number
+          bank_account_id: string
+          counterparty?: string | null
+          created_at?: string
+          currency: string
+          description: string
+          id?: string
+          import_batch_id: string
+          line_key: string
+          org_id: string
+          posted_on: string
+          provider_txn_id?: string | null
+          raw: NonNullable<Json>
+          reference?: string | null
+          source_row: number
+        }
+        Update: {
+          amount_cents?: number
+          bank_account_id?: string
+          counterparty?: string | null
+          created_at?: string
+          currency?: string
+          description?: string
+          id?: string
+          import_batch_id?: string
+          line_key?: string
+          org_id?: string
+          posted_on?: string
+          provider_txn_id?: string | null
+          raw?: NonNullable<Json>
+          reference?: string | null
+          source_row?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_org_id_bank_account_id_fkey"
+            columns: ["org_id", "bank_account_id"]
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_org_id_import_batch_id_fkey"
+            columns: ["org_id", "import_batch_id"]
+            referencedRelation: "bank_import_batches"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
       billing_order_groups: {
         Row: {
           account_id: string
@@ -3249,6 +3435,22 @@ export type Database = {
         Args: { c: Json; s: Json }
         Returns: undefined
       }
+      bank_import_keyed: {
+        Args: { p_lines: Json }
+        Returns: {
+          amount_cents: number
+          counterparty: string
+          currency: string
+          description: string
+          line_key: string
+          posted_on: string
+          provider_txn_id: string
+          raw: Json
+          reference: string
+          source_row: number
+        }[]
+      }
+      bank_line_date: { Args: { p: string }; Returns: string }
       billing_suffix: { Args: { p_index: number }; Returns: string }
       bind_shopify_dispatch_source: {
         Args: { p_connection_key: string; p_org_id: string }
@@ -3544,6 +3746,24 @@ export type Database = {
           ogs_statement_id: string
         }[]
       }
+      operator_import_bank_lines: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_bank_account_id: string
+          p_file_name: string
+          p_file_sha256: string
+          p_lines: Json
+          p_org_id: string
+        }
+        Returns: {
+          oib_batch_id: string
+          oib_existing_count: number
+          oib_line_count: number
+          oib_new_count: number
+          oib_was_existing: boolean
+        }[]
+      }
       operator_record_invoice_print: {
         Args: {
           p_actor_email: string
@@ -3597,6 +3817,21 @@ export type Database = {
           p_payment_terms_days: number
           p_status: string
           p_tax_exempt: boolean
+        }
+        Returns: string
+      }
+      operator_save_bank_account: {
+        Args: {
+          p_account_id: string
+          p_account_ref: string
+          p_actor_email: string
+          p_actor_id: string
+          p_bank_name: string
+          p_currency: string
+          p_display_name: string
+          p_enabled: boolean
+          p_expected_updated_at: string
+          p_org_id: string
         }
         Returns: string
       }
