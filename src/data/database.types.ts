@@ -504,6 +504,177 @@ export type Database = {
           },
         ]
       }
+      bank_accounts: {
+        Row: {
+          created_at: string
+          created_by: string
+          currency: string
+          id: string
+          name: string
+          org_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          currency: string
+          id?: string
+          name: string
+          org_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          currency?: string
+          id?: string
+          name?: string
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_imports: {
+        Row: {
+          bank_account_id: string
+          content_sha256: string
+          created_at: string
+          file_name: string
+          id: string
+          imported_by: string
+          inserted_count: number
+          line_count: number
+          org_id: string
+        }
+        Insert: {
+          bank_account_id: string
+          content_sha256: string
+          created_at?: string
+          file_name: string
+          id?: string
+          imported_by: string
+          inserted_count: number
+          line_count: number
+          org_id: string
+        }
+        Update: {
+          bank_account_id?: string
+          content_sha256?: string
+          created_at?: string
+          file_name?: string
+          id?: string
+          imported_by?: string
+          inserted_count?: number
+          line_count?: number
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_imports_org_id_bank_account_id_fkey"
+            columns: ["org_id", "bank_account_id"]
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_imports_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bank_lines: {
+        Row: {
+          amount_cents: number
+          bank_account_id: string
+          counterparty: string | null
+          created_at: string
+          currency: string
+          dedupe_key: string
+          description: string
+          id: string
+          import_id: string
+          matched_payment_id: string | null
+          occurred_on: string
+          org_id: string
+          raw: NonNullable<Json>
+          reference: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          set_aside_reason: string | null
+          state: string
+        }
+        Insert: {
+          amount_cents: number
+          bank_account_id: string
+          counterparty?: string | null
+          created_at?: string
+          currency: string
+          dedupe_key: string
+          description?: string
+          id?: string
+          import_id: string
+          matched_payment_id?: string | null
+          occurred_on: string
+          org_id: string
+          raw: NonNullable<Json>
+          reference?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          set_aside_reason?: string | null
+          state?: string
+        }
+        Update: {
+          amount_cents?: number
+          bank_account_id?: string
+          counterparty?: string | null
+          created_at?: string
+          currency?: string
+          dedupe_key?: string
+          description?: string
+          id?: string
+          import_id?: string
+          matched_payment_id?: string | null
+          occurred_on?: string
+          org_id?: string
+          raw?: NonNullable<Json>
+          reference?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          set_aside_reason?: string | null
+          state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_lines_org_id_bank_account_id_fkey"
+            columns: ["org_id", "bank_account_id"]
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_lines_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_lines_org_id_import_id_fkey"
+            columns: ["org_id", "import_id"]
+            referencedRelation: "bank_imports"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "bank_lines_org_id_matched_payment_id_fkey"
+            columns: ["org_id", "matched_payment_id"]
+            referencedRelation: "payments"
+            referencedColumns: ["org_id", "id"]
+          },
+        ]
+      }
       billing_order_groups: {
         Row: {
           account_id: string
@@ -3544,6 +3715,36 @@ export type Database = {
           ogs_statement_id: string
         }[]
       }
+      operator_import_bank_lines: {
+        Args: {
+          p_account_name: string
+          p_actor_email: string
+          p_actor_id: string
+          p_content_sha256: string
+          p_currency: string
+          p_file_name: string
+          p_lines: Json
+          p_org_id: string
+        }
+        Returns: {
+          oib_duplicates: number
+          oib_import_id: string
+          oib_inserted: number
+        }[]
+      }
+      operator_match_bank_line: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_invoice_id: string
+          p_line_id: string
+          p_org_id: string
+        }
+        Returns: {
+          omb_invoice_state: Database["public"]["Enums"]["invoice_state"]
+          omb_payment_id: string
+        }[]
+      }
       operator_record_invoice_print: {
         Args: {
           p_actor_email: string
@@ -3583,6 +3784,15 @@ export type Database = {
           orss_sent_at: string
           orss_state: Database["public"]["Enums"]["statement_state"]
         }[]
+      }
+      operator_reopen_bank_line: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_line_id: string
+          p_org_id: string
+        }
+        Returns: undefined
       }
       operator_save_account: {
         Args: {
@@ -3673,6 +3883,16 @@ export type Database = {
           p_actor_id: string
           p_org_id: string
           p_paused: boolean
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      operator_set_aside_bank_line: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_line_id: string
+          p_org_id: string
           p_reason: string
         }
         Returns: undefined

@@ -118,7 +118,11 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  -- Never seeded at boot either; reversing a posted receivable is deliberate (0048).
  ('11111111-1111-4111-8111-111111111111','operator','invoices.void','notify'),
  -- Never seeded at boot either; deciding who operates a business is deliberate (0049).
- ('11111111-1111-4111-8111-111111111111','operator','members.save','notify');
+ ('11111111-1111-4111-8111-111111111111','operator','members.save','notify'),
+ -- Boot seeds bank line review too (0051).
+ ('11111111-1111-4111-8111-111111111111','operator','bank.review','notify'),
+ -- Never seeded at boot either; importing external financial facts is deliberate (0051).
+ ('11111111-1111-4111-8111-111111111111','operator','bank.import','notify');
 
 -- Membership (0049): the fixture operator is a member, so the console's membership
 -- enforcement is live (not bootstrap mode) for every journey.

@@ -675,6 +675,59 @@ test('the ledger page shows postings and exports the period as exact CSV', async
   await page.screenshot({ path: 'test-results/ledger.png', fullPage: true });
 });
 
+// Bank import (FLOW-01B, 0051): runs after the payment journey left the printed invoice
+// partial with exactly $141.50 outstanding. Three synthetic lines import; the exact
+// credit matches and pays the invoice through the exactly-once path; re-importing the
+// same file doubles nothing; the debit is set aside with a reason and reopened.
+test('an operator imports bank lines, matches the exact credit, and nothing ever doubles', async ({ page }) => {
+  const csv = [
+    'date,amount,currency,description,reference,counterparty',
+    '2026-10-20,141.50,NZD,Invoice settlement,ATL,Retail North',
+    '2026-10-21,55.55,NZD,Mystery credit,,',
+    '2026-10-22,-12.34,NZD,Bank fee,,ASB',
+    '',
+  ].join('\n');
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/bank');
+  await page.getByLabel('Bank export file', { exact: true }).setInputFiles({
+    name: 'bank-oct.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8'),
+  });
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('File imported');
+  await expect(page.getByTestId('bank-line')).toHaveCount(3);
+
+  // The exact $100.00 credit matches the partial invoice and pays it in full.
+  const settlement = page.getByTestId('bank-line').filter({ hasText: 'Invoice settlement' });
+  await expect(settlement.getByRole('combobox')).toContainText('(exact match)');
+  await settlement.getByRole('combobox').selectOption({ index: 1 });
+  await settlement.getByRole('button', { name: 'Record payment', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('Payment recorded against the invoice');
+  await expect(page.getByTestId('bank-line-matched').filter({ hasText: 'Invoice settlement' }))
+    .toContainText('Payment recorded on invoice ATL-');
+
+  // Re-importing the same file adds nothing: still exactly two unmatched lines.
+  await page.getByLabel('Bank export file', { exact: true }).setInputFiles({
+    name: 'bank-oct.csv', mimeType: 'text/csv', buffer: Buffer.from(csv, 'utf8'),
+  });
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('File imported');
+  await expect(page.getByTestId('bank-line')).toHaveCount(2);
+
+  // The debit cannot match; it is set aside with a reason, kept for the books, reopened.
+  const fee = page.getByTestId('bank-line').filter({ hasText: 'Bank fee' });
+  await expect(fee).toContainText('A debit never matches an invoice');
+  await fee.getByLabel(/Set-aside reason/).fill('bank fee for the Bookkeeper');
+  await fee.getByRole('button', { name: 'Set aside', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('set aside with its reason');
+  const aside = page.getByTestId('bank-line-aside').filter({ hasText: 'Bank fee' });
+  await expect(aside).toContainText('bank fee for the Bookkeeper');
+  await aside.getByRole('button', { name: 'Reopen', exact: true }).click();
+  await expect(page.getByTestId('bank-notice')).toContainText('reopened');
+  await expect(page.getByTestId('bank-line')).toHaveCount(2);
+  await page.screenshot({ path: 'test-results/bank.png', fullPage: true });
+});
+
 
 // Catalogue (0040, CONFIG-01a): runs last — it adds a product and a retailer, which
 // earlier journeys' counts must not see. Cross-business rows stay invisible, creates

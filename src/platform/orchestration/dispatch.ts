@@ -58,6 +58,10 @@ export async function bootAgents(): Promise<void> {
     // as recording an invoice print. The sending itself stays with the human.
     { agentName: 'operator', toolName: 'statements.record_send', risk: 'notify' },
     { agentName: 'operator', toolName: 'statements.void', risk: 'notify' },
+    // Bank line review (0051): set aside / reopen moves no money — bookkeeping hygiene.
+    // bank.import is never seeded (entering external financial facts is deliberate,
+    // like payments.record), and matching a line enforces payments.record itself.
+    { agentName: 'operator', toolName: 'bank.review', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
     // invoices.void (0048) is never seeded either: reversing a posted receivable is a
