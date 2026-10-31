@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/" className="font-semibold text-lg">
                 Atlas
               </Link>
-              <nav className="flex gap-4 text-sm text-zinc-600 dark:text-zinc-400">
+              <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
                 <Link href="/approvals" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                   Approvals
                 </Link>
@@ -61,7 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <form action="/auth/signout" method="post" className="ml-auto">
                 <button
                   type="submit"
-                  className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+                  className="whitespace-nowrap text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
                 >
                   Sign out
                 </button>
