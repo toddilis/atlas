@@ -19,6 +19,19 @@ export type Match =
   | { kind: 'excess'; allocations: Allocation[]; leftover_cents: number }
   | { kind: 'ambiguous'; candidates: OpenInvoice[] };
 
+/** The latest not-a-receipt/reopen decision on a line (highest seq), or null. */
+export function latestReview<R extends { seq: number }>(reviews: R[] | null | undefined): R | null {
+  return [...(reviews ?? [])].sort((a, b) => b.seq - a.seq)[0] ?? null;
+}
+/** How much of a line is already applied to invoices. */
+export const allocatedCents = (allocations: Array<{ amount_cents: number }> | null | undefined) =>
+  (allocations ?? []).reduce((n, a) => n + Number(a.amount_cents), 0);
+/** A credit line with money still to apply and not marked as not a receipt. */
+export function awaitingReconciliation(line: { amount_cents: number; allocations: Array<{ amount_cents: number }> | null;
+  reviews: Array<{ seq: number; decision: string }> | null }): boolean {
+  return line.amount_cents > 0 && latestReview(line.reviews)?.decision !== 'not_receipt' && allocatedCents(line.allocations) < line.amount_cents;
+}
+
 /** Whether text names the invoice number: its letter/digit runs in order, separated by at
  * most three other characters, and not inside a longer code (ATL-0001 is not ATL-0001A). */
 export function namesInvoice(text: string, invoiceNumber: string): boolean {

@@ -9,6 +9,9 @@ import { formatCents } from '@/lib/format';
 import { briefingView, refHref, type BriefingRow } from '@/lib/briefing';
 import { CONTROLS_OUTCOMES, isControlsOutcome, type PauseState } from '@/lib/controls';
 import type { JobRow } from '@/lib/jobs';
+import { businessTimezone } from '@/lib/business-timezone';
+import { awaitingReconciliation } from '@/lib/bank-match';
+import { DEFAULT_TIMEZONE } from '../../src/platform/pricing/aging';
 import {
   DAY_MS, draftParts, expiringSoon, jobAttention, lastSuccessByJob, nextSyncAt, receivables, sourceFreshness, withinLastDay,
   type SyncSourceRow, type TodayInvoiceRow, type TodayRunRow,
@@ -21,7 +24,7 @@ async function loadToday(now: Date) {
   const org = orgId();
   const cutoff = new Date(now.getTime() - DAY_MS).toISOString();
   const [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant] = await Promise.all([
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, bankCredits, timezone] = await Promise.all([
     sb.from('approvals').select('id, expires_at').eq('org_id', org).eq('state', 'pending').limit(500),
     sb.from('approvals').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('decided_at', cutoff),
     sb.from('approved_actions').select('id', { count: 'exact', head: true }).eq('org_id', org).in('state', ['UNRESOLVED', 'RECONCILIATION_REQUIRED']),
@@ -31,7 +34,7 @@ async function loadToday(now: Date) {
       .like('job_key', 'shopify-sync:%').eq('outcome', 'succeeded').order('finished_at', { ascending: false }).limit(50),
     sb.from('job_runs').select('job_key, outcome, finished_at').eq('org_id', org).gte('finished_at', cutoff).limit(500),
     sb.from('dispatch_sources').select('id, connection_key, enabled, sync_every_minutes').eq('org_id', org).eq('provider', 'shopify'),
-    sb.from('invoices').select('id, state, currency, total_cents, due_at, issued_at, created_at')
+    sb.from('invoices').select('id, state, currency, total_cents, due_at, issued_at, created_at, payments(amount_cents)')
       .eq('org_id', org).in('state', ['issued', 'partial']).limit(1000),
     sb.from('invoices').select('id, state, currency, total_cents, due_at, issued_at, created_at, snapshot:invoice_calculation_snapshots!inner(id)')
       .eq('org_id', org).eq('state', 'draft').limit(100),
@@ -41,16 +44,21 @@ async function loadToday(now: Date) {
     sb.from('carrier_cost_evidence').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('recorded_at', cutoff),
     sb.from('action_controls').select('paused, changed_by, reason, changed_at').eq('org_id', org).maybeSingle(),
     sb.from('tool_grants').select('enabled').eq('org_id', org).eq('agent_name', 'operator').eq('tool_name', 'actions.pause'),
+    // Money received and not yet applied to an invoice or marked as not a receipt (0052).
+    sb.from('bank_transactions').select('amount_cents, allocations:bank_receipt_allocations(amount_cents), reviews:bank_line_reviews(seq, decision)')
+      .eq('org_id', org).gt('amount_cents', 0).limit(2000),
+    businessTimezone(org, now.toISOString()),
   ]);
   const briefing = await sb.from('daily_briefings').select('generated_at, narration, refs, status, model')
     .eq('org_id', org).eq('status', 'ok').order('generated_at', { ascending: false }).limit(1).maybeSingle();
   for (const r of [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, briefing]) if (r.error) throw r.error;
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, bankCredits, briefing]) if (r.error) throw r.error;
 
   const jobRows = (jobs.data ?? []) as JobRow[];
   const sourceRows = (sources.data ?? []) as SyncSourceRow[];
   const lastSyncSuccess = lastSuccessByJob((syncRuns.data ?? []) as TodayRunRow[]);
-  const open = (openInvoices.data ?? []) as TodayInvoiceRow[];
+  const open = ((openInvoices.data ?? []) as Array<TodayInvoiceRow & { payments: Array<{ amount_cents: number }> | null }>)
+    .map(({ payments, ...i }) => ({ ...i, paid_cents: (payments ?? []).reduce((n, p) => n + Number(p.amount_cents), 0) }));
   const drafts = (draftInvoices.data ?? []) as unknown as TodayInvoiceRow[];
   return {
     briefing: briefingView((briefing.data ?? null) as BriefingRow | null, now),
@@ -73,7 +81,9 @@ async function loadToday(now: Date) {
       freshness: sourceFreshness(source, lastSyncSuccess.get(`shopify-sync:${source.id}`) ?? null, now),
     })),
     parts: draftParts(drafts),
-    receivables: receivables(open, now),
+    receivables: receivables(open, now, timezone ?? DEFAULT_TIMEZONE),
+    receiptsToReconcile: ((bankCredits.data ?? []) as unknown as Parameters<typeof awaitingReconciliation>[0][])
+      .filter(awaitingReconciliation).length,
     recent: {
       partsDrafted: partsDrafted.count ?? 0,
       invoicesIssued: issuedRecently.count ?? 0,
@@ -98,7 +108,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const { outcome } = await searchParams;
   const notice = isControlsOutcome(outcome) ? CONTROLS_OUTCOMES[outcome] : null;
   const today = await loadToday(now);
-  const needsYou = today.pendingApprovals + today.jobs.blocked + today.jobs.quarantined + today.parts.length + today.uncertainActions;
+  const needsYou = today.pendingApprovals + today.jobs.blocked + today.jobs.quarantined + today.parts.length + today.uncertainActions
+    + today.receiptsToReconcile;
 
   return (
     <div className="space-y-8">
@@ -174,6 +185,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               value={`${today.jobs.blocked} blocked · ${today.jobs.quarantined} quarantined`} note={null} />
             <Stat testid="stat-parts" href="/invoices" label="Parts to approve and issue"
               value={String(today.parts.length)} note={null} />
+            {today.receiptsToReconcile > 0 ? (
+              <Stat testid="stat-receipts" href="/bank" label="Receipts to reconcile"
+                value={String(today.receiptsToReconcile)} note="Money received, not yet applied to an invoice" />
+            ) : null}
             {today.uncertainActions > 0 ? (
               <Stat testid="stat-uncertain" href="/approvals" label="Uncertain executions"
                 value={String(today.uncertainActions)} note="Needs reconciliation before anything else happens" />
@@ -230,7 +245,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             {today.receivables.map(row => (
               <div key={row.currency} className="p-4 text-sm flex items-baseline justify-between gap-4">
                 <span>
-                  <Link href="/invoices" className="underline-offset-2 hover:underline">{row.count} outstanding</Link>
+                  <Link href="/receivables" className="underline-offset-2 hover:underline">{row.count} outstanding</Link>
                   {' · '}{formatCents(row.totalCents, row.currency)}
                 </span>
                 <span className={row.overdueCount > 0 ? 'text-red-700 dark:text-red-300 font-medium' : 'text-zinc-500'}>
