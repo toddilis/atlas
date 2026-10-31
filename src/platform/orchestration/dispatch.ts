@@ -66,6 +66,11 @@ export async function bootAgents(): Promise<void> {
     // Marking a bank line as not a customer receipt, or reopening it (0052): classifying
     // evidence. Recording a payment from a receipt stays behind payments.record.
     { agentName: 'operator', toolName: 'bank.review', risk: 'notify' },
+    // Payment reminders (0053): drafting derives from stored records, and recording or
+    // voiding one moves no money; the sending itself stays with the human.
+    { agentName: 'operator', toolName: 'reminders.generate', risk: 'notify' },
+    { agentName: 'operator', toolName: 'reminders.record_send', risk: 'notify' },
+    { agentName: 'operator', toolName: 'reminders.void', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
     // invoices.void (0048) is never seeded either: reversing a posted receivable is a

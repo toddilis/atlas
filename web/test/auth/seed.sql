@@ -60,6 +60,12 @@ insert into accounts(org_id,name,tax_exempt) values
  ('11111111-1111-4111-8111-111111111111','Synthetic Retail North',false),
  ('11111111-1111-4111-8111-111111111111','Synthetic Export',true),
  ('22222222-2222-4222-8222-222222222222','OTHER-SECRET-RETAILER',false);
+-- Payment reminders (0053): one issued invoice long past its due date, for a retailer no
+-- journey bills, so the receivables page has someone to remind. The home page's
+-- receivables panel shows it from the start.
+insert into invoices(org_id,account_id,invoice_number,state,channel,currency,subtotal_cents,total_cents,issued_at,due_at)
+  select org_id,id,'REMIND-0001','issued','wholesale','NZD',31240,31240,'2026-08-21T00:00:00Z','2026-09-20T00:00:00Z'
+    from accounts where org_id='11111111-1111-4111-8111-111111111111' and name='Synthetic Export';
 -- Approve → print (0034): a retailer's Shopify order shipped in full, ready for the browser
 -- journey to draft its invoice part through the real BILL path once pricing is active, and
 -- the chart of accounts issuing posts to (an onboarding step).
@@ -115,6 +121,10 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','bank_accounts.save','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','bank.import','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','bank.review','notify'),
+ -- Boot seeds the reminder grants too (0053).
+ ('11111111-1111-4111-8111-111111111111','operator','reminders.generate','notify'),
+ ('11111111-1111-4111-8111-111111111111','operator','reminders.record_send','notify'),
+ ('11111111-1111-4111-8111-111111111111','operator','reminders.void','notify'),
  -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
  ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required'),
  -- Never seeded at boot either; manual payment entry is turned on deliberately (0043).

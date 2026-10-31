@@ -47,5 +47,6 @@ the highest reservation.
 | 0049 | `org_members` | TENANT-01b (per-business operator membership) | main (PR #57) |
 | 0050 | `tenant_fk_binding` | TENANT-01c (org_id on every org-scoped foreign key) | main (PR #58) |
 | 0051 | `bank_source` | FLOW-01B-a (bank accounts and statement import) | main (PR #62) |
-| 0052 | `bank_receipt_matching` | FLOW-01B-b (receipts matched to invoices) | claimed 31 Oct (queue row 24), in progress |
-| **0053** | **next unclaimed** | — | — |
+| 0052 | `bank_receipt_matching` | FLOW-01B-b (receipts matched to invoices) | main (PR #63) |
+| 0053 | `payment_reminders` | CLOSE-01f (payment reminders) | claimed 31 Oct (queue row 27), in progress |
+| **0054** | **next unclaimed** | — | — |

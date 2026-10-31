@@ -37,7 +37,8 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 23 | FLOW-01B-a: bank accounts and statement import, the shared bank source ([brief](tasks/FLOW-01B.md)) | Claude | — (#62 merged) | Done | — |
 | 24 | FLOW-01B-b: receipts matched to invoices, payments recorded from them; not-a-receipt marking | Claude | — (#63 merged) | Done | — |
 | 25 | CLOSE-01e: receivables ageing — what each retailer owes and how late, in the business's calendar | Claude | — (#64 merged) | Done | — |
-| 26 | TODAY: home receivables net of payments, late by calendar day in the business timezone; receipts to reconcile under Needs you (no migration) | Claude | `claude/today-receivables-receipts` | In progress | `npm run check`, PR, Todd's review |
+| 26 | TODAY: home receivables net of payments, late by calendar day in the business timezone; receipts to reconcile under Needs you (no migration) | Claude | `claude/today-receivables-receipts` | PR #65 open | Todd's review |
+| 27 | CLOSE-01f: payment reminders — drafted from the overdue snapshot, sent by the operator and recorded, or voided (migration 0053 claimed) | Claude | `claude/close-01f-reminders` (stacked on #65) | In progress | `npm run check`, PR, Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
