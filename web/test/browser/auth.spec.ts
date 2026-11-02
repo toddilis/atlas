@@ -118,7 +118,11 @@ test('the home page is the operator\'s day, from stored rows alone, with explici
   await expect(freshness).toContainText('No successful sync yet.');
   await expect(page.getByText('jobs-2222')).toHaveCount(0);
 
-  await expect(page.getByTestId('today-receivables')).toContainText('Nothing issued is outstanding.');
+  // The reminders fixture (0053) is the one invoice outstanding from the start, long past
+  // due: the panel counts what is owed, and late by calendar day in the business calendar.
+  const receivablesPanel = page.getByTestId('today-receivables');
+  await expect(receivablesPanel).toContainText('1 outstanding');
+  await expect(receivablesPanel).toContainText('1 overdue · $312.40');
   await page.screenshot({ path: 'test-results/today.png', fullPage: true });
 });
 
@@ -847,6 +851,42 @@ test('the receivables page shows what each retailer owes, less payments, and how
   await expect(retailer).toContainText(money);
   await expect(page.getByTestId('receivables-total').first()).toContainText('Outstanding');
   await page.screenshot({ path: 'test-results/receivables.png', fullPage: true });
+});
+
+// Payment reminders (0053, CLOSE-01f): the seeded overdue invoice's retailer gets a reminder
+// drafted from the stored records; the operator records how it was sent, then drafts a
+// newer one and voids it with a reason. Both stay in the history.
+test('an operator drafts a payment reminder for a late retailer, records the send, and voids a later draft', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.goto('/receivables');
+  const late = () => page.getByTestId('ageing-row').filter({ hasText: 'Synthetic Export' });
+  await expect(late()).toContainText('$312.40');
+  await expect(page.getByTestId('overdue-invoice').filter({ hasText: 'REMIND-0001' })).toHaveCount(1);
+  await late().getByRole('button', { name: 'Draft reminder', exact: true }).click();
+  await expect(page.getByTestId('receivables-notice')).toContainText('Reminder drafted from the stored records.');
+  const draft = page.getByTestId('reminder-draft').filter({ hasText: 'Synthetic Export' });
+  await expect(draft).toContainText('Hi Synthetic Export,');
+  await expect(draft).toContainText('REMIND-0001');
+  await expect(draft).toContainText('Total overdue: $312.40');
+  await expect(late().getByRole('link', { name: 'Draft ready', exact: true })).toHaveCount(1);
+
+  await draft.getByLabel('Sent by', { exact: true }).selectOption('email');
+  await draft.getByLabel('Send note', { exact: true }).fill('Emailed accounts@');
+  await draft.getByRole('button', { name: 'Record sent', exact: true }).click();
+  await expect(page.getByTestId('receivables-notice')).toContainText('Reminder recorded as sent.');
+  await expect(page.getByTestId('reminder-history').filter({ hasText: 'Synthetic Export' })).toContainText('Sent by email · Emailed accounts@');
+
+  // A newer draft can follow the sent one; voiding it needs a reason and keeps it.
+  await late().getByRole('button', { name: 'Draft reminder', exact: true }).click();
+  await expect(page.getByTestId('receivables-notice')).toContainText('Reminder drafted from the stored records.');
+  const second = page.getByTestId('reminder-draft').filter({ hasText: 'Synthetic Export' });
+  await second.getByLabel('Void reason', { exact: true }).fill('Retailer called; paying today');
+  await second.getByRole('button', { name: 'Void', exact: true }).click();
+  await expect(page.getByTestId('receivables-notice')).toContainText('Reminder voided.');
+  await expect(page.getByTestId('reminder-draft')).toHaveCount(0);
+  await expect(page.getByTestId('reminder-history').filter({ hasText: 'Voided' })).toContainText('Retailer called; paying today');
+  await page.screenshot({ path: 'test-results/reminders.png', fullPage: true });
 });
 
 // Bank source (0051, FLOW-01B-a): add an account, import a statement and see every line

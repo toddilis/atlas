@@ -2515,6 +2515,85 @@ export type Database = {
           },
         ]
       }
+      payment_reminders: {
+        Row: {
+          account_id: string
+          actor_id: string
+          as_of_at: string
+          created_at: string
+          currency: string
+          drafted_by: string
+          id: string
+          lines: NonNullable<Json>
+          org_id: string
+          overdue_cents: number
+          sent_at: string | null
+          sent_by: string | null
+          sent_channel: string | null
+          sent_note: string | null
+          state: string
+          timezone: string
+          voided_at: string | null
+          voided_by: string | null
+          voided_reason: string | null
+        }
+        Insert: {
+          account_id: string
+          actor_id: string
+          as_of_at: string
+          created_at?: string
+          currency: string
+          drafted_by: string
+          id?: string
+          lines: NonNullable<Json>
+          org_id: string
+          overdue_cents: number
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_channel?: string | null
+          sent_note?: string | null
+          state?: string
+          timezone: string
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_reason?: string | null
+        }
+        Update: {
+          account_id?: string
+          actor_id?: string
+          as_of_at?: string
+          created_at?: string
+          currency?: string
+          drafted_by?: string
+          id?: string
+          lines?: NonNullable<Json>
+          org_id?: string
+          overdue_cents?: number
+          sent_at?: string | null
+          sent_by?: string | null
+          sent_channel?: string | null
+          sent_note?: string | null
+          state?: string
+          timezone?: string
+          voided_at?: string | null
+          voided_by?: string | null
+          voided_reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_reminders_org_id_account_id_fkey"
+            columns: ["org_id", "account_id"]
+            referencedRelation: "accounts"
+            referencedColumns: ["org_id", "id"]
+          },
+          {
+            foreignKeyName: "payment_reminders_org_id_fkey"
+            columns: ["org_id"]
+            referencedRelation: "orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount_cents: number
@@ -3857,6 +3936,20 @@ export type Database = {
         }
         Returns: string
       }
+      operator_draft_payment_reminder: {
+        Args: {
+          p_account_id: string
+          p_actor_email: string
+          p_actor_id: string
+          p_currency: string
+          p_org_id: string
+          p_timezone: string
+        }
+        Returns: {
+          odr_reminder_id: string
+          odr_was_existing: boolean
+        }[]
+      }
       operator_generate_statement: {
         Args: {
           p_account_id: string
@@ -3918,6 +4011,17 @@ export type Database = {
           orp_payment_id: string
           orp_was_existing: boolean
         }[]
+      }
+      operator_record_reminder_sent: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_channel: string
+          p_note: string
+          p_org_id: string
+          p_reminder_id: string
+        }
+        Returns: string
       }
       operator_record_statement_sent: {
         Args: {
@@ -4063,6 +4167,16 @@ export type Database = {
           ovi_state: Database["public"]["Enums"]["invoice_state"]
           ovi_voided_at: string
         }[]
+      }
+      operator_void_payment_reminder: {
+        Args: {
+          p_actor_email: string
+          p_actor_id: string
+          p_org_id: string
+          p_reason: string
+          p_reminder_id: string
+        }
+        Returns: string
       }
       operator_void_statement: {
         Args: {
