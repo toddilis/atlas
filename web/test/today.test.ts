@@ -18,17 +18,21 @@ const job = (key: string, kind: string, state: JobRow['state'], nextAt: string):
   created_at: at(-240), updated_at: at(-10), dispatch_id: null,
 });
 
-test('receivables group by currency and call overdue only past the stored due time', () => {
+test('receivables are net of payments, grouped by currency, and late only on a later calendar day', () => {
+  const day = 24 * 60;
   const rows = receivables([
     invoice({ id: 'a', total_cents: 1000 }),
-    invoice({ id: 'b', state: 'partial', total_cents: 500, due_at: at(-1) }),
-    invoice({ id: 'c', currency: 'AUD', total_cents: 700, due_at: null }),
+    // Part-paid and three days past due: late by what is still owed.
+    invoice({ id: 'b', state: 'partial', total_cents: 500, paid_cents: 200, due_at: at(-3 * day) }),
+    // Due a minute ago is due today in Auckland, not late.
+    invoice({ id: 'f', total_cents: 300, due_at: at(-1) }),
+    invoice({ id: 'c', currency: 'AUD', total_cents: 700, due_at: null, issued_at: at(-10) }),
     invoice({ id: 'd', state: 'draft' }),
     invoice({ id: 'e', state: 'paid', due_at: at(-500) }),
-  ], now);
+  ], now, 'Pacific/Auckland');
   assert.deepEqual(rows, [
     { currency: 'AUD', count: 1, totalCents: 700, overdueCount: 0, overdueCents: 0 },
-    { currency: 'NZD', count: 2, totalCents: 1500, overdueCount: 1, overdueCents: 500 },
+    { currency: 'NZD', count: 3, totalCents: 1600, overdueCount: 1, overdueCents: 300 },
   ]);
 });
 

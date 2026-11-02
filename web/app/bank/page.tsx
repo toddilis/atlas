@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { supabaseServer, orgId } from '@/lib/supabase';
 import { formatCents, formatDateTime } from '@/lib/format';
 import { bankNoticeText, BANK_OUTCOMES, readBankResult, statementDay } from '@/lib/bank-import';
-import { classifyReceipt, type OpenInvoice } from '@/lib/bank-match';
+import { allocatedCents, classifyReceipt, latestReview, type OpenInvoice } from '@/lib/bank-match';
 import { Receipts, type MarkedRow, type ReceiptRow } from './receipts';
 
 export const dynamic = 'force-dynamic';
@@ -33,15 +33,13 @@ interface LineRow {
 }
 const LINE_SELECT = 'id, bank_account_id, posted_on, amount_cents, currency, description, reference, counterparty, '
   + 'allocations:bank_receipt_allocations(amount_cents, invoice:invoices(invoice_number)), reviews:bank_line_reviews(seq, decision, reason, decided_by)';
-const latestReview = (l: LineRow) => [...(l.reviews ?? [])].sort((a, b) => b.seq - a.seq)[0] ?? null;
-const allocatedOf = (l: LineRow) => (l.allocations ?? []).reduce((n, a) => n + Number(a.amount_cents), 0);
 
 /** What has become of a line: applied, marked, paid out, or still waiting. */
 function lineStatus(l: LineRow): string {
   if (l.amount_cents < 0) return 'Paid out: for the books';
   if (l.amount_cents === 0) return '—';
-  if (latestReview(l)?.decision === 'not_receipt') return 'Not a customer receipt';
-  const allocated = allocatedOf(l);
+  if (latestReview(l.reviews)?.decision === 'not_receipt') return 'Not a customer receipt';
+  const allocated = allocatedCents(l.allocations);
   const numbers = (l.allocations ?? []).map(a => a.invoice?.invoice_number).filter(Boolean).join(', ');
   if (allocated >= l.amount_cents) return `Paid ${numbers}`;
   if (allocated > 0) return `Part-applied to ${numbers}`;
@@ -96,13 +94,13 @@ async function loadBank(selected: string | undefined) {
     .filter(i => i.outstanding_cents > 0);
   const receipts: ReceiptRow[] = [], marked: MarkedRow[] = [];
   for (const l of (credits.data ?? []) as unknown as LineRow[]) {
-    const review = latestReview(l);
+    const review = latestReview(l.reviews);
     if (review?.decision === 'not_receipt') {
       marked.push({ id: l.id, account: nameOf(l.bank_account_id), posted_on: l.posted_on, amount_cents: l.amount_cents,
         currency: l.currency, description: l.description, reason: review.reason, decided_by: review.decided_by });
       continue;
     }
-    const allocated = allocatedOf(l);
+    const allocated = allocatedCents(l.allocations);
     if (allocated >= l.amount_cents) continue;
     receipts.push({ id: l.id, account: nameOf(l.bank_account_id), posted_on: l.posted_on, amount_cents: l.amount_cents,
       remaining_cents: l.amount_cents - allocated, currency: l.currency, description: l.description, reference: l.reference,

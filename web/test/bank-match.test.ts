@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { allocateOutcomeFor, classifyReceipt, matchSummary, namesInvoice, reviewOutcomeFor, type OpenInvoice } from '../lib/bank-match';
+import {
+  allocateOutcomeFor, allocatedCents, awaitingReconciliation, classifyReceipt, latestReview, matchSummary, namesInvoice, reviewOutcomeFor,
+  type OpenInvoice,
+} from '../lib/bank-match';
 
 const inv = (invoice_number: string, outstanding_cents: number, currency = 'NZD'): OpenInvoice =>
   ({ id: `id-${invoice_number}`, invoice_number, currency, outstanding_cents });
@@ -88,4 +91,18 @@ test('database refusals map to fixed outcomes', () => {
   assert.equal(reviewOutcomeFor('this bank line is already marked as not a receipt'), 'already_marked');
   assert.equal(reviewOutcomeFor('this bank line is not marked as not a receipt'), 'not_marked');
   assert.equal(reviewOutcomeFor('bank line decision required'), 'failed');
+});
+
+test('a receipt awaits reconciliation until applied in full or marked, and a reopen counts', () => {
+  const l = (amount_cents: number, allocations: number[], decisions: string[]) => ({
+    amount_cents, allocations: allocations.map(a => ({ amount_cents: a })), reviews: decisions.map((decision, seq) => ({ seq, decision })),
+  });
+  assert.equal(awaitingReconciliation(l(5000, [], [])), true);
+  assert.equal(awaitingReconciliation(l(5000, [2000], [])), true);
+  assert.equal(awaitingReconciliation(l(5000, [2000, 3000], [])), false);
+  assert.equal(awaitingReconciliation(l(5000, [], ['not_receipt'])), false);
+  assert.equal(awaitingReconciliation(l(5000, [], ['not_receipt', 'reopened'])), true);
+  assert.equal(awaitingReconciliation(l(-5000, [], [])), false);
+  assert.equal(allocatedCents(null), 0);
+  assert.equal(latestReview([{ seq: 2, decision: 'b' }, { seq: 7, decision: 'a' }])?.decision, 'a');
 });

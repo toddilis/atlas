@@ -3,6 +3,7 @@
 // must stay accurate when every model is unavailable, because nothing here uses one.
 
 import type { JobRow } from './jobs';
+import { ageInvoices } from './receivables';
 
 export interface TodayInvoiceRow {
   id: string;
@@ -12,6 +13,8 @@ export interface TodayInvoiceRow {
   due_at: string | null;
   issued_at: string | null;
   created_at: string;
+  /** What payments have settled so far (receivables only). */
+  paid_cents?: number;
   /** Present when BILL drafted this invoice as a dispatch part (0028). */
   snapshot: { id: string } | Array<{ id: string }> | null;
 }
@@ -36,18 +39,23 @@ const hasSnapshot = (row: TodayInvoiceRow) => Array.isArray(row.snapshot) ? row.
 /** Drafted parts an operator can approve and issue now (the 4b journey). */
 export const draftParts = (invoices: TodayInvoiceRow[]) => invoices.filter(i => i.state === 'draft' && hasSnapshot(i));
 
-/** Money a retailer still owes: issued or partially paid, grouped by currency. Overdue is
- * calendar-honest only to the stored due timestamp; the ledger owns the aging buckets. */
-export function receivables(invoices: TodayInvoiceRow[], now: Date) {
+/** Money retailers still owe on issued or partly paid invoices, net of payments, grouped by
+ * currency. Late means calendar days past due in the business's timezone, counted exactly
+ * as the receivables page and statements count them (lib/receivables.ts, aging.ts). */
+export function receivables(invoices: TodayInvoiceRow[], now: Date, timeZone: string) {
   const open = invoices.filter(i => i.state === 'issued' || i.state === 'partial');
+  const aged = ageInvoices(open.map(i => ({
+    id: i.id, invoice_number: i.id, currency: i.currency, total_cents: Number(i.total_cents), paid_cents: i.paid_cents ?? 0,
+    issued_at: i.issued_at, due_at: i.due_at, account_id: null, account_name: null,
+  })), now, timeZone);
   const byCurrency = new Map<string, { count: number; totalCents: number; overdueCount: number; overdueCents: number }>();
-  for (const invoice of open) {
+  for (const invoice of aged) {
     const entry = byCurrency.get(invoice.currency) ?? { count: 0, totalCents: 0, overdueCount: 0, overdueCents: 0 };
     entry.count += 1;
-    entry.totalCents += invoice.total_cents;
-    if (invoice.due_at != null && new Date(invoice.due_at).getTime() < now.getTime()) {
+    entry.totalCents += invoice.outstanding_cents;
+    if (invoice.days_overdue > 0) {
       entry.overdueCount += 1;
-      entry.overdueCents += invoice.total_cents;
+      entry.overdueCents += invoice.outstanding_cents;
     }
     byCurrency.set(invoice.currency, entry);
   }
