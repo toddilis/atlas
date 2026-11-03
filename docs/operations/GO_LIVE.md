@@ -364,8 +364,18 @@ and, if you skipped them, bank accounts.
 
 ## 9. Turn on the Shopify fulfillment webhook
 
-This is the moment Atlas starts invoicing. Shopify admin → Settings → Notifications →
-Webhooks → Create webhook:
+This is the moment Atlas starts invoicing, so it is also the activation cutoff: Atlas
+invoices shipments from here on, and what retailers owed before stays outside it. The
+exact cutoff and the handling of orders invoiced before it are still an open decision
+([VICE_RECEIVABLES](../product/VICE_RECEIVABLES.md), input 6). Settle one case first: an
+order that shipped partly before the cutoff and ships again after it. The first sync
+recorded the earlier shipment, and with first-part freight Atlas waits for it to be
+invoiced in Atlas, which never happens. The new shipment's part therefore stays blocked
+with "an earlier shipment of this order must be invoiced first". Until that case is
+built, invoice such a shipment outside Atlas as before, and dismiss its job on the Jobs
+page giving that as the reason.
+
+Shopify admin → Settings → Notifications → Webhooks → Create webhook:
 
 - Event: **Fulfillment creation**
 - Format: JSON
@@ -452,6 +462,8 @@ balance, and Setup shows "First real invoice: Done".
   (step 8.4) and the switches in step 6. Both are SQL for now.
 - A shipment that arrived before its customer was linked is not re-routed when the link
   is added later.
+- An order that shipped partly before the cutoff cannot be invoiced in Atlas for its
+  later shipments while freight is charged on the first part (step 9).
 - Products are rewritten from Shopify on every sync, so name products and turn variants
   on or off in Shopify, not in Atlas.
 - Migrations have no tracking table in the live database; `schema-status.sql` infers
