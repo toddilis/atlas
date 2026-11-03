@@ -2,13 +2,8 @@
 #   api    — Fastify server (webhooks + admin), behind Fly's proxy with health checks
 #   worker — outbox drain + projection replay loop (PR-R grows it into the scheduler)
 #
-# First deploy (see DEPLOY.md):
-#   fly launch --no-deploy --copy-config
-#   fly secrets set SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… ATLAS_ORG_ID=… \
-#     ATLAS_API_TOKEN=… SHOPIFY_SHOP_DOMAIN=… SHOPIFY_ADMIN_API_TOKEN=… \
-#     SHOPIFY_WEBHOOK_SECRET=… STRIPE_SECRET_KEY=… STRIPE_WEBHOOK_SECRET=… \
-#     SHOPIFY_MAIN_LOCATION_ID=… VENUE_LOCATION_IDS=…
-#   fly deploy
+# First deploy: docs/operations/GO_LIVE.md step 4 lists every secret and what it switches
+# on. Later deploys: DEPLOY.md.
 
 app = "atlas-api"
 # Supabase project lives in ap-southeast-1 (Singapore) — keep compute next to the DB.

@@ -1,94 +1,57 @@
 # Deploying Atlas
 
-> **Revalidate before first deploy (2026-10-16).** This runbook predates decisions
-> D8–D10 (PLAN.md §3): the pilot VICE receivables flow is **bank-transfer settlement
-> (Wise/ASB) with printed/occasionally emailed invoices — Stripe issuance is not part of
-> the pilot path**. The Stripe webhook/secret steps below remain valid only for the
-> legacy wholesale loop; the Shopify webhook re-pointing remains required for order/
-> fulfillment sync. Whether migrations 0011→current have been applied to the live
-> Supabase project is not verifiable from this repo — confirm against the project before
-> deploying anything that assumes them. Reconcile with
-> `docs/product/VICE_RECEIVABLES.md` and the current integration status in
-> `docs/development/BUILD_QUEUE.md` first.
-
-Two deployables (decision D1/D7 in `PLAN.md`):
+Two deployables (decisions D1/D7 in `PLAN.md`), both against the business's existing
+Supabase project:
 
 | Piece | Where | What runs |
 |---|---|---|
-| API + worker | Fly.io (one app, two process groups) | `dist/api/server.js`, `dist/worker/main.js` |
-| Operator console | Vercel | `web/` (Next.js) |
+| API + worker | Fly.io (app `atlas-api`, one image, two process groups) | `dist/api/server.js`, `dist/worker/main.js` |
+| Operator console | Vercel (Root Directory `web/`) | Next.js app in `web/` |
 
-The database is the existing Supabase project; migrations are applied there (in order,
-`supabase/migrations/0001`→current) — the image deliberately contains no migration
-tooling.
+Migrations are applied to the database by hand, in order; the image deliberately
+contains no migration tooling.
 
-## API + worker → Fly.io
+**First deploy and go-live:** follow [docs/operations/GO_LIVE.md](docs/operations/GO_LIVE.md).
+It has every setting for Fly and Vercel, the business record, the switches a business
+turns on deliberately, the Shopify setup, the first-day console setup and the checks.
 
-One-time setup:
+## Deploying a new version
 
-```sh
-fly launch --no-deploy --copy-config     # uses ./fly.toml + ./Dockerfile
-fly secrets set \
-  SUPABASE_URL=… \
-  SUPABASE_SERVICE_ROLE_KEY=… \
-  ATLAS_ORG_ID=… \
-  ATLAS_API_TOKEN="$(openssl rand -hex 32)" \
-  SHOPIFY_SHOP_DOMAIN=… \
-  SHOPIFY_ADMIN_API_TOKEN=… \
-  SHOPIFY_WEBHOOK_SECRET=… \
-  SHOPIFY_MAIN_LOCATION_ID=… \
-  VENUE_LOCATION_IDS=… \
-  STRIPE_SECRET_KEY=… \
-  STRIPE_WEBHOOK_SECRET=…
-fly deploy
-```
+1. Back up the database and apply any new migrations, in order, before the code that
+   needs them ([GO_LIVE.md step 2](docs/operations/GO_LIVE.md#2-bring-the-database-schema-up-to-date)).
+2. `fly deploy` from the merged commit. Starting the API and worker adds any new
+   standard switch for the business; it never turns a switched-off one back on.
+3. Deploy the console from the same commit (Vercel deploys `main` when the Git
+   integration is on).
+4. Run the health check ([GO_LIVE.md step 11](docs/operations/GO_LIVE.md#11-health-check-after-this-deploy-and-every-later-one)):
+   `scripts/smoke-deploy.sh <api-url> <console-url>`, the schema status query and the
+   console's Setup page.
+5. If the release adds a switch that is never turned on automatically, decide whether
+   the business wants it ([GO_LIVE.md step 6](docs/operations/GO_LIVE.md#6-turn-on-the-day-one-switches)).
 
-Then point the external webhooks at the app:
+## Health endpoints
 
-- Shopify fulfillment webhook → `https://<app>.fly.dev/webhooks/shopify/fulfillments`
-- Stripe webhook (invoice.paid) → `https://<app>.fly.dev/webhooks/stripe`
+- `/healthz`: liveness (the process is up; always 200 while running).
+- `/readyz`: readiness (its settings are present and the database answers). Fly's HTTP
+  check uses it, so a machine with broken settings or no database leaves rotation
+  instead of answering 200 while webhooks fail behind it. A business id that is not in
+  `orgs` stops the API and worker at start instead (`api.fatal` in `fly logs`).
 
-Health:
+## Operational notes
 
-- `/healthz` — liveness (process up; always 200 while running).
-- `/readyz` — readiness (env present + database answers). Fly's http check uses this,
-  so a machine with broken config or unreachable Supabase leaves rotation instead of
-  answering 200 while webhooks fail behind it.
-
-Operational notes:
-
-- The API never scales to zero (`auto_stop_machines = false`) — webhooks need a listener.
-- Both processes exit cleanly on SIGTERM: the API drains in-flight requests; the worker
-  finishes its current tick. Fly's deploy flow relies on this.
-- `/admin/*` (sync, outbox drain, replay) requires `Authorization: Bearer $ATLAS_API_TOKEN`.
-  The worker makes the admin endpoints non-essential — it drains the outbox and replays
-  outstanding projections every `WORKER_INTERVAL_MS` (default 60s).
-- All secrets live in Fly (`fly secrets`); nothing is baked into the image.
-
-## Console → Vercel
-
-Import the repo in Vercel with **Root Directory = `web/`** (framework auto-detects
-Next.js). Set environment variables:
-
-```
-SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY
-ATLAS_ORG_ID
-NEXT_PUBLIC_SUPABASE_URL          # same project URL — browser-safe
-NEXT_PUBLIC_SUPABASE_ANON_KEY     # anon key — browser-safe, session handling only
-ATLAS_OPERATOR_EMAILS             # comma-separated allowlist; empty = nobody signs in
-```
-
-One-time auth setup in the Supabase dashboard (Authentication):
-
-1. Create the operator user (email + password) under Users.
-2. Disable public sign-ups (Providers → Email → turn off sign-ups). The console's
-   allowlist fails closed regardless, but there's no reason to accept strangers'
-   accounts into the auth table.
-
-Keep Vercel Deployment Protection enabled until an allowed operator has passed login,
-session refresh and sign-out, and a non-allowlisted account has been denied in production.
-
-The service-role key stays server-side (all pages are server components) and only runs
-behind the request proxy session gate (PR-P, decision D3). Real RLS-scoped access is a v2
-multi-tenant item.
+- The API never scales to zero (`auto_stop_machines = false`): webhooks need a listener.
+- Both processes exit cleanly on SIGTERM: the API drains in-flight requests and the
+  worker finishes its current tick. Fly's deploy flow relies on this.
+- The worker runs every background job each `WORKER_INTERVAL_MS` (default 60s): outbox
+  drain, projection replay, Shopify sync, carrier costs, invoice part drafts, approved
+  actions and the daily briefing. Jobs are leased, so a second worker machine is safe
+  but unnecessary.
+- `/admin/*` (sync, outbox drain, replay, approvals) requires
+  `Authorization: Bearer $ATLAS_API_TOKEN`; the worker makes it non-essential.
+- `/webhooks/stripe` serves the legacy Stripe loop only. The pilot is paid by bank
+  transfer, so its settings stay unset.
+- All secrets live in Fly (`fly secrets`) and Vercel; nothing is baked into the image.
+- The console's service-role key stays server-side (every page is a server component)
+  and runs only behind the request proxy's session, allowlist and membership gate
+  (PR-P, D3, 0049). Shared-tenancy data access is a later item; one deployment serves
+  one business.

@@ -2,14 +2,14 @@
 
 ## Current status
 
-Updated 30 October 2026. This section is the live status and supersedes the dated sections below, which are
+Updated 3 November 2026. This section is the live status and supersedes the dated sections below, which are
 history. Steps 1–4 are merged: AUTH-01 + AUTHZ-02 (#31), EVENT-01 + EVIDENCE-01 (#30),
 PRICING-01 + BILL-01 (#28), the GoSweetSpot carrier cost sync with the JOBS-01 core (#35), the
 pricing editor (step 4a, #38), approve → issue → print for an invoice part (step 4b, #39) and the
 invoice part draft jobs (step 4c, #40). Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
 and a PR merges only after that approval and green CI. Commit and CI evidence lives in
 each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October.
-Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
+Steps 5–27 (#42–#67) have merged since.
 
 | Order | Task | Owner | PR | State | Next step |
 | --- | --- | --- | --- | --- | --- |
@@ -37,18 +37,20 @@ Steps 5–21 (#42–#58) have merged since; #59 marks row 21 done.
 | 23 | FLOW-01B-a: bank accounts and statement import, the shared bank source ([brief](tasks/FLOW-01B.md)) | Claude | — (#62 merged) | Done | — |
 | 24 | FLOW-01B-b: receipts matched to invoices, payments recorded from them; not-a-receipt marking | Claude | — (#63 merged) | Done | — |
 | 25 | CLOSE-01e: receivables ageing — what each retailer owes and how late, in the business's calendar | Claude | — (#64 merged) | Done | — |
-| 26 | TODAY: home receivables net of payments, late by calendar day in the business timezone; receipts to reconcile under Needs you (no migration) | Claude | `claude/today-receivables-receipts` | PR #65 open | Todd's review |
-| 27 | CLOSE-01f: payment reminders — drafted from the overdue snapshot, sent by the operator and recorded, or voided (migration 0053 claimed) | Claude | `claude/close-01f-reminders` (stacked on #65) | In progress | `npm run check`, PR, Todd's review |
+| 26 | TODAY: home receivables net of payments, late by calendar day in the business timezone; receipts to reconcile under Needs you (no migration) | Claude | — (#65 merged) | Done | — |
+| 27 | CLOSE-01f: payment reminders — drafted from the overdue snapshot, sent by the operator and recorded, or voided (0053) | Claude | — (#67 merged) | Done | — |
+| 28 | GO-LIVE-01: go-live runbook ([GO_LIVE.md](../operations/GO_LIVE.md)), post-deploy smoke check and the console's Setup checklist (no migration) | Claude | `claude/go-live-runbook` | PR open | Todd's review; then Todd runs the runbook |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
-Next, in order (Todd, 31 October): the home page's receivables and receipts (row 26), then
-approved payment reminders (CLOSE-01); TENANT-01 isolation of jobs, retrieval, files,
-secrets and export (the worker still serves one business named by `ATLAS_ORG_ID`); then
-INV-01, reading VICE's stock levels from Shopify (PLAN D17). The Wise/ASB layouts
+Next, in order: the go-live runbook (row 28) and Todd's first deploy with it; TENANT-01
+isolation of jobs, retrieval, files, secrets and export (the worker still serves one
+business named by `ATLAS_ORG_ID`); then INV-01, reading VICE's stock levels from Shopify
+(PLAN D17). Go-live still needs SQL for two setup actions (GO_LIVE.md limits): linking
+Shopify customers to retailers and the never-seeded switches. The Wise/ASB layouts
 (FLOW-01B-c) wait for the export sample. After the Controller pilot the module order is
-Quartermaster, then Bookkeeper (D18). The first deploy (Fly.io + Vercel, DEPLOY.md) is
-Todd's action and is not evidenced here. Business inputs still needed are listed in
+Quartermaster, then Bookkeeper (D18). The first deploy (Fly.io + Vercel) follows
+[GO_LIVE.md](../operations/GO_LIVE.md); it is Todd's action and is not evidenced here. Business inputs still needed are listed in
 [VICE_RECEIVABLES.md](../product/VICE_RECEIVABLES.md#inputs-still-needed).
 
 ## Standing backlog and historical snapshots

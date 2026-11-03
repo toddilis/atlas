@@ -57,6 +57,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Link href="/assistant" className="hover:text-zinc-900 dark:hover:text-zinc-100">
                   Assistant
                 </Link>
+                <Link href="/setup" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+                  Setup
+                </Link>
               </nav>
               <form action="/auth/signout" method="post" className="ml-auto">
                 <button
