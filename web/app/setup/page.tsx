@@ -18,7 +18,7 @@ async function loadSetup(now: Date): Promise<SetupSnapshot> {
   const count = { count: 'exact', head: true } as const;
   const waitingSince = new Date(now.getTime() - WAITING_MINUTES * 60_000).toISOString();
   const [ledger, grants, controls, lastRun, waiting, profile, retailers, products, activations, sources, customers, linked,
-    bank, members, issued, paid] = await Promise.all([
+    notInvoiced, held, bank, members, issued, paid] = await Promise.all([
     sb.from('ledger_accounts').select('id', count).eq('org_id', org),
     sb.from('tool_grants').select('agent_name, tool_name, enabled').eq('org_id', org).limit(1000),
     sb.from('action_controls').select('paused').eq('org_id', org).maybeSingle(),
@@ -31,13 +31,15 @@ async function loadSetup(now: Date): Promise<SetupSnapshot> {
     sb.from('dispatch_sources').select('id, connection_key, enabled, sync_every_minutes').eq('org_id', org).eq('provider', 'shopify'),
     sb.from('shopify_customers').select('id', count).eq('org_id', org),
     sb.from('shopify_customers').select('id', count).eq('org_id', org).not('account_id', 'is', null),
+    sb.from('shopify_customers').select('id', count).eq('org_id', org).eq('do_not_invoice', true),
+    sb.from('fulfillment_events').select('id', count).eq('org_id', org).eq('route', 'held'),
     sb.from('bank_accounts').select('id', count).eq('org_id', org).eq('enabled', true),
     sb.from('org_members').select('id', count).eq('org_id', org).eq('enabled', true),
     sb.from('invoices').select('id', count).eq('org_id', org).in('state', ['issued', 'partial', 'paid', 'overdue']),
     sb.from('invoices').select('id', count).eq('org_id', org).in('state', ['partial', 'paid']),
   ]);
   for (const r of [ledger, grants, controls, lastRun, waiting, profile, retailers, products, activations, sources, customers, linked,
-    bank, members, issued, paid]) if (r.error) throw r.error;
+    notInvoiced, held, bank, members, issued, paid]) if (r.error) throw r.error;
   const shopify = ((sources.data ?? []) as SyncSourceRow[])[0] ?? null;
   // The newest successful sync of this connection, if it has one.
   const sync = shopify
@@ -54,7 +56,7 @@ async function loadSetup(now: Date): Promise<SetupSnapshot> {
     profile: profile.data ?? null,
     retailers: retailers.count ?? 0, products: products.count ?? 0, pricingActive: (activations.count ?? 0) > 0,
     shopify, lastSyncAt: (sync?.data ?? [])[0]?.finished_at ?? null,
-    customers: { total: customers.count ?? 0, linked: linked.count ?? 0 },
+    customers: { total: customers.count ?? 0, linked: linked.count ?? 0, notInvoiced: notInvoiced.count ?? 0, held: held.count ?? 0 },
     bankAccounts: bank.count ?? 0, members: members.count ?? 0,
     invoices: { issued: issued.count ?? 0, paid: paid.count ?? 0 },
   };

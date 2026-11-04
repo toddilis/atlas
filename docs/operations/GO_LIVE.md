@@ -190,7 +190,7 @@ Checks:
 - `fly logs` shows `worker.started`, then `worker.tick` about once a minute.
 - When the API and worker start they add this business's standard switches (step 6).
   In the SQL editor, `select count(*) from tool_grants where org_id = '<business id>' and agent_name = 'operator';`
-  returns at least 20.
+  returns at least 21.
 
 ## 5. Deploy the console and set up sign-in (Vercel, Supabase Auth)
 
@@ -230,7 +230,7 @@ Checks, in the console:
 Every business action checks a switch (a `tool_grants` row) for this business. Starting
 the API and worker turns on the standard ones: retrying and dismissing jobs, pricing,
 the catalogue, the business profile, connections, approvals, statements, bank imports,
-reminders, recording prints, and the emergency stop. Any of them can be turned off and a
+reminders, recording prints, deciding Shopify customers, and the emergency stop. Any of them can be turned off and a
 restart never turns it back on.
 
 The switches below are never turned on automatically, so the business decides. There is
@@ -326,26 +326,18 @@ the business's own records every time. Work down it in this order.
 3. **Retailers** (Catalogue): add each retailer you invoice, with its currency, payment
    terms, billing email and whether it is tax-exempt (export). Products are already
    there from Shopify.
-4. **Link each retailer to its Shopify customer.** Atlas invoices a shipment only when
-   the order's Shopify customer is linked to a retailer. Link them before step 9: a
-   shipment that arrives before its customer is linked is recorded as a retail order and
-   is not invoiced later. There is no console control for this yet; use the SQL editor:
-
-   ```sql
-   -- Find the retailer's Shopify customer (by email or name).
-   select shopify_customer_id, email, first_name, last_name, account_id
-   from shopify_customers
-   where org_id = '<business id>' and (email ilike '%<part of email>%' or last_name ilike '%<name>%');
-
-   -- Find the retailer's id.
-   select id, name from accounts where org_id = '<business id>' order by name;
-
-   -- Link them. One retailer may have several Shopify customers.
-   update shopify_customers set account_id = '<retailer id>'
-   where org_id = '<business id>' and shopify_customer_id = '<shopify customer id>';
-   ```
-
-   Later syncs keep the link. Setup shows how many customers are linked.
+4. **Decide your retailers' Shopify customers** (Customers). Atlas invoices a shipment
+   from the warehouse when its order's Shopify customer is linked to a retailer and
+   Shopify shows the order unpaid. An order Shopify shows as paid is never invoiced. Each
+   Shopify customer is either linked to a retailer, marked not invoiced (a rep or staff
+   member, with a reason), or undecided. When an unpaid draft order ships for an
+   undecided customer, it waits on the Customers page, and under Needs you on the home
+   page, until you decide; your decision sends it to invoicing or sets it aside.
+   So you can link customers as their orders ship, but linking your regular retailers
+   now saves a wait: search by name, email or company, then Link. A retailer can have
+   several Shopify customers (one per buyer, or duplicates); link each one. When a
+   customer's company or email matches a retailer, the page suggests it. Later syncs
+   keep every decision.
 5. **Pricing** (Pricing): build the first version with your wholesale prices, freight
    rule and payment terms; preview a retailer to check a real order prices as you
    expect; save; activate. Nothing can be drafted until a version is active.
@@ -402,15 +394,16 @@ select occurred_at, route, reason from fulfillment_events
 where org_id = '<business id>' order by occurred_at desc limit 5;
 ```
 
-A retailer's shipment from the main warehouse shows `wholesale`. A shipment you expected
-to be wholesale but shows `ignored` with "no linked B2B account" means its Shopify
-customer was not linked (step 8.4).
+A linked retailer's unpaid shipment from the main warehouse shows `wholesale`; an
+undecided customer's unpaid draft order shows `held` and waits on Customers (step 8.4);
+an order Shopify shows as paid shows `ignored`, with the reason.
 
 ## 10. First real invoice, from approval to payment
 
 1. A retailer's order ships from the main warehouse. Usually within 20 minutes (step 9)
    the worker drafts its invoice part: the home page counts it, and it is listed on
-   Invoices. If it cannot be drafted yet (no active price for a SKU, freight cost not
+   Invoices. If its customer is not decided yet, the shipment first waits on Customers
+   until you link it (step 8.4). If it cannot be drafted yet (no active price for a SKU, freight cost not
    known yet), the Jobs page says why and the part is drafted by itself once that
    arrives.
 2. Open the part, check it against the packing slip, add a note and click **Approve and
@@ -458,10 +451,13 @@ balance, and Setup shows "First real invoice: Done".
 
 ## Known limits
 
-- Two setup actions have no console control yet: linking Shopify customers to retailers
-  (step 8.4) and the switches in step 6. Both are SQL for now.
-- A shipment that arrived before its customer was linked is not re-routed when the link
-  is added later.
+- The switches in step 6 have no console control yet; they are SQL for now.
+- Only unpaid draft orders wait for a decision. An unpaid order from another channel
+  (such as the online store) for an undecided customer is treated as a retail order and
+  not invoiced.
+- An order that is partly paid in Shopify when it ships is not invoiced; invoice the
+  balance by hand. Marking an order paid in Shopify after its invoice part is drafted
+  does not withdraw the draft: check it before approving.
 - An order that shipped partly before the cutoff cannot be invoiced in Atlas for its
   later shipments while freight is charged on the first part (step 9).
 - Products are rewritten from Shopify on every sync, so name products and turn variants

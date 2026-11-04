@@ -453,6 +453,7 @@ psql_run -f "$SCRIPT_DIR/verify-members.sql"
 psql_run -f "$SCRIPT_DIR/verify-bank.sql"
 psql_run -f "$SCRIPT_DIR/verify-bank-match.sql"
 psql_run -f "$SCRIPT_DIR/verify-reminders.sql"
+psql_run -f "$SCRIPT_DIR/verify-customer-decisions.sql"
 psql_run -f "$SCRIPT_DIR/verify-tenant-surface.sql"
 
 # The go-live schema status query (docs/operations/GO_LIVE.md) must list every migration,

@@ -2,14 +2,14 @@
 
 ## Current status
 
-Updated 3 November 2026. This section is the live status and supersedes the dated sections below, which are
+Updated 4 November 2026. This section is the live status and supersedes the dated sections below, which are
 history. Steps 1–4 are merged: AUTH-01 + AUTHZ-02 (#31), EVENT-01 + EVIDENCE-01 (#30),
 PRICING-01 + BILL-01 (#28), the GoSweetSpot carrier cost sync with the JOBS-01 core (#35), the
 pricing editor (step 4a, #38), approve → issue → print for an invoice part (step 4b, #39) and the
 invoice part draft jobs (step 4c, #40). Per PLAN D14, PRs land one at a time in this order; Todd reviews each on GitHub
 and a PR merges only after that approval and green CI. Commit and CI evidence lives in
 each PR. The 1–7 October target (D13) was not met; step 4 closed on 18 October.
-Steps 5–27 (#42–#67) have merged since.
+Steps 5–28 (#42–#69) have merged since.
 
 | Order | Task | Owner | PR | State | Next step |
 | --- | --- | --- | --- | --- | --- |
@@ -39,15 +39,16 @@ Steps 5–27 (#42–#67) have merged since.
 | 25 | CLOSE-01e: receivables ageing — what each retailer owes and how late, in the business's calendar | Claude | — (#64 merged) | Done | — |
 | 26 | TODAY: home receivables net of payments, late by calendar day in the business timezone; receipts to reconcile under Needs you (no migration) | Claude | — (#65 merged) | Done | — |
 | 27 | CLOSE-01f: payment reminders — drafted from the overdue snapshot, sent by the operator and recorded, or voided (0053) | Claude | — (#67 merged) | Done | — |
-| 28 | GO-LIVE-01: go-live runbook ([GO_LIVE.md](../operations/GO_LIVE.md)), post-deploy smoke check and the console's Setup checklist (no migration) | Claude | `claude/go-live-runbook` | PR open | Todd's review; then Todd runs the runbook |
+| 28 | GO-LIVE-01: go-live runbook ([GO_LIVE.md](../operations/GO_LIVE.md)), post-deploy smoke check and the console's Setup checklist (no migration) | Claude | — (#69 merged) | Done | Todd runs the runbook |
+| 29 | CONFIG-01d: who Atlas invoices, decided per Shopify customer (PLAN D20): link to a retailer, mark not invoiced, unpaid draft orders of undecided customers held; paid orders never invoiced (migration 0054 claimed) | Claude | `claude/config-01d-customer-links` | PR open | Todd's review |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
-Next, in order: the go-live runbook (row 28) and Todd's first deploy with it; TENANT-01
-isolation of jobs, retrieval, files, secrets and export (the worker still serves one
-business named by `ATLAS_ORG_ID`); then INV-01, reading VICE's stock levels from Shopify
-(PLAN D17). Go-live still needs SQL for two setup actions (GO_LIVE.md limits): linking
-Shopify customers to retailers and the never-seeded switches. The Wise/ASB layouts
+Next, in order: customer decisions (row 29), then Todd's first deploy with the go-live
+runbook; TENANT-01 isolation of jobs, retrieval, files, secrets and export (the worker
+still serves one business named by `ATLAS_ORG_ID`); then INV-01, reading VICE's stock
+levels from Shopify (PLAN D17). Go-live still needs SQL for the never-seeded switches
+(GO_LIVE.md limits). The Wise/ASB layouts
 (FLOW-01B-c) wait for the export sample. After the Controller pilot the module order is
 Quartermaster, then Bookkeeper (D18). The first deploy (Fly.io + Vercel) follows
 [GO_LIVE.md](../operations/GO_LIVE.md); it is Todd's action and is not evidenced here. Business inputs still needed are listed in

@@ -110,6 +110,9 @@ test('the home page is the operator\'s day, from stored rows alone, with explici
   await expect(page.getByTestId('stat-approvals')).toContainText('2');
   await expect(page.getByTestId('stat-jobs')).toContainText('3 blocked · 1 quarantined');
   await expect(page.getByTestId('stat-parts')).toContainText('0');
+  // Two unpaid draft orders wait for someone to decide who their customers are (0054).
+  await expect(page.getByTestId('stat-held')).toContainText('Shipments waiting for a decision');
+  await expect(page.getByTestId('stat-held')).toContainText('2');
   await expect(page.getByTestId('today-next-sync')).toContainText('Next Shopify sync in');
 
   // Freshness names this business's connection only, and says plainly it never synced.
@@ -1013,6 +1016,82 @@ test('an operator matches a bank receipt to its invoice and marks a transfer as 
   await page.screenshot({ path: 'test-results/bank-receipts.png', fullPage: true });
 });
 
+// Customer decisions (0054): the Controller held two unpaid draft orders whose customers
+// nobody had decided about. The operator links the retailer's buyer (suggested from the
+// company name) and its shipment goes to invoicing; a page loaded before that decision
+// cannot overwrite it; the rep is marked not invoiced with a reason; search finds a
+// customer by email, and another business's customers never appear.
+test('an operator decides who held shipments belong to: link a retailer\'s buyer, mark a rep not invoiced', async ({ page, request }) => {
+  const org = '11111111-1111-4111-8111-111111111111';
+  const rest = 'http://127.0.0.1:54321/rest/v1';
+  const service = { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const routing = async (orderKey: string) => {
+    const [order] = await (await request.get(`${rest}/shopify_orders?org_id=eq.${org}&shopify_order_id=eq.${orderKey}&select=id`, { headers: service })).json();
+    const [event] = await (await request.get(`${rest}/fulfillment_events?org_id=eq.${org}&shopify_order_id=eq.${order.id}&select=route,reason,account_id`, { headers: service })).json();
+    return event as { route: string; reason: string; account_id: string | null };
+  };
+  const [exportRetailer] = await (await request.get(`${rest}/accounts?org_id=eq.${org}&name=eq.Synthetic%20Export&select=id`, { headers: service })).json();
+  expect((await routing('held-cust-erin')).route).toBe('held');
+
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.getByRole('link', { name: 'Customers', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Shopify customers' })).toBeVisible();
+  const waiting = page.getByTestId('waiting-customer');
+  await expect(waiting).toHaveCount(2);
+  await expect(page.locator('body')).not.toContainText('OTHER-SECRET-CUSTOMER');
+  const erin = waiting.filter({ hasText: 'Erin Buyer' });
+  await expect(erin).toContainText('Synthetic Export');
+  await expect(erin).toContainText('unpaid in Shopify');
+  await expect(erin.getByTestId('customer-suggestion')).toContainText('the retailer’s name as its company');
+  await expect(erin.getByLabel('Retailer for Erin Buyer', { exact: true })).toHaveValue(exportRetailer.id);
+  await page.screenshot({ path: 'test-results/customers-waiting.png', fullPage: true });
+
+  // A page loaded before the decision cannot overwrite it.
+  const stale = await page.context().newPage();
+  await stale.goto('/customers');
+
+  await erin.getByRole('button', { name: 'Link', exact: true }).click();
+  await expect(page.getByTestId('customer-notice')).toContainText('Customer linked.');
+  await expect(page.getByTestId('customer-notice')).toContainText('1 waiting shipment goes to invoicing.');
+  const released = await routing('held-cust-erin');
+  expect(released.route).toBe('wholesale');
+  expect(released.account_id).toBe(exportRetailer.id);
+  expect(released.reason).toBe('released to invoicing: customer linked to Synthetic Export by operator@example.test');
+  const linked = page.getByTestId('linked-customer').filter({ hasText: 'Erin Buyer' });
+  await expect(linked).toContainText('Synthetic Export');
+  await expect(linked).toContainText('Linked by operator@example.test');
+
+  const staleErin = stale.getByTestId('waiting-customer').filter({ hasText: 'Erin Buyer' });
+  await staleErin.getByLabel('Reason not invoiced for Erin Buyer', { exact: true }).fill('Wrong page');
+  await staleErin.getByRole('button', { name: /Don.t invoice/ }).click();
+  await expect(stale.getByTestId('customer-notice')).toContainText('changed this customer’s decision since the page was loaded');
+  expect((await routing('held-cust-erin')).route).toBe('wholesale');
+  await stale.close();
+
+  // The rep: never invoiced, with the reason kept beside the decision.
+  const rep = page.getByTestId('waiting-customer').filter({ hasText: 'Andy Rep' });
+  await rep.getByLabel('Reason not invoiced for Andy Rep', { exact: true }).fill('Rep kit');
+  await rep.getByRole('button', { name: /Don.t invoice/ }).click();
+  await expect(page.getByTestId('customer-notice')).toContainText('Customer marked not invoiced. Atlas will not invoice its orders. 1 waiting shipment is not invoiced.');
+  await expect(page.getByTestId('customers-waiting-empty')).toBeVisible();
+  await expect(page.getByTestId('not-invoiced-customer').filter({ hasText: 'Andy Rep' })).toContainText('Rep kit');
+  const repRouting = await routing('held-cust-rep');
+  expect(repRouting.route).toBe('ignored');
+  expect(repRouting.reason).toBe('not invoiced: customer marked not invoiced by operator@example.test (Rep kit)');
+
+  // Search finds a customer by email; it never reaches another business.
+  await page.getByLabel('Search customers', { exact: true }).fill('synthetic-export');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers\?q=synthetic-export/);
+  await expect(page.getByTestId('found-customer')).toHaveCount(1);
+  await expect(page.getByTestId('found-customer')).toContainText('Linked to Synthetic Export');
+  await page.waitForLoadState('networkidle');
+  await page.screenshot({ path: 'test-results/customers-decided.png', fullPage: true });
+  await page.goto('/customers?q=OTHER-SECRET');
+  await expect(page.getByTestId('customers-found-empty')).toBeVisible();
+});
+
 // The go-live checklist (GO_LIVE.md): read-only, from this business's own rows. By now the
 // earlier journeys have set the fixture business up, so it shows what is done, the
 // connection that has never synced as a check, and the switches still off with the exact
@@ -1026,11 +1105,11 @@ test('the Setup page shows the go-live checklist from stored records, with the S
   // Deployment: the fixture seeded the chart, every standard switch and the day-one ones.
   for (const key of ['chart', 'boot', 'switches', 'pause'])
     await expect(page.getByTestId(`setup-step-${key}`)).toHaveAttribute('data-state', 'done');
-  await expect(page.getByTestId('setup-step-boot')).toContainText('all 20 standard switches are on');
+  await expect(page.getByTestId('setup-step-boot')).toContainText('all 21 standard switches are on');
   // Business setup: everything the earlier journeys did is done, down to a paid invoice...
   for (const key of ['profile', 'catalog', 'pricing', 'link', 'bank', 'members', 'first'])
     await expect(page.getByTestId(`setup-step-${key}`)).toHaveAttribute('data-state', 'done');
-  await expect(page.getByTestId('setup-step-link')).toHaveText(/1 of 1 synced Shopify customers linked to retailers\.$/);
+  await expect(page.getByTestId('setup-step-link')).toContainText('2 linked to retailers and 1 marked not invoiced, of 3 synced Shopify customers.');
   // ...and the connection that has never synced is a check that says where to look.
   const shopify = page.getByTestId('setup-step-shopify');
   await expect(shopify).toHaveAttribute('data-state', 'warn');

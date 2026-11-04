@@ -71,6 +71,10 @@ export async function bootAgents(): Promise<void> {
     { agentName: 'operator', toolName: 'reminders.generate', risk: 'notify' },
     { agentName: 'operator', toolName: 'reminders.record_send', risk: 'notify' },
     { agentName: 'operator', toolName: 'reminders.void', risk: 'notify' },
+    // Deciding who a Shopify customer is (0054): link it to a retailer, mark it never
+    // invoiced, or undo — retailer setup, the same class as catalogue edits. Releasing a
+    // held shipment only queues an invoice draft; issuing stays controller.issue_invoice.
+    { agentName: 'operator', toolName: 'customers.decide', risk: 'notify' },
     // assistant.narrate (0038) is never seeded: it is the business's model-spend switch
     // for the daily briefing, turned on deliberately like controller.issue_invoice.
     // invoices.void (0048) is never seeded either: reversing a posted receivable is a

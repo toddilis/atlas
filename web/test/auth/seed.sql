@@ -125,6 +125,8 @@ insert into tool_grants(org_id,agent_name,tool_name,risk) values
  ('11111111-1111-4111-8111-111111111111','operator','reminders.generate','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','reminders.record_send','notify'),
  ('11111111-1111-4111-8111-111111111111','operator','reminders.void','notify'),
+ -- Boot seeds the customer decision grant too (0054).
+ ('11111111-1111-4111-8111-111111111111','operator','customers.decide','notify'),
  -- Never seeded at boot; a business turns invoice issuing on deliberately, as here.
  ('11111111-1111-4111-8111-111111111111','operator','controller.issue_invoice','approve_required'),
  -- Never seeded at boot either; manual payment entry is turned on deliberately (0043).
@@ -173,6 +175,33 @@ select record_daily_briefing('11111111-1111-4111-8111-111111111111','fixture-mod
   'Two proposals wait for a decision and one connection has never synced.',
   '[{"kind":"approval","id":"00000000-0000-4000-8000-00000000aaaa","label":"pending approval: demo.widget_restock"}]'::jsonb,
   'ok',null);
+-- Customer decisions (0054): unpaid draft orders that shipped from the warehouse for
+-- customers nobody has decided about, so the Controller held them: a retailer's buyer
+-- whose company names the retailer, and a rep. Another business's held shipment must
+-- never be shown.
+do $$
+declare org uuid; src uuid; o uuid; d uuid; f uuid; k text; n int := 6000;
+begin
+  foreach org in array array['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222']::uuid[] loop
+    src := bind_shopify_dispatch_source(org, 'jobs-'||left(org::text,4)||'.myshopify.com');
+    foreach k in array case when org='11111111-1111-4111-8111-111111111111' then array['cust-erin','cust-rep'] else array['cust-other'] end loop
+      n := n + 1;
+      insert into shopify_customers(org_id,shopify_customer_id,email,first_name,last_name,default_address,raw) values
+        (org,k,case k when 'cust-erin' then 'erin@synthetic-export.test' when 'cust-rep' then 'andy@vice-fixture.test' else 'other@secret.test' end,
+         case k when 'cust-erin' then 'Erin' when 'cust-rep' then 'Andy' else 'OTHER-SECRET-CUSTOMER' end,
+         case k when 'cust-erin' then 'Buyer' when 'cust-rep' then 'Rep' else null end,
+         case k when 'cust-erin' then '{"company":"Synthetic Export"}'::jsonb else null end,'{}');
+      insert into shopify_orders(org_id,shopify_order_id,shopify_order_name,shopify_customer_id,currency,subtotal_cents,total_cents,financial_status,raw,placed_at)
+        values(org,'held-'||k,'#'||n,k,'NZD',4000,4600,'pending','{"source_name":"shopify_draft_order"}',now()-interval '1 day') returning id into o;
+      d := project_dispatch(org,src,'ship-held-'||k,o::text,now()-interval '2 hours','succeeded',null,
+        '[{"source_line_key":"1","order_line_key":"1","item_key":"TEE","quantity":2,"ordered_quantity":2}]',null,'{}',now()-interval '2 hours');
+      insert into shopify_fulfillments(org_id,shopify_fulfillment_id,shopify_order_id,status,raw,occurred_at,dispatch_id)
+        values(org,'ship-held-'||k,o,'success','{}',now()-interval '2 hours',d) returning id into f;
+      insert into fulfillment_events(org_id,shopify_fulfillment_id,shopify_order_id,route,reason,occurred_at)
+        values(org,f,o,'held','unpaid draft order from a customer not yet linked to a retailer: decide on the Customers page',now()-interval '2 hours');
+    end loop;
+  end loop;
+end $$;
 grant usage on schema public to service_role;
 grant select on all tables in schema public to service_role;
 notify pgrst, 'reload schema';
