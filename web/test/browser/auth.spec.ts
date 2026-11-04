@@ -805,6 +805,10 @@ test('membership gates the console on top of the allowlist; disabling a member t
   // Now a member: they reach the console.
   await login(outsiderPage, 'second@example.test');
   await expect(outsiderPage.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  // Let the page's background link prefetches finish while they are still a member. One
+  // sent after the disable below would take the refusal (and clear the session) before the
+  // navigation that checks the message, which is a race in the test, not in the console.
+  await outsiderPage.waitForLoadState('networkidle');
 
   // Disable them; their very next request is refused and their session is cleared.
   await page.getByRole('button', { name: 'Disable second@example.test', exact: true }).click();
@@ -1007,6 +1011,40 @@ test('an operator matches a bank receipt to its invoice and marks a transfer as 
   await expect(page.getByTestId('bank-notice')).toContainText('Bank line reopened for matching.');
   await expect(page.getByTestId('bank-receipt').filter({ hasText: 'TRANSFER FROM SAVINGS' })).toHaveCount(1);
   await page.screenshot({ path: 'test-results/bank-receipts.png', fullPage: true });
+});
+
+// The go-live checklist (GO_LIVE.md): read-only, from this business's own rows. By now the
+// earlier journeys have set the fixture business up, so it shows what is done, the
+// connection that has never synced as a check, and the switches still off with the exact
+// SQL that turns one on. Runs before the pause drill, which must stay last.
+test('the Setup page shows the go-live checklist from stored records, with the SQL for switches still off', async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole('heading', { name: 'Atlas operator console' })).toBeVisible();
+  await page.getByRole('link', { name: 'Setup', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Go-live checklist' })).toBeVisible();
+  await expect(page.getByTestId('setup-org-id')).toHaveText('11111111-1111-4111-8111-111111111111');
+  // Deployment: the fixture seeded the chart, every standard switch and the day-one ones.
+  for (const key of ['chart', 'boot', 'switches', 'pause'])
+    await expect(page.getByTestId(`setup-step-${key}`)).toHaveAttribute('data-state', 'done');
+  await expect(page.getByTestId('setup-step-boot')).toContainText('all 20 standard switches are on');
+  // Business setup: everything the earlier journeys did is done, down to a paid invoice...
+  for (const key of ['profile', 'catalog', 'pricing', 'link', 'bank', 'members', 'first'])
+    await expect(page.getByTestId(`setup-step-${key}`)).toHaveAttribute('data-state', 'done');
+  await expect(page.getByTestId('setup-step-link')).toHaveText(/1 of 1 synced Shopify customers linked to retailers\.$/);
+  // ...and the connection that has never synced is a check that says where to look.
+  const shopify = page.getByTestId('setup-step-shopify');
+  await expect(shopify).toHaveAttribute('data-state', 'warn');
+  await expect(shopify).toContainText('jobs-1111.myshopify.com has never synced');
+  await expect(shopify.getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/jobs');
+  // Switches: an on one says so; an off one offers the exact SQL for this business only.
+  await expect(page.getByTestId('switch-payments.record').getByRole('cell', { name: 'On', exact: true })).toBeVisible();
+  const narrate = page.getByTestId('switch-assistant.narrate');
+  await expect(narrate.getByRole('cell', { name: 'Off', exact: true })).toBeVisible();
+  await narrate.getByText('SQL to turn on').click();
+  await expect(narrate.locator('pre')).toContainText(
+    "values ('11111111-1111-4111-8111-111111111111', 'assistant', 'assistant.narrate', 'notify', true)");
+  await expect(page.locator('body')).not.toContainText('22222222-2222-4222-8222-222222222222');
+  await page.screenshot({ path: 'test-results/setup.png', fullPage: true });
 });
 
 // The emergency stop (0041): runs last of all — it pauses the business, which every

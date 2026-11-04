@@ -454,3 +454,20 @@ psql_run -f "$SCRIPT_DIR/verify-bank.sql"
 psql_run -f "$SCRIPT_DIR/verify-bank-match.sql"
 psql_run -f "$SCRIPT_DIR/verify-reminders.sql"
 psql_run -f "$SCRIPT_DIR/verify-tenant-surface.sql"
+
+# The go-live schema status query (docs/operations/GO_LIVE.md) must list every migration,
+# and on this fully migrated database every marker it checks must be present.
+status="$(psql_run -tA -F'|' -f "$SCRIPT_DIR/go-live/schema-status.sql")"
+listed="$(printf '%s\n' "$status" | cut -d'|' -f1 | sort)"
+expected="$(cd "$MIG_DIR" && ls 0*.sql | sed 's/\.sql$//' | sort)"
+if [[ "$listed" != "$expected" ]]; then
+  echo "scripts/go-live/schema-status.sql must list every migration:" >&2
+  diff <(printf '%s\n' "$expected") <(printf '%s\n' "$listed") >&2 || true
+  exit 1
+fi
+if printf '%s\n' "$status" | grep -q '|f$'; then
+  echo "scripts/go-live/schema-status.sql marks a migration unapplied on a fully migrated database:" >&2
+  printf '%s\n' "$status" | grep '|f$' >&2
+  exit 1
+fi
+echo "ok: go-live schema status knows all $(printf '%s\n' "$listed" | wc -l | tr -d ' ') migrations"
