@@ -40,7 +40,8 @@ Steps 5–28 (#42–#69) have merged since.
 | 26 | TODAY: home receivables net of payments, late by calendar day in the business timezone; receipts to reconcile under Needs you (no migration) | Claude | — (#65 merged) | Done | — |
 | 27 | CLOSE-01f: payment reminders — drafted from the overdue snapshot, sent by the operator and recorded, or voided (0053) | Claude | — (#67 merged) | Done | — |
 | 28 | GO-LIVE-01: go-live runbook ([GO_LIVE.md](../operations/GO_LIVE.md)), post-deploy smoke check and the console's Setup checklist (no migration) | Claude | — (#69 merged) | Done | Todd runs the runbook |
-| 29 | CONFIG-01d: who Atlas invoices, decided per Shopify customer (PLAN D20): link to a retailer, mark not invoiced, unpaid draft orders of undecided customers held; paid orders never invoiced (migration 0054 claimed) | Claude | `claude/config-01d-customer-links` | PR open | Todd's review |
+| 29 | CONFIG-01d: who Atlas invoices, decided per Shopify customer (PLAN D20): link to a retailer, mark not invoiced, unpaid draft orders of undecided customers held; paid orders never invoiced (migration 0054 claimed) | Claude | — (#70 merged) | Done | — |
+| 30 | TENANT-01a follow-up: browser-role table/sequence grants closed where platform defaults open them (migration 0055 claimed); found on the live project in the go-live link-up test | Claude | `claude/lucid-gauss-p1mjpy` | In progress | PR, then apply to the live project |
 | 7 | FLOW-01 bank reconciliation | Todd | — | Synthetic slices proceed (FLOW-01B-a, -b); the Wise/ASB formats need the sample | Provide a full month's export; its layout becomes the FLOW-01B-c adapters |
 | — | BUILD-02 automation | Todd | #27 (#21, #26 closed into it) | Parked since 4 October, off the critical path | Step 4 closed on 18 October: resume or close #27 |
 
