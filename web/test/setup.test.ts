@@ -13,7 +13,7 @@ const seeded: GrantRow[] = SEEDED_AT_BOOT.map(tool_name => ({ agent_name: 'opera
 const dayOne: GrantRow[] = OFF_UNTIL_TURNED_ON.filter(w => w.dayOne).map(w => ({ agent_name: w.agent, tool_name: w.tool, enabled: true }));
 const fresh: SetupSnapshot = {
   ledgerAccounts: 0, grants: [], paused: false, lastJobAt: null, waitingJobs: 0, profile: null,
-  retailers: 0, products: 0, pricingActive: false, shopify: null, lastSyncAt: null, customers: { total: 0, linked: 0 },
+  retailers: 0, products: 0, pricingActive: false, shopify: null, lastSyncAt: null, customers: { total: 0, linked: 0, notInvoiced: 0, held: 0 },
   bankAccounts: 0, members: 0, invoices: { issued: 0, paid: 0 },
 };
 const ready: SetupSnapshot = {
@@ -21,7 +21,7 @@ const ready: SetupSnapshot = {
   profile: { legal_name: 'Synthetic Goods Ltd', payment_instructions: 'Pay to 12-3456-7890123-00' },
   retailers: 4, products: 12, pricingActive: true,
   shopify: { id: 'src', connection_key: 'synthetic.myshopify.com', enabled: true, sync_every_minutes: 15 }, lastSyncAt: at(-10),
-  customers: { total: 40, linked: 4 }, bankAccounts: 1, members: 2, invoices: { issued: 3, paid: 1 },
+  customers: { total: 40, linked: 4, notInvoiced: 1, held: 0 }, bankAccounts: 1, members: 2, invoices: { issued: 3, paid: 1 },
 };
 const step = (steps: SetupStep[], key: string) => {
   const found = steps.find(s => s.key === key);
@@ -47,8 +47,8 @@ test('a business ready for its first invoice is done everywhere', () => {
   for (const s of [...deploymentSteps(ready, now), ...businessSteps(ready, now)]) assert.equal(s.state, 'done', `${s.key}: ${s.detail}`);
   assert.equal(step(businessSteps(ready, now), 'shopify').detail, 'synthetic.myshopify.com, last synced 10 min ago.');
   assert.equal(step(businessSteps(ready, now), 'link').detail,
-    '4 of 40 synced Shopify customers linked to retailers. Shipments for the other 36 are treated as retail orders and not invoiced.');
-  assert.equal(step(businessSteps({ ...ready, customers: { total: 1, linked: 1 } }, now), 'link').detail, '1 of 1 synced Shopify customers linked to retailers.');
+    '4 linked to retailers and 1 marked not invoiced, of 40 synced Shopify customers. Paid and retail orders are never invoiced.');
+  assert.equal(step(businessSteps(ready, now), 'link').href, '/customers');
 });
 
 test('missing and revoked standard switches are told apart', () => {
@@ -87,9 +87,13 @@ test('Shopify never synced, stale or turned off is a check, not done', () => {
 
 test('linking, the profile and the first invoice explain what is left', () => {
   const business = (s: Partial<SetupSnapshot>) => businessSteps({ ...ready, ...s }, now);
-  const unlinked = step(business({ customers: { total: 40, linked: 0 } }), 'link');
+  const unlinked = step(business({ customers: { total: 40, linked: 0, notInvoiced: 0, held: 0 } }), 'link');
   assert.equal(unlinked.state, 'todo');
-  assert.match(unlinked.detail, /every shipment is treated as a retail order and nothing is invoiced/);
+  assert.match(unlinked.detail, /None of the 40 synced customers is linked to a retailer yet/);
+  // Shipments waiting for a decision are a check, whatever else is done.
+  const waiting = step(business({ customers: { total: 40, linked: 4, notInvoiced: 1, held: 2 } }), 'link');
+  assert.equal(waiting.state, 'warn');
+  assert.equal(waiting.detail, '2 shipments are waiting for you to link the customer to a retailer or mark it not invoiced.');
   const noInstructions = step(business({ profile: { legal_name: 'Synthetic Goods Ltd', payment_instructions: ' ' } }), 'profile');
   assert.equal(noInstructions.state, 'warn');
   assert.match(step(business({ invoices: { issued: 2, paid: 0 } }), 'first').detail, /^2 invoices issued; none has a payment recorded yet/);

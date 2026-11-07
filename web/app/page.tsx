@@ -24,7 +24,7 @@ async function loadToday(now: Date) {
   const org = orgId();
   const cutoff = new Date(now.getTime() - DAY_MS).toISOString();
   const [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, bankCredits, timezone] = await Promise.all([
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, bankCredits, heldShipments, timezone] = await Promise.all([
     sb.from('approvals').select('id, expires_at').eq('org_id', org).eq('state', 'pending').limit(500),
     sb.from('approvals').select('id', { count: 'exact', head: true }).eq('org_id', org).gte('decided_at', cutoff),
     sb.from('approved_actions').select('id', { count: 'exact', head: true }).eq('org_id', org).in('state', ['UNRESOLVED', 'RECONCILIATION_REQUIRED']),
@@ -47,12 +47,14 @@ async function loadToday(now: Date) {
     // Money received and not yet applied to an invoice or marked as not a receipt (0052).
     sb.from('bank_transactions').select('amount_cents, allocations:bank_receipt_allocations(amount_cents), reviews:bank_line_reviews(seq, decision)')
       .eq('org_id', org).gt('amount_cents', 0).limit(2000),
+    // Shipments waiting for someone to decide who their customer is (0054).
+    sb.from('fulfillment_events').select('id', { count: 'exact', head: true }).eq('org_id', org).eq('route', 'held'),
     businessTimezone(org, now.toISOString()),
   ]);
   const briefing = await sb.from('daily_briefings').select('generated_at, narration, refs, status, model')
     .eq('org_id', org).eq('status', 'ok').order('generated_at', { ascending: false }).limit(1).maybeSingle();
   for (const r of [pendingApprovals, decidedRecently, uncertain, jobs, syncRuns, recentRuns, sources, openInvoices, draftInvoices,
-    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, bankCredits, briefing]) if (r.error) throw r.error;
+    partsDrafted, issuedRecently, lastCost, costsRecently, controls, pauseGrant, bankCredits, heldShipments, briefing]) if (r.error) throw r.error;
 
   const jobRows = (jobs.data ?? []) as JobRow[];
   const sourceRows = (sources.data ?? []) as SyncSourceRow[];
@@ -84,6 +86,7 @@ async function loadToday(now: Date) {
     receivables: receivables(open, now, timezone ?? DEFAULT_TIMEZONE),
     receiptsToReconcile: ((bankCredits.data ?? []) as unknown as Parameters<typeof awaitingReconciliation>[0][])
       .filter(awaitingReconciliation).length,
+    heldShipments: heldShipments.count ?? 0,
     recent: {
       partsDrafted: partsDrafted.count ?? 0,
       invoicesIssued: issuedRecently.count ?? 0,
@@ -109,7 +112,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const notice = isControlsOutcome(outcome) ? CONTROLS_OUTCOMES[outcome] : null;
   const today = await loadToday(now);
   const needsYou = today.pendingApprovals + today.jobs.blocked + today.jobs.quarantined + today.parts.length + today.uncertainActions
-    + today.receiptsToReconcile;
+    + today.receiptsToReconcile + today.heldShipments;
 
   return (
     <div className="space-y-8">
@@ -185,6 +188,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               value={`${today.jobs.blocked} blocked · ${today.jobs.quarantined} quarantined`} note={null} />
             <Stat testid="stat-parts" href="/invoices" label="Parts to approve and issue"
               value={String(today.parts.length)} note={null} />
+            {today.heldShipments > 0 ? (
+              <Stat testid="stat-held" href="/customers" label="Shipments waiting for a decision"
+                value={String(today.heldShipments)} note="Unpaid draft orders: link the customer to a retailer or mark it not invoiced" />
+            ) : null}
             {today.receiptsToReconcile > 0 ? (
               <Stat testid="stat-receipts" href="/bank" label="Receipts to reconcile"
                 value={String(today.receiptsToReconcile)} note="Money received, not yet applied to an invoice" />

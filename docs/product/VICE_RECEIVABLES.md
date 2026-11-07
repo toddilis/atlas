@@ -12,6 +12,7 @@ deployed behavior or authorize automatic customer communication.
 | Area | Owner-confirmed requirement |
 | --- | --- |
 | Orders | Shopify orders are the source. |
+| Wholesale orders | Retailers email their orders and staff enter them in Shopify as draft orders under the retailer's customer record; one retailer may have several customer records. An order Shopify shows as paid has been paid and is never invoiced ("paid means paid"), and some customers' orders are never invoiced (for example a rep's kit). Owner-confirmed 4 November 2026 (PLAN D20). Each Shopify customer is linked to a retailer, marked not invoiced with a reason, or undecided; an undecided customer's unpaid draft order waits for that decision on the console's Customers page instead of being skipped. |
 | Existing invoice process | The owner currently creates invoices in Excel. |
 | Trigger and grouping | Invoice when goods dispatch. A partially fulfilled order is invoiced in parts, for example `#xxxxA`, `#xxxxB`, etc. Each part covers its dispatched quantities and remains linked to the same Shopify order. |
 | Pricing | Atlas must offer adaptable product pricing, retailer agreements and discounts that the operator can maintain in the platform. The uploaded Excel list is an initial import/reference, not a fixed pricing policy. |

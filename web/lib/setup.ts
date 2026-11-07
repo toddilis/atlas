@@ -18,7 +18,8 @@ export interface SetupSnapshot {
   profile: { legal_name: string | null; payment_instructions: string | null } | null;
   retailers: number; products: number; pricingActive: boolean;
   shopify: SyncSourceRow | null; lastSyncAt: string | null;
-  customers: { total: number; linked: number };
+  /** Synced Shopify customers, those decided (0054), and shipments waiting for a decision. */
+  customers: { total: number; linked: number; notInvoiced: number; held: number };
   bankAccounts: number; members: number;
   invoices: { issued: number; paid: number };
 }
@@ -42,7 +43,7 @@ export const SEEDED_AT_BOOT = [
   'jobs.retry', 'jobs.dismiss', 'pricing.save', 'pricing.activate', 'invoices.record_print', 'approvals.decide',
   'catalog.save', 'accounts.save', 'actions.pause', 'connections.save', 'statements.generate', 'profile.save',
   'statements.record_send', 'statements.void', 'bank_accounts.save', 'bank.import', 'bank.review',
-  'reminders.generate', 'reminders.record_send', 'reminders.void',
+  'reminders.generate', 'reminders.record_send', 'reminders.void', 'customers.decide',
 ] as const;
 
 const grantOf = (grants: GrantRow[], agent: string, tool: string) => grants.find(g => g.agent_name === agent && g.tool_name === tool);
@@ -147,13 +148,14 @@ function shopifyStep(s: SetupSnapshot, now: Date): SetupStep {
 }
 
 function linkStep(s: SetupSnapshot): SetupStep {
-  const title = 'Shopify customers linked to retailers';
-  const { total, linked } = s.customers;
-  if (total === 0) return { key: 'link', title, state: 'todo', href: null, detail: 'No Shopify customers have synced yet; they arrive with the first sync.' };
-  if (linked === 0) return { key: 'link', title, state: 'todo', href: null,
-    detail: `None of the ${plural(total, 'synced customer')} is linked to a retailer, so every shipment is treated as a retail order and nothing is invoiced. Link each retailer's Shopify customer before its first shipment (runbook step 8).` };
-  const others = total - linked;
-  return { key: 'link', title, state: 'done', href: null,
-    detail: `${linked} of ${total} synced Shopify customers linked to retailers.`
-      + (others > 0 ? ` Shipments for the other ${others} are treated as retail orders and not invoiced.` : '') };
+  const title = 'Retailers’ Shopify customers';
+  const href = '/customers';
+  const { total, linked, notInvoiced, held } = s.customers;
+  if (held > 0) return { key: 'link', title, state: 'warn', href,
+    detail: `${plural(held, 'shipment is', 'shipments are')} waiting for you to link the customer to a retailer or mark it not invoiced.` };
+  if (total === 0) return { key: 'link', title, state: 'todo', href, detail: 'No Shopify customers have synced yet; they arrive with the first sync.' };
+  if (linked === 0) return { key: 'link', title, state: 'todo', href,
+    detail: `None of the ${plural(total, 'synced customer')} is linked to a retailer yet. Link your retailers now, or when their first unpaid draft order ships and waits on Customers.` };
+  return { key: 'link', title, state: 'done', href,
+    detail: `${linked} linked to retailers and ${notInvoiced} marked not invoiced, of ${plural(total, 'synced Shopify customer')}. Paid and retail orders are never invoiced.` };
 }

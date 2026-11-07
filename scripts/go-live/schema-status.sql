@@ -58,7 +58,8 @@ with markers(migration, kind, name) as (values
   ('0050_tenant_fk_binding','none',''),
   ('0051_bank_source','table','bank_accounts'),
   ('0052_bank_receipt_matching','table','bank_receipt_allocations'),
-  ('0053_payment_reminders','table','payment_reminders')
+  ('0053_payment_reminders','table','payment_reminders'),
+  ('0054_customer_invoicing_decisions','column','shopify_customers.do_not_invoice')
 )
 select migration, kind, name,
   case kind

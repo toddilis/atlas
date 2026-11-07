@@ -3090,7 +3090,11 @@ export type Database = {
         Row: {
           account_id: string | null
           created_at_source: string | null
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
           default_address: Json | null
+          do_not_invoice: boolean
           email: string | null
           first_name: string | null
           id: string
@@ -3101,11 +3105,16 @@ export type Database = {
           synced_at: string
           tags: string[]
           updated_at_source: string | null
+          shopify_customer_decision: string | null
         }
         Insert: {
           account_id?: string | null
           created_at_source?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
           default_address?: Json | null
+          do_not_invoice?: boolean
           email?: string | null
           first_name?: string | null
           id?: string
@@ -3120,7 +3129,11 @@ export type Database = {
         Update: {
           account_id?: string | null
           created_at_source?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
           default_address?: Json | null
+          do_not_invoice?: boolean
           email?: string | null
           first_name?: string | null
           id?: string
@@ -3936,6 +3949,23 @@ export type Database = {
         }
         Returns: string
       }
+      operator_decide_shopify_customer: {
+        Args: {
+          p_account_id: string
+          p_actor_email: string
+          p_actor_id: string
+          p_customer_id: string
+          p_decision: string
+          p_expected: string
+          p_note: string
+          p_org_id: string
+        }
+        Returns: {
+          odc_not_invoiced: number
+          odc_released: number
+          odc_unchanged: boolean
+        }[]
+      }
       operator_draft_payment_reminder: {
         Args: {
           p_account_id: string
@@ -4391,6 +4421,23 @@ export type Database = {
         Args: { j: Database["public"]["Tables"]["scheduled_jobs"]["Row"] }
         Returns: boolean
       }
+      search_shopify_customers: {
+        Args: { p_limit?: number; p_org_id: string; p_query: string }
+        Returns: {
+          account_id: string
+          company: string
+          decided_at: string
+          decided_by: string
+          decision_note: string
+          do_not_invoice: boolean
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          shopify_customer_id: string
+          tags: string[]
+        }[]
+      }
       seed_chart_of_accounts: { Args: { p_org_id: string }; Returns: undefined }
       set_action_pause: {
         Args: {
@@ -4400,6 +4447,10 @@ export type Database = {
           p_reason: string
         }
         Returns: undefined
+      }
+      shopify_customer_decision: {
+        Args: { c: Database["public"]["Tables"]["shopify_customers"]["Row"] }
+        Returns: string
       }
       shopify_sync_job_needed: {
         Args: { p_org_id: string; p_source_id: string }
@@ -4413,7 +4464,7 @@ export type Database = {
       audit_outcome: "success" | "failure" | "blocked"
       billing_channel: "wholesale" | "consignment" | "dtc" | "internal"
       consignment_direction: "out" | "return" | "sold"
-      fulfillment_route: "wholesale" | "consignment" | "ignored"
+      fulfillment_route: "wholesale" | "consignment" | "ignored" | "held"
       invoice_state:
         | "draft"
         | "pending_approval"
@@ -4574,7 +4625,7 @@ export const Constants = {
       audit_outcome: ["success", "failure", "blocked"],
       billing_channel: ["wholesale", "consignment", "dtc", "internal"],
       consignment_direction: ["out", "return", "sold"],
-      fulfillment_route: ["wholesale", "consignment", "ignored"],
+      fulfillment_route: ["wholesale", "consignment", "ignored", "held"],
       invoice_state: [
         "draft",
         "pending_approval",
