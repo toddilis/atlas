@@ -72,7 +72,7 @@ Migrations are applied by hand, in order; the deployed code assumes all of them.
    It changes nothing. It returns one row per migration with `applied`:
    - `true`: the first thing that migration creates exists, so it has been applied;
    - `false`: it has not been applied;
-   - empty (null) for 0010, 0016, 0027, 0046 and 0050, which create nothing new to look
+   - empty (null) for 0010, 0016, 0027, 0046, 0050 and 0055, which create nothing new to look
      for. Count one as applied when the migration after it is.
 2. Note the first migration whose `applied` is `false`, for example `0047`. Apply it and
    every later one, in order, each in its own transaction, stopping at the first error:

@@ -49,5 +49,6 @@ the highest reservation.
 | 0051 | `bank_source` | FLOW-01B-a (bank accounts and statement import) | main (PR #62) |
 | 0052 | `bank_receipt_matching` | FLOW-01B-b (receipts matched to invoices) | main (PR #63) |
 | 0053 | `payment_reminders` | CLOSE-01f (payment reminders) | main (PR #67) |
-| 0054 | `customer_invoicing_decisions` | CONFIG-01d (who Atlas invoices, decided per Shopify customer) | claimed 4 Nov (queue row 29), in progress |
-| **0055** | **next unclaimed** | — | — |
+| 0054 | `customer_invoicing_decisions` | CONFIG-01d (who Atlas invoices, decided per Shopify customer) | main (PR #70) |
+| 0055 | `browser_table_privileges` | TENANT-01a follow-up (browser-role table/sequence grants left open by platform defaults) | claimed 7 Nov (queue row 30), in progress |
+| **0056** | **next unclaimed** | — | — |

@@ -22,6 +22,11 @@ begin
     where table_schema='public' and grantee in ('anon','authenticated');
   perform pg_temp.surface_assert(v_offenders is null,'anon/authenticated table grants: '||coalesce(v_offenders,''));
 
+  select string_agg(distinct object_name||' ('||grantee||')',', ') into v_offenders
+    from information_schema.role_usage_grants
+    where object_schema='public' and object_type='SEQUENCE' and grantee in ('anon','authenticated');
+  perform pg_temp.surface_assert(v_offenders is null,'anon/authenticated sequence grants: '||coalesce(v_offenders,''));
+
   -- And may execute no function in public. An entry here needs its own justification;
   -- today there are none: the console talks to the database only through the verified
   -- server-side service client, and the anon key only powers GoTrue session handling.

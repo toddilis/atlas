@@ -59,7 +59,8 @@ with markers(migration, kind, name) as (values
   ('0051_bank_source','table','bank_accounts'),
   ('0052_bank_receipt_matching','table','bank_receipt_allocations'),
   ('0053_payment_reminders','table','payment_reminders'),
-  ('0054_customer_invoicing_decisions','column','shopify_customers.do_not_invoice')
+  ('0054_customer_invoicing_decisions','column','shopify_customers.do_not_invoice'),
+  ('0055_browser_table_privileges','none','')
 )
 select migration, kind, name,
   case kind
